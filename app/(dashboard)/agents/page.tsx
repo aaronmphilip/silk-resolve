@@ -55,8 +55,8 @@ export default async function AgentsPage() {
             deployed agents.
           </h1>
           <Link
-            href="/canvas"
-            className="flex items-center gap-2 bg-black text-[#f0ebe0] px-4 py-2.5 text-xs font-mono hover:opacity-75 transition-opacity"
+            href="/agents/new"
+            className="flex items-center gap-2 bg-black text-[#f0ebe0] px-5 py-2.5 rounded-full text-xs font-mono hover:opacity-75 transition-opacity"
           >
             <Plus size={11} />
             new agent
