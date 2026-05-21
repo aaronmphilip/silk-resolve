@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, Check, Eye, EyeOff, Zap, User, Cpu, Globe, Users } from "lucide-react";
-import { AI_PROVIDERS, type AIProvider } from "@/lib/ai";
+import { Loader2, Check, User, Globe, Users } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -25,11 +24,9 @@ interface TenantData {
   timezone: string;
   language: string;
   escalationEmail: string;
-  aiProvider: AIProvider;
-  hasAiKey: boolean;
 }
 
-type Tab = "profile" | "ai" | "workspace" | "team";
+type Tab = "profile" | "workspace" | "team";
 
 const TIMEZONES = ["Asia/Kolkata", "UTC", "America/New_York", "America/Los_Angeles", "Europe/London", "Asia/Singapore", "Asia/Dubai"];
 const LANGUAGES = ["Hinglish (hi-IN / en-IN)", "Hindi (hi-IN)", "English (en-IN)", "Tamil (ta-IN)", "Telugu (te-IN)", "Marathi (mr-IN)"];
@@ -70,15 +67,6 @@ export default function SettingsPage() {
   const [wsSaved, setWsSaved] = useState(false);
   const [wsError, setWsError] = useState("");
 
-  // AI provider state
-  const [aiProvider, setAiProvider] = useState<AIProvider>("anthropic");
-  const [aiKey, setAiKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
-  const [aiSaving, setAiSaving] = useState(false);
-  const [aiSaved, setAiSaved] = useState(false);
-  const [aiTesting, setAiTesting] = useState(false);
-  const [aiTestResult, setAiTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
-  const [aiError, setAiError] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -95,8 +83,6 @@ export default function SettingsPage() {
           setWsTimezone(d.tenant.timezone);
           setWsLanguage(d.tenant.language);
           setWsEscalationEmail(d.tenant.escalationEmail);
-          setAiProvider(d.tenant.aiProvider ?? "anthropic");
-          setAiKey(d.tenant.hasAiKey ? "••••••••" : "");
         }
       }
     } finally {
@@ -130,34 +116,8 @@ export default function SettingsPage() {
     else { const d = await res.json(); setWsError(d.error ?? "save failed"); }
   }
 
-  async function saveAIProvider() {
-    setAiSaving(true); setAiError(""); setAiTestResult(null);
-    const res = await fetch("/api/settings/ai-provider", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: aiProvider, apiKey: aiKey }),
-    });
-    setAiSaving(false);
-    if (res.ok) { setAiSaved(true); setTimeout(() => setAiSaved(false), 3000); }
-    else { const d = await res.json(); setAiError(d.error ?? "save failed"); }
-  }
-
-  async function testKey() {
-    if (!aiKey || aiKey === "••••••••") { setAiError("enter a new API key to test"); return; }
-    setAiTesting(true); setAiTestResult(null); setAiError("");
-    const res = await fetch("/api/settings/ai-provider", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ provider: aiProvider, apiKey: aiKey }),
-    });
-    setAiTesting(false);
-    const d = await res.json();
-    setAiTestResult(d);
-  }
-
   const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: "profile", label: "Profile", icon: <User size={12} /> },
-    { id: "ai", label: "AI Provider", icon: <Cpu size={12} /> },
     { id: "workspace", label: "Workspace", icon: <Globe size={12} /> },
     { id: "team", label: "Team", icon: <Users size={12} /> },
   ];
@@ -269,86 +229,6 @@ export default function SettingsPage() {
                   {user.role === "admin" && "Can manage agents, scripts, integrations. Cannot change billing."}
                   {user.role === "viewer" && "Read-only access to calls, analytics, and agents."}
                 </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── AI PROVIDER TAB ── */}
-        {tab === "ai" && (
-          <div className="space-y-6">
-            <div>
-              <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest mb-1">ai provider</p>
-              <p className="text-xs opacity-40 mb-5">Choose which AI model generates and refines your agent scripts. Bring your own API key.</p>
-
-              {/* Provider selector */}
-              <div className="space-y-3 mb-6">
-                {AI_PROVIDERS.map((p) => (
-                  <button key={p.id} onClick={() => { setAiProvider(p.id); setAiTestResult(null); }}
-                    className={`w-full text-left border p-4 transition-all ${aiProvider === p.id ? "border-black bg-black/5 shadow-[2px_2px_0px_rgba(0,0,0,0.2)]" : "border-black/25 hover:border-black"}`}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="font-bold text-sm">{p.label}</p>
-                          <span className="text-[9px] font-mono border border-black/30 px-1.5 py-0.5 opacity-50">{p.model}</span>
-                        </div>
-                        <p className="text-xs opacity-40">{p.note}</p>
-                        <p className="text-[10px] font-mono opacity-25 mt-1">key format: {p.keyHint}</p>
-                      </div>
-                      {aiProvider === p.id && (
-                        <div className="w-4 h-4 border border-black flex items-center justify-center flex-shrink-0 mt-0.5">
-                          <Check size={10} />
-                        </div>
-                      )}
-                    </div>
-                  </button>
-                ))}
-              </div>
-
-              {/* API Key input */}
-              <div className="border border-black">
-                <div className="px-5 py-4 border-b border-black">
-                  <label className="block text-[10px] font-mono opacity-40 mb-1.5 uppercase tracking-widest">api key</label>
-                  <div className="relative">
-                    <input
-                      type={showKey ? "text" : "password"}
-                      value={aiKey}
-                      onChange={(e) => { setAiKey(e.target.value); setAiTestResult(null); }}
-                      placeholder={AI_PROVIDERS.find((p) => p.id === aiProvider)?.keyHint ?? "your API key"}
-                      className="w-full bg-transparent text-sm font-mono focus:outline-none pr-8 placeholder:opacity-30"
-                    />
-                    <button type="button" onClick={() => setShowKey(!showKey)} className="absolute right-0 top-1/2 -translate-y-1/2 opacity-30 hover:opacity-70">
-                      {showKey ? <EyeOff size={13} /> : <Eye size={13} />}
-                    </button>
-                  </div>
-                  {tenant?.hasAiKey && aiKey === "••••••••" && (
-                    <p className="text-[9px] font-mono opacity-30 mt-1.5">a key is saved — clear this field and enter a new one to replace it</p>
-                  )}
-                </div>
-                <div className="px-5 py-3 flex items-center justify-between gap-3">
-                  <button onClick={testKey} disabled={aiTesting}
-                    className="flex items-center gap-2 text-xs font-mono border border-black/30 px-4 py-2 hover:border-black hover:bg-black/5 transition-colors disabled:opacity-40">
-                    {aiTesting ? <Loader2 size={10} className="animate-spin" /> : <Zap size={10} />}
-                    {aiTesting ? "testing..." : "test key"}
-                  </button>
-                  {aiTestResult && (
-                    <p className={`text-xs font-mono ${aiTestResult.ok ? "text-emerald-700" : "text-red-700"}`}>
-                      {aiTestResult.ok ? "✓ key works" : `✗ ${aiTestResult.error}`}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-2 border border-black/10 bg-black/[0.02] px-4 py-3">
-                <p className="text-[10px] font-mono opacity-40 leading-relaxed">
-                  Your key is stored encrypted per workspace. It is only used server-side for script generation — never exposed to browsers.
-                  You can also set <span className="font-bold">ANTHROPIC_API_KEY</span> as an environment variable instead of entering it here.
-                </p>
-              </div>
-
-              {aiError && <p className="mt-2 text-xs font-mono text-red-700">{aiError}</p>}
-              <div className="mt-4">
-                <SaveBtn onClick={saveAIProvider} loading={aiSaving} saved={aiSaved} label="save ai config" />
               </div>
             </div>
           </div>

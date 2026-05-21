@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { callAI, extractJSON, type AIProvider } from "@/lib/ai";
+import { callAI, extractJSON } from "@/lib/ai";
+import { getPlatformAIConfig } from "@/lib/platform";
 
 const SYSTEM = `You are an expert AI voice agent configurator for Silk Resolve, an enterprise voice AI platform.
 Silk agents use three pillars — PEEK (intent/emotion detection), MESH (memory/emotional-debt), SILK (prosody-tagged voice).
@@ -11,33 +12,12 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  // Get tenant AI config
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("tenant_id")
-    .eq("id", user.id)
-    .single();
-
-  let provider: AIProvider = "anthropic";
-  let apiKey = process.env.ANTHROPIC_API_KEY ?? "";
-
-  if (profile?.tenant_id) {
-    const { data: tenant } = await supabase
-      .from("tenants")
-      .select("ai_provider, ai_api_key")
-      .eq("id", profile.tenant_id)
-      .single();
-
-    if (tenant?.ai_provider) provider = tenant.ai_provider as AIProvider;
-    if (tenant?.ai_api_key) apiKey = tenant.ai_api_key;
-    else if (provider !== "anthropic") {
-      // Non-Anthropic provider requires tenant key — no env fallback
-      return NextResponse.json({ error: `No API key configured for ${provider}. Add it in Settings → AI Provider.` }, { status: 503 });
-    }
-  }
-
+  // Platform-level AI config — users never configure this
+  const { provider, apiKey } = await getPlatformAIConfig();
   if (!apiKey) {
-    return NextResponse.json({ error: "No AI API key configured. Add ANTHROPIC_API_KEY to your environment or set a key in Settings → AI Provider." }, { status: 503 });
+    return NextResponse.json({
+      error: "AI is not configured yet. Ask your platform admin to add an AI API key in the Admin panel.",
+    }, { status: 503 });
   }
 
   const { company, industry, useCase, agentName, vibe, language, existingScript, refineMode } = await req.json();
@@ -46,21 +26,21 @@ export async function POST(req: Request) {
     ? `Refine this agent script for ${industry} customer support at ${company || "this company"}.
 Improve systemPrompt, linguisticNotes, escalationRules, noGoTopics. Keep same JSON structure.
 Current script: ${JSON.stringify(existingScript, null, 2)}`
-    : `Generate a complete agent script for:
+    : `Generate a complete agent script:
 Company: ${company}
 Industry: ${industry}
 Use case: ${useCase}
-Agent name: ${agentName}
+Agent: ${agentName}
 Vibe: ${vibe} (protective=warm/empathetic, professional=formal/precise, casual=friendly/light)
 Language: ${language}
 
 Return JSON:
 {
-  "systemPrompt": "400-600 word system prompt. Include role, company context, top 5 ${industry} issues, emotional intelligence, PEEK (tension_level/arousal vars), MESH (emotional_debt/interaction_history), SILK prosody tags. Use {{preferred_address}} {{customer_name}} {{tension_level}} {{emotional_debt}} variables.",
+  "systemPrompt": "400-600 word system prompt. Role, company context, top 5 ${industry} issues, emotional intelligence, PEEK awareness (tension_level/arousal), MESH context (emotional_debt/history), SILK prosody. Use {{preferred_address}} {{customer_name}} {{tension_level}} {{emotional_debt}}.",
   "companionVibe": "${vibe}",
   "language": "${language}",
   "preferredAddress": "appropriate honorific",
-  "linguisticNotes": "3-5 specific tonal/code-switching rules",
+  "linguisticNotes": "3-5 tonal/code-switching rules",
   "tools": [
     {"id":"bt-001","name":"escalate_to_human","description":"Transfer to human with full context","source":"builtin","enabled":true,"params":["reason","priority"]},
     {"id":"bt-002","name":"send_confirmation","description":"Send SMS + email confirmation","source":"builtin","enabled":true,"params":["customer_id","message"]},
