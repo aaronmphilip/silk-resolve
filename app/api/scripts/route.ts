@@ -7,9 +7,9 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const { data, error } = await supabase
-    .from("agents")
+    .from("scripts")
     .select("*")
-    .order("created_at", { ascending: false });
+    .order("updated_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data ?? []);
@@ -31,22 +31,22 @@ export async function POST(req: Request) {
   const body = await req.json();
 
   const { data, error } = await supabase
-    .from("agents")
+    .from("scripts")
     .insert({
       tenant_id: profile.tenant_id,
+      agent_id: body.agentId ?? null,
+      agent_name: body.agentName ?? "",
       name: body.name,
-      client: body.client ?? "",
+      version: body.version ?? 1,
       status: body.status ?? "draft",
-      node_count: 0,
-      pillars: body.pillars ?? ["PEEK", "MESH", "SILK"],
-      description: body.description ?? "",
-      total_calls: 0,
-      calls_today: 0,
-      empathy_score: 0,
-      avg_handle_time: "—",
-      resolved_rate: 0,
-      last_active: "never",
-      webhook_url: body.webhookUrl ?? null,
+      system_prompt: body.systemPrompt ?? "",
+      companion_vibe: body.companionVibe ?? "professional",
+      language: body.language ?? "English (en-IN)",
+      preferred_address: body.preferredAddress ?? "Sir/Ma'am",
+      linguistic_notes: body.linguisticNotes ?? "",
+      tools: body.tools ?? [],
+      escalation_rules: body.escalationRules ?? [],
+      no_go_topics: body.noGoTopics ?? [],
     })
     .select()
     .single();

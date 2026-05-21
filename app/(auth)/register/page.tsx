@@ -98,8 +98,8 @@ export default function RegisterPage() {
     <div
       className="min-h-screen flex items-center justify-center px-4"
       style={{
-        backgroundColor: "#ede8da",
-        backgroundImage: "radial-gradient(rgba(0,0,0,0.07) 1px, transparent 1px)",
+        backgroundColor: "#e8dece",
+        backgroundImage: "radial-gradient(rgba(0,0,0,0.12) 1px, transparent 1px)",
         backgroundSize: "22px 22px",
       }}
     >
@@ -113,7 +113,7 @@ export default function RegisterPage() {
           <p className="text-xs opacity-40 mt-1.5 font-mono">/ enterprise voice infrastructure /</p>
         </div>
 
-        <div className="border border-black/20 shadow-[3px_3px_0px_rgba(0,0,0,0.12)] bg-[#ede8da]">
+        <div className="border border-black/20 shadow-[3px_3px_0px_rgba(0,0,0,0.12)] bg-[#e8dece]">
           <div className="px-6 py-4 border-b border-black/10 flex items-center justify-between">
             <p className="text-xs font-mono opacity-40 uppercase tracking-widest">new account</p>
             <p className="text-[10px] font-mono opacity-25">step 1 of 2</p>
@@ -161,7 +161,7 @@ export default function RegisterPage() {
               <select
                 value={form.industry}
                 onChange={set("industry")}
-                className="w-full border border-black/20 bg-[#ede8da] px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-black/60 appearance-none transition-colors"
+                className="w-full border border-black/20 bg-[#e8dece] px-3 py-2.5 text-sm font-mono focus:outline-none focus:border-black/60 appearance-none transition-colors"
               >
                 <option value="">select industry</option>
                 {INDUSTRIES.map((i) => <option key={i}>{i}</option>)}

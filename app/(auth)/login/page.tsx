@@ -33,7 +33,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#f0ebe0", backgroundImage: "radial-gradient(rgba(0,0,0,0.1) 1px, transparent 1px)", backgroundSize: "22px 22px" }}>
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#e8dece", backgroundImage: "radial-gradient(rgba(0,0,0,0.12) 1px, transparent 1px)", backgroundSize: "22px 22px" }}>
       <div className="fixed top-3 right-4 pointer-events-none select-none opacity-[0.12] font-mono text-[10px] leading-relaxed text-right">
         <div>11111111</div><div>1110011</div><div>000 10</div><div>11111</div><div>0000000</div>
       </div>

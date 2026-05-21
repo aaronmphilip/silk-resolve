@@ -1,9 +1,8 @@
 "use client";
-import { useState } from "react";
-import { ArrowLeft, Save, Zap, Plus, Trash2 } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { ArrowLeft, Save, Zap, Plus, Trash2, Sparkles, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { SCRIPTS, INTEGRATIONS } from "@/lib/mock-data";
-import type { AgentScript, ScriptTool, EscalationRule } from "@/lib/types";
+import type { AgentScript, ScriptTool, EscalationRule, Integration } from "@/lib/types";
 
 const VIBES = ["protective", "professional", "casual"] as const;
 const LANGUAGES = ["Hinglish (hi-IN / en-IN)", "Hindi (hi-IN)", "English (en-IN)", "Tamil (ta-IN)", "Telugu (te-IN)"];
@@ -16,40 +15,179 @@ const BUILTIN_TOOLS: Omit<ScriptTool, "enabled">[] = [
 
 type Tab = "prompt" | "identity" | "tools" | "rules";
 
+function mapDbScript(r: Record<string, unknown>): AgentScript {
+  return {
+    id: r.id as string,
+    agentId: r.agent_id as string,
+    agentName: r.agent_name as string,
+    name: r.name as string,
+    version: r.version as number,
+    status: r.status as AgentScript["status"],
+    systemPrompt: r.system_prompt as string,
+    companionVibe: r.companion_vibe as AgentScript["companionVibe"],
+    language: r.language as string,
+    preferredAddress: r.preferred_address as string,
+    linguisticNotes: r.linguistic_notes as string,
+    tools: (r.tools as ScriptTool[]) ?? [],
+    escalationRules: (r.escalation_rules as EscalationRule[]) ?? [],
+    noGoTopics: (r.no_go_topics as string[]) ?? [],
+    createdAt: ((r.created_at as string) || "").slice(0, 10),
+    updatedAt: ((r.updated_at as string) || "").slice(0, 10),
+  };
+}
+
 export default function ScriptEditorPage({ params }: { params: { id: string } }) {
-  const base = SCRIPTS.find((s) => s.id === params.id) ?? SCRIPTS[0];
-  const [script, setScript] = useState<AgentScript>({ ...base, tools: base.tools.map((t) => ({ ...t })) });
-  const [tab, setTab] = useState<Tab>("prompt");
+  const [script, setScript] = useState<AgentScript | null>(null);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [refining, setRefining] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState("");
+  const [tab, setTab] = useState<Tab>("prompt");
+
+  const loadScript = useCallback(async () => {
+    try {
+      const [scriptRes, intgRes] = await Promise.all([
+        fetch(`/api/scripts/${params.id}`),
+        fetch("/api/integrations"),
+      ]);
+      if (scriptRes.ok) {
+        const data = await scriptRes.json();
+        setScript(mapDbScript(data));
+      }
+      if (intgRes.ok) {
+        setIntegrations(await intgRes.json());
+      }
+    } catch {
+      setError("failed to load script");
+    } finally {
+      setLoading(false);
+    }
+  }, [params.id]);
+
+  useEffect(() => { loadScript(); }, [loadScript]);
 
   const update = <K extends keyof AgentScript>(k: K, v: AgentScript[K]) =>
-    setScript((s) => ({ ...s, [k]: v }));
+    setScript((s) => s ? { ...s, [k]: v } : s);
 
   function toggleTool(id: string) {
-    setScript((s) => ({ ...s, tools: s.tools.map((t) => t.id === id ? { ...t, enabled: !t.enabled } : t) }));
+    setScript((s) => s ? { ...s, tools: s.tools.map((t) => t.id === id ? { ...t, enabled: !t.enabled } : t) } : s);
   }
 
   function addBuiltinTool(bt: Omit<ScriptTool, "enabled">) {
-    if (script.tools.find((t) => t.id === bt.id)) return;
-    setScript((s) => ({ ...s, tools: [...s.tools, { ...bt, enabled: true }] }));
+    if (!script || script.tools.find((t) => t.id === bt.id)) return;
+    setScript((s) => s ? { ...s, tools: [...s.tools, { ...bt, enabled: true }] } : s);
   }
 
   function removeRule(id: string) {
-    setScript((s) => ({ ...s, escalationRules: s.escalationRules.filter((r) => r.id !== id) }));
+    setScript((s) => s ? { ...s, escalationRules: s.escalationRules.filter((r) => r.id !== id) } : s);
   }
 
   function toggleNoGo(topic: string) {
-    setScript((s) => ({
+    setScript((s) => !s ? s : {
       ...s,
       noGoTopics: s.noGoTopics.includes(topic)
         ? s.noGoTopics.filter((t) => t !== topic)
         : [...s.noGoTopics, topic],
-    }));
+    });
   }
 
-  function handleSave() {
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  async function handleSave() {
+    if (!script) return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/scripts/${script.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(script),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        setError(d.error ?? "save failed");
+      } else {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2500);
+      }
+    } catch {
+      setError("save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleActivate() {
+    if (!script) return;
+    const newStatus = script.status === "active" ? "draft" : "active";
+    const res = await fetch(`/api/scripts/${script.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...script, status: newStatus }),
+    });
+    if (res.ok) update("status", newStatus);
+  }
+
+  async function handleAIRefine() {
+    if (!script || refining) return;
+    setRefining(true);
+    setError("");
+    try {
+      const res = await fetch("/api/ai/generate-script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          refineMode: true,
+          existingScript: {
+            systemPrompt: script.systemPrompt,
+            escalationRules: script.escalationRules,
+            linguisticNotes: script.linguisticNotes,
+            noGoTopics: script.noGoTopics,
+          },
+          industry: "enterprise",
+          company: script.agentName,
+          useCase: script.name,
+        }),
+      });
+      if (res.ok) {
+        const refined = await res.json();
+        setScript((s) => s ? {
+          ...s,
+          systemPrompt: refined.systemPrompt ?? s.systemPrompt,
+          linguisticNotes: refined.linguisticNotes ?? s.linguisticNotes,
+          escalationRules: refined.escalationRules ?? s.escalationRules,
+          noGoTopics: refined.noGoTopics ?? s.noGoTopics,
+          preferredAddress: refined.preferredAddress ?? s.preferredAddress,
+        } : s);
+      } else {
+        const d = await res.json();
+        setError(d.error ?? "AI refinement failed");
+      }
+    } catch {
+      setError("AI refinement failed");
+    } finally {
+      setRefining(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex items-center gap-3 font-mono text-sm opacity-40">
+          <Loader2 size={14} className="animate-spin" />
+          loading script...
+        </div>
+      </div>
+    );
+  }
+
+  if (!script) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <p className="font-mono text-sm opacity-40">script not found</p>
+        <Link href="/scripts" className="text-xs font-mono underline opacity-50 hover:opacity-100">← back to scripts</Link>
+      </div>
+    );
   }
 
   const TABS: { id: Tab; label: string }[] = [
@@ -59,7 +197,8 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
     { id: "rules", label: `Rules (${script.escalationRules.length})` },
   ];
 
-  const integrationToolCount = INTEGRATIONS.reduce((n, i) => n + i.endpoints.length, 0);
+  const connectedIntegrations = integrations.filter((i) => i.status === "connected");
+  const pendingIntegrations = integrations.filter((i) => i.status !== "connected");
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -68,24 +207,33 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
         <Link href="/scripts" className="flex items-center gap-2 text-xs font-mono opacity-40 hover:opacity-100 transition-opacity mb-4">
           <ArrowLeft size={11} /> back to scripts
         </Link>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest mb-1">/ {script.id} /</p>
             <h1 className="text-2xl font-bold tracking-tight">{script.name}</h1>
             <p className="text-xs opacity-40 mt-0.5">{script.agentName} · v{script.version}</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-[10px] font-mono border px-2.5 py-1 ${script.status === "active" ? "border-black font-bold" : "border-black/30 opacity-50"}`}>
               {script.status}
             </span>
-            <button onClick={handleSave} className="flex items-center gap-2 border border-black px-4 py-2 text-xs font-mono hover:bg-black/5 transition-colors">
-              <Save size={11} />{saved ? "saved ✓" : "save draft"}
+            <button onClick={handleAIRefine} disabled={refining}
+              className="flex items-center gap-2 border border-black/30 px-4 py-2 text-xs font-mono hover:border-black hover:bg-black/5 transition-colors disabled:opacity-40">
+              {refining ? <Loader2 size={11} className="animate-spin" /> : <Sparkles size={11} />}
+              {refining ? "refining..." : "ai refine"}
             </button>
-            <button onClick={() => update("status", "active")} className="flex items-center gap-2 bg-black text-[#f0ebe0] px-4 py-2 text-xs font-mono hover:opacity-75 transition-opacity">
-              <Zap size={11} /> activate
+            <button onClick={handleSave} disabled={saving}
+              className="flex items-center gap-2 border border-black px-4 py-2 text-xs font-mono hover:bg-black/5 transition-colors disabled:opacity-50">
+              {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+              {saving ? "saving..." : saved ? "saved ✓" : "save"}
+            </button>
+            <button onClick={handleActivate}
+              className={`flex items-center gap-2 px-4 py-2 text-xs font-mono transition-opacity hover:opacity-75 ${script.status === "active" ? "bg-black/20 border border-black" : "bg-black text-[#f0ebe0]"}`}>
+              <Zap size={11} /> {script.status === "active" ? "deactivate" : "activate"}
             </button>
           </div>
         </div>
+        {error && <p className="mt-3 text-[11px] font-mono text-red-700 border border-red-300 px-3 py-1.5 bg-red-50">{error}</p>}
       </div>
 
       {/* Tabs */}
@@ -168,8 +316,14 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
             <div>
               <label className="block text-[10px] font-mono opacity-50 mb-1.5 uppercase tracking-widest">linguistic notes</label>
               <textarea value={script.linguisticNotes} onChange={(e) => update("linguisticNotes", e.target.value)}
-                rows={3} className="w-full border border-black bg-transparent px-3 py-2.5 text-sm font-mono focus:outline-none focus:shadow-[1px_1px_0px_rgba(0,0,0,0.85)] resize-none" />
+                rows={4} className="w-full border border-black bg-transparent px-3 py-2.5 text-sm font-mono focus:outline-none focus:shadow-[1px_1px_0px_rgba(0,0,0,0.85)] resize-none" />
               <p className="text-[9px] font-mono opacity-25 mt-1.5">When to code-switch, when to use humour, tonal rules. SILK reads this before every utterance.</p>
+            </div>
+
+            <div className="border border-black/10 bg-black/[0.02] px-4 py-3">
+              <p className="text-[10px] font-mono opacity-40 mb-2 uppercase tracking-widest">script name</p>
+              <input value={script.name} onChange={(e) => update("name", e.target.value)}
+                className="w-full bg-transparent text-sm font-mono border-b border-black/20 pb-1 focus:outline-none focus:border-black" />
             </div>
           </div>
         )}
@@ -182,8 +336,7 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
               <p className="text-xs opacity-40">Tools your agent can call mid-conversation. From your connected integrations + built-ins.</p>
             </div>
 
-            {/* Integration tools */}
-            {INTEGRATIONS.filter((i) => i.status === "connected").map((intg) => (
+            {connectedIntegrations.map((intg) => (
               <div key={intg.id} className="border border-black mb-4">
                 <div className="px-5 py-3 border-b border-black bg-black/[0.03] flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -204,7 +357,7 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
                       </div>
                       <button onClick={() => {
                         if (existing) toggleTool(existing.id);
-                        else setScript((s) => ({ ...s, tools: [...s.tools, { id: ep.id, name: ep.toolName, description: ep.description, source: "integration", integrationId: intg.id, enabled: true, params: ep.params }] }));
+                        else setScript((s) => s ? { ...s, tools: [...s.tools, { id: ep.id, name: ep.toolName, description: ep.description, source: "integration", integrationId: intg.id, enabled: true, params: ep.params }] } : s);
                       }} className={`text-[10px] font-mono border px-3 py-1.5 transition-all ${enabled ? "border-black bg-black text-[#f0ebe0]" : "border-black/30 hover:border-black"}`}>
                         {enabled ? "enabled" : "disabled"}
                       </button>
@@ -237,14 +390,17 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
               })}
             </div>
 
-            {INTEGRATIONS.some((i) => i.status !== "connected") && (
+            {pendingIntegrations.length > 0 && (
               <div className="border border-dashed border-black/20 px-5 py-4 flex items-center justify-between">
-                <p className="text-xs opacity-40">
-                  {INTEGRATIONS.filter((i) => i.status !== "connected").length} integration(s) pending connection — {integrationToolCount} more tools available
-                </p>
-                <Link href="/integrations" className="text-[10px] font-mono underline opacity-50 hover:opacity-100">
-                  connect integrations →
-                </Link>
+                <p className="text-xs opacity-40">{pendingIntegrations.length} integration(s) pending — connect to unlock more tools</p>
+                <Link href="/integrations" className="text-[10px] font-mono underline opacity-50 hover:opacity-100">connect integrations →</Link>
+              </div>
+            )}
+
+            {integrations.length === 0 && (
+              <div className="border border-dashed border-black/20 px-5 py-4 flex items-center justify-between">
+                <p className="text-xs opacity-40">no integrations connected yet — add your CRM or database to unlock custom tools</p>
+                <Link href="/integrations" className="text-[10px] font-mono underline opacity-50 hover:opacity-100">add integration →</Link>
               </div>
             )}
           </div>
@@ -259,12 +415,17 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
             </div>
 
             <div className="border border-black mb-8">
+              {script.escalationRules.length === 0 && (
+                <div className="px-5 py-6 text-center text-xs font-mono opacity-30">
+                  no rules yet — use AI Refine to generate them automatically
+                </div>
+              )}
               {script.escalationRules.map((rule, i) => (
                 <div key={rule.id} className={`flex items-start justify-between px-5 py-4 gap-4 ${i < script.escalationRules.length - 1 ? "border-b border-black" : ""}`}>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1.5">
-                      <span className="text-[9px] font-mono border border-black/30 px-1.5 py-0.5 opacity-50">{rule.trigger.replace("_", " ")}</span>
-                      <span className="text-[9px] font-mono border border-black px-1.5 py-0.5 font-bold">{rule.action.replace("_", " ")}</span>
+                      <span className="text-[9px] font-mono border border-black/30 px-1.5 py-0.5 opacity-50">{rule.trigger.replace(/_/g, " ")}</span>
+                      <span className="text-[9px] font-mono border border-black px-1.5 py-0.5 font-bold">{rule.action.replace(/_/g, " ")}</span>
                     </div>
                     <p className="text-sm font-mono">{rule.condition}</p>
                   </div>
@@ -275,10 +436,10 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
               ))}
             </div>
 
-            <div className="mb-8">
+            <div>
               <div className="flex items-center justify-between mb-3">
                 <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest">no-go topics</p>
-                <p className="text-xs opacity-30 font-mono">agent will redirect conversation if these come up</p>
+                <p className="text-xs opacity-30 font-mono">agent will redirect if these come up</p>
               </div>
               <div className="flex flex-wrap gap-2 mb-3">
                 {script.noGoTopics.map((topic) => (

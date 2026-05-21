@@ -65,9 +65,9 @@ const ENTERPRISE_FEATURES = [
 export default function LandingPage() {
   return (
     <div
-      className="min-h-screen bg-[#ede8da] text-[#111111]"
+      className="min-h-screen bg-[#e8dece] text-[#111111]"
       style={{
-        backgroundImage: "radial-gradient(rgba(0,0,0,0.07) 1px, transparent 1px)",
+        backgroundImage: "radial-gradient(rgba(0,0,0,0.12) 1px, transparent 1px)",
         backgroundSize: "22px 22px",
       }}
     >
@@ -77,7 +77,7 @@ export default function LandingPage() {
       </div>
 
       {/* ── Nav ─────────────────────────────────────────────── */}
-      <nav className="sticky top-0 z-50 px-8 py-4 flex items-center justify-between bg-[#ede8da]/90 backdrop-blur-sm border-b border-black/10">
+      <nav className="sticky top-0 z-50 px-8 py-4 flex items-center justify-between bg-[#e8dece]/90 backdrop-blur-sm border-b border-black/10">
         <div className="flex items-center gap-2">
           <span className="text-lg leading-none">✳</span>
           <span className="font-bold text-base tracking-tight">silk resolve</span>
@@ -93,7 +93,7 @@ export default function LandingPage() {
 
         <Link
           href="/register"
-          className="flex items-center gap-2 bg-black text-[#ede8da] px-5 py-2.5 rounded-full text-sm font-medium hover:bg-black/80 transition-colors"
+          className="flex items-center gap-2 bg-black text-[#e8dece] px-5 py-2.5 rounded-full text-sm font-medium hover:bg-black/80 transition-colors"
         >
           get access <ArrowUpRight size={13} />
         </Link>
@@ -119,7 +119,7 @@ export default function LandingPage() {
         <div className="flex items-center gap-4 flex-wrap mb-4">
           <Link
             href="/register"
-            className="flex items-center gap-2 bg-black text-[#ede8da] px-7 py-3 rounded-full text-sm font-semibold hover:bg-black/80 transition-colors"
+            className="flex items-center gap-2 bg-black text-[#e8dece] px-7 py-3 rounded-full text-sm font-semibold hover:bg-black/80 transition-colors"
           >
             get early access
           </Link>
@@ -257,7 +257,7 @@ export default function LandingPage() {
             </p>
             <Link
               href="/register"
-              className="inline-flex items-center gap-2 bg-black text-[#ede8da] px-6 py-2.5 rounded-full text-sm font-medium hover:bg-black/80 transition-colors"
+              className="inline-flex items-center gap-2 bg-black text-[#e8dece] px-6 py-2.5 rounded-full text-sm font-medium hover:bg-black/80 transition-colors"
             >
               request enterprise access <ArrowUpRight size={12} />
             </Link>
@@ -292,7 +292,7 @@ export default function LandingPage() {
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/register"
-              className="flex items-center justify-center gap-2 bg-black text-[#ede8da] px-8 py-3.5 rounded-full text-sm font-semibold hover:bg-black/80 transition-colors"
+              className="flex items-center justify-center gap-2 bg-black text-[#e8dece] px-8 py-3.5 rounded-full text-sm font-semibold hover:bg-black/80 transition-colors"
             >
               create your account
             </Link>
