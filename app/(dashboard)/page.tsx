@@ -1,48 +1,61 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import SilkTerminal from "@/components/marketing/SilkTerminal";
 
-const STATS = [
-  { value: "94.7%",  label: "resolution rate" },
-  { value: "93%",    label: "avg empathy score" },
-  { value: "2m 41s", label: "avg handle time" },
-  { value: "L3",     label: "autonomy level" },
-];
+/* ─── Waveform SVG (mirrors Rumik's voice card visual) ─────────────── */
+function Waveform() {
+  const bars = [2,4,8,14,22,30,36,40,38,32,26,20,16,12,8,6,10,18,28,38,44,40,34,26,18,12,8,4,6,10,16,24,32,38,42,36,28,18,10,6,4];
+  const W = 320, H = 56, cx = W / 2;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full max-w-xs" fill="currentColor">
+      {bars.map((h, i) => {
+        const x = (i / (bars.length - 1)) * W;
+        const barW = 5;
+        return (
+          <rect
+            key={i}
+            x={x - barW / 2}
+            y={(H - h) / 2}
+            width={barW}
+            height={h}
+            rx={2.5}
+          />
+        );
+      })}
+      {/* Arrow heads */}
+      <path d={`M${cx - 28} ${H / 2} L${cx - 18} ${H / 2 - 5} L${cx - 18} ${H / 2 + 5}Z`} />
+      <path d={`M${cx + 28} ${H / 2} L${cx + 18} ${H / 2 - 5} L${cx + 18} ${H / 2 + 5}Z`} />
+    </svg>
+  );
+}
 
 const PILLARS = [
   {
-    num: "01",
-    name: "peek",
-    codename: "/ intent radar /",
-    body: "identifies when \"theek hai\" means frustrated. detects arousal spikes, latency hesitation, and sarcasm mismatch 140ms before the words fully land.",
-    tags: ["tension_detect", "sarcasm_flag", "latency_spike"],
+    num: "1.",
+    name: "voice",
+    codename: "/ codename: silk/",
+    desc: "emotional reactor. injects mid-sentence prosody tags — <whisper>, <warm>, <apologetic> — matched to user tension level in real-time.",
+    visual: "waveform",
   },
   {
-    num: "02",
-    name: "mesh",
-    codename: "/ relationship vault /",
-    body: "carries 18 months of emotional history into every call. not just what happened — how it made them feel. emotional debt tracked, anchors set, vibe calibrated.",
-    tags: ["emotional_debt", "contextual_anchors", "identity_profile"],
+    num: "2.",
+    name: "memory",
+    codename: "/ codename: mesh/",
+    desc: "relationship vault. recalls emotional debt from past interactions to calibrate today's greeting and escalation threshold.",
+    visual: "mesh",
   },
   {
-    num: "03",
-    name: "silk",
-    codename: "/ voice synthesis /",
-    body: "injects prosody mid-sentence. not robotic tts. <apologetic_whisper> when debt is negative. <warm_closing> when trust is rebuilt. matched to real-time tension level.",
-    tags: ["<apologetic_whisper>", "<warm>", "<warm_closing>"],
+    num: "3.",
+    name: "context",
+    codename: "/ codename: peek/",
+    desc: 'intent radar. identifies when "theek hai" means frustrated. triggers high-priority workflows before explicit complaint.',
+    visual: "peek",
   },
 ];
 
-const HOW = [
-  { step: "01", title: "call comes in",    body: "peek analyzes pitch, jitter, environment and arousal in under 140ms. hidden intent flagged before the customer even finishes their first sentence." },
-  { step: "02", title: "memory loads",     body: "mesh retrieves up to 18 months of interaction history. emotional debt score, preferred name, last outcome — all injected before the first word is spoken." },
-  { step: "03", title: "silk speaks",      body: "prosody-tagged output synthesised in real time. the agent doesn't just say the right thing — it says it the right way, in your customer's language." },
-  { step: "04", title: "action executes",  body: "whitelisted tools fire: refunds processed, queues jumped, tickets raised. your agent resolves — not just talks. every outcome logged to the dashboard." },
-];
-
-const ENTERPRISE = [
+const ENTERPRISE_FEATURES = [
   "multi-tenant · rls-isolated per client",
-  "hinglish, hindi, tamil, telugu, marathi + 8 more",
+  "hinglish, hindi, tamil, telugu + 8 more",
   "connects to your crm, database, or rest api",
   "deploy in 48 hours · no infrastructure overhead",
   "full call analysis · empathy heatmaps · a/b testing",
@@ -52,243 +65,240 @@ const ENTERPRISE = [
 export default function LandingPage() {
   return (
     <div
-      className="min-h-screen bg-[#0e0e0e] text-[#f0ebe0]"
+      className="min-h-screen bg-[#ede8da] text-[#111111]"
       style={{
-        backgroundImage: "radial-gradient(rgba(240,235,224,0.04) 1px, transparent 1px)",
-        backgroundSize: "28px 28px",
+        backgroundImage: "radial-gradient(rgba(0,0,0,0.07) 1px, transparent 1px)",
+        backgroundSize: "22px 22px",
       }}
     >
-      {/* ── Nav ─────────────────────────────────────────── */}
-      <nav className="sticky top-0 z-50 border-b border-[#f0ebe0]/[0.08] bg-[#0e0e0e]/90 backdrop-blur-sm px-8 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 border border-[#f0ebe0]/30 rounded-full flex items-center justify-center">
-            <span className="text-[9px] font-bold font-mono leading-none">SR</span>
-          </div>
-          <span className="font-bold text-sm tracking-tight">silk resolve</span>
+      {/* Binary watermark — same as dashboard */}
+      <div className="fixed top-3 right-4 pointer-events-none select-none opacity-[0.07] font-mono text-[10px] leading-relaxed text-right z-0">
+        <div>11111111</div><div>111011 1</div><div>000 10</div><div>11111</div><div>0001111</div><div>0000000</div>
+      </div>
+
+      {/* ── Nav ─────────────────────────────────────────────── */}
+      <nav className="sticky top-0 z-50 px-8 py-4 flex items-center justify-between bg-[#ede8da]/90 backdrop-blur-sm border-b border-black/10">
+        <div className="flex items-center gap-2">
+          <span className="text-lg leading-none">✳</span>
+          <span className="font-bold text-base tracking-tight">silk resolve</span>
         </div>
 
         <div className="hidden md:flex items-center gap-8">
-          {["product", "how it works", "pricing", "enterprise"].map((l) => (
-            <a
-              key={l}
-              href={`#${l.replace(" ", "-")}`}
-              className="text-xs font-mono text-[#f0ebe0]/40 hover:text-[#f0ebe0] transition-colors"
-            >
+          {["research", "community", "careers", "api"].map((l) => (
+            <a key={l} href="#" className="text-sm text-black/50 hover:text-black transition-colors">
               {l}
             </a>
           ))}
         </div>
 
-        <div className="flex items-center gap-3">
-          <Link href="/login" className="text-xs font-mono text-[#f0ebe0]/50 hover:text-[#f0ebe0] transition-colors">
-            sign in
-          </Link>
-          <Link
-            href="/register"
-            className="flex items-center gap-1.5 bg-[#f0ebe0] text-[#0e0e0e] px-4 py-2 text-xs font-medium hover:bg-[#f0ebe0]/85 transition-colors"
-          >
-            get access <ArrowRight size={11} />
-          </Link>
-        </div>
+        <Link
+          href="/register"
+          className="flex items-center gap-2 bg-black text-[#ede8da] px-5 py-2.5 rounded-full text-sm font-medium hover:bg-black/80 transition-colors"
+        >
+          get access <ArrowUpRight size={13} />
+        </Link>
       </nav>
 
-      {/* ── Hero ────────────────────────────────────────── */}
-      <section className="px-8 pt-24 pb-20 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
-          <div>
-            <p className="text-[10px] font-mono text-[#f0ebe0]/30 uppercase tracking-widest mb-6">
-              / silk resolve · level 3 autonomous voice ai /
-            </p>
-            <h1 className="text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] mb-6">
-              resolution
-              <br />
-              that{" "}
-              <span className="text-[#f0ebe0]/35">remembers.</span>
-            </h1>
-            <p className="text-base text-[#f0ebe0]/50 leading-relaxed mb-10 max-w-md">
-              not just what happened — how it made them feel.
-              silk carries emotional memory into every call, detects hidden intent before the complaint,
-              and speaks with prosody that actually lands.
-            </p>
-            <div className="flex items-center gap-4 flex-wrap">
+      {/* ── Hero ────────────────────────────────────────────── */}
+      <section className="px-8 pt-20 pb-8 max-w-5xl mx-auto">
+        <p className="text-xs font-mono text-black/30 uppercase tracking-widest mb-6">
+          / silk resolve · level 3 autonomous voice ai /
+        </p>
+
+        <h1 className="text-5xl md:text-6xl font-bold tracking-tight leading-[1.05] mb-6">
+          resolution that<br />
+          <span className="text-black/30">remembers.</span>
+        </h1>
+
+        <p className="text-base text-black/50 leading-relaxed max-w-xl mb-10">
+          not just what happened — how it made them feel.
+          silk carries emotional memory into every call, detects hidden intent before the complaint,
+          and speaks with prosody that actually lands.
+        </p>
+
+        <div className="flex items-center gap-4 flex-wrap mb-4">
+          <Link
+            href="/register"
+            className="flex items-center gap-2 bg-black text-[#ede8da] px-7 py-3 rounded-full text-sm font-semibold hover:bg-black/80 transition-colors"
+          >
+            get early access
+          </Link>
+          <Link
+            href="/login"
+            className="flex items-center gap-2 border border-black/20 px-7 py-3 rounded-full text-sm text-black/50 hover:border-black/50 hover:text-black transition-colors"
+          >
+            sign in →
+          </Link>
+        </div>
+      </section>
+
+      {/* ── "this requires mastering 3 essentials" ─────────── */}
+      <section className="px-8 pb-0 max-w-5xl mx-auto">
+        <div className="border border-black/15">
+
+          <div className="px-8 py-6 border-b border-black/10">
+            <h2 className="text-2xl font-bold">this requires mastering 3 essentials:</h2>
+          </div>
+
+          {/* Pillar 1 — Voice / Silk */}
+          <div className="grid grid-cols-1 md:grid-cols-2 border-b border-black/10">
+            <div className="px-8 py-10 flex flex-col justify-center">
+              <p className="text-2xl font-bold mb-1">{PILLARS[0].num} {PILLARS[0].name}</p>
+              <p className="text-xs font-mono text-black/30 mb-5">{PILLARS[0].codename}</p>
+              <p className="text-sm text-black/55 leading-relaxed">{PILLARS[0].desc}</p>
+            </div>
+            <div className="border-l border-black/10 px-8 py-10 flex flex-col items-center justify-center gap-6">
+              <div className="text-black/70">
+                <Waveform />
+              </div>
               <Link
                 href="/register"
-                className="flex items-center gap-2 bg-[#f0ebe0] text-[#0e0e0e] px-6 py-3 text-sm font-semibold hover:bg-[#f0ebe0]/85 transition-colors"
+                className="border border-black/20 px-7 py-2 rounded-full text-sm text-black/60 hover:border-black hover:text-black transition-colors"
               >
-                get early access <ArrowRight size={13} />
-              </Link>
-              <Link
-                href="/dashboard"
-                className="flex items-center gap-2 text-sm font-mono text-[#f0ebe0]/40 hover:text-[#f0ebe0]/70 transition-colors"
-              >
-                view dashboard <ArrowUpRight size={11} />
+                call now
               </Link>
             </div>
-            <div className="flex flex-wrap gap-2 mt-10">
-              {["peek · intent", "mesh · memory", "silk · voice", "action · resolution"].map((t) => (
-                <span key={t} className="text-[10px] font-mono border border-[#f0ebe0]/[0.12] px-2.5 py-1 text-[#f0ebe0]/30">
-                  {t}
-                </span>
+          </div>
+
+          {/* Pillar 2 — Memory / Mesh */}
+          <div className="grid grid-cols-1 md:grid-cols-2 border-b border-black/10">
+            <div className="px-8 py-10 flex flex-col justify-center">
+              <p className="text-2xl font-bold mb-1">{PILLARS[1].num} {PILLARS[1].name}</p>
+              <p className="text-xs font-mono text-black/30 mb-5">{PILLARS[1].codename}</p>
+              <p className="text-sm text-black/55 leading-relaxed">{PILLARS[1].desc}</p>
+            </div>
+            <div className="border-l border-black/10 px-8 py-10 flex flex-col items-start justify-center gap-3 font-mono text-xs">
+              {[
+                { label: "emotional debt", val: "-42", note: "negative" },
+                { label: "anchors",        val: "3",   note: "active" },
+                { label: "interactions",   val: "18",  note: "retrieved" },
+                { label: "last outcome",   val: "↑",   note: "escalated → resolved" },
+              ].map((r) => (
+                <div key={r.label} className="flex items-center gap-3 w-full">
+                  <span className="text-black/30 w-32 flex-shrink-0">{r.label}</span>
+                  <span className="font-bold">{r.val}</span>
+                  <span className="text-black/30">{r.note}</span>
+                </div>
+              ))}
+              <div className="mt-4 border border-black/10 px-3 py-2 text-[10px] text-black/40 leading-relaxed">
+                <span className="text-black/70">mesh pre-load →</span> &nbsp;
+                "Sir, main personally sorry hoon..."
+              </div>
+            </div>
+          </div>
+
+          {/* Pillar 3 — Context / Peek */}
+          <div className="grid grid-cols-1 md:grid-cols-2">
+            <div className="px-8 py-10 flex flex-col justify-center">
+              <p className="text-2xl font-bold mb-1">{PILLARS[2].num} {PILLARS[2].name}</p>
+              <p className="text-xs font-mono text-black/30 mb-5">{PILLARS[2].codename}</p>
+              <p className="text-sm text-black/55 leading-relaxed">{PILLARS[2].desc}</p>
+            </div>
+            <div className="border-l border-black/10 px-8 py-10 font-mono text-xs space-y-3">
+              {[
+                { signal: "\"theek hai\"",     intent: "frustrated",            score: "8.2/10" },
+                { signal: "\"haan haan\"",      intent: "suppressed_sarcasm",    score: "7.4/10" },
+                { signal: "340ms pause",        intent: "hesitation_spike",      score: "—" },
+                { signal: "\"chhodiye\"",       intent: "disengagement_risk",    score: "9.1/10" },
+              ].map((r) => (
+                <div key={r.signal} className="flex items-center gap-2">
+                  <span className="border border-black/15 px-2 py-0.5 text-black/60">{r.signal}</span>
+                  <span className="text-black/30">→</span>
+                  <span className="text-black/70">{r.intent}</span>
+                  {r.score !== "—" && <span className="ml-auto text-black/30">{r.score}</span>}
+                </div>
               ))}
             </div>
           </div>
 
-          <div>
-            <SilkTerminal />
-            <p className="text-[10px] font-mono text-[#f0ebe0]/20 mt-3 text-center">
-              ↑ live call simulation · peek → mesh → silk · firing in real time
-            </p>
-          </div>
         </div>
+      </section>
+
+      {/* ── Live observer terminal ───────────────────────── */}
+      <section className="px-8 py-16 max-w-5xl mx-auto">
+        <div className="mb-6">
+          <p className="text-xs font-mono text-black/30 uppercase tracking-widest mb-2">/ live call observer /</p>
+          <h2 className="text-2xl font-bold">watch silk fire in real time.</h2>
+        </div>
+        <SilkTerminal light />
+        <p className="text-[10px] font-mono text-black/25 mt-3">
+          ↑ simulated call · peek → mesh → silk → action → resolution
+        </p>
       </section>
 
       {/* ── Stats strip ─────────────────────────────────── */}
-      <section className="border-y border-[#f0ebe0]/[0.08] px-8 py-8">
-        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 divide-x divide-[#f0ebe0]/[0.08]">
-          {STATS.map((s) => (
-            <div key={s.label} className="px-8 py-4 text-center">
+      <section className="border-y border-black/10 px-8 py-0 bg-black/[0.02]">
+        <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4 divide-x divide-black/10">
+          {[
+            { value: "94.7%",  label: "resolution rate" },
+            { value: "93%",    label: "avg empathy score" },
+            { value: "2m 41s", label: "avg handle time" },
+            { value: "L3",     label: "autonomy level" },
+          ].map((s) => (
+            <div key={s.label} className="px-8 py-7 text-center">
               <p className="text-3xl font-bold tracking-tight mb-1">{s.value}</p>
-              <p className="text-[11px] font-mono text-[#f0ebe0]/30 uppercase tracking-widest">{s.label}</p>
+              <p className="text-[10px] font-mono text-black/30 uppercase tracking-widest">{s.label}</p>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* ── Three Pillars ───────────────────────────────── */}
-      <section id="product" className="px-8 py-20 max-w-7xl mx-auto">
-        <div className="mb-12">
-          <p className="text-[10px] font-mono text-[#f0ebe0]/25 uppercase tracking-widest mb-3">the three essentials</p>
-          <h2 className="text-3xl font-bold tracking-tight">resolution requires mastering three things.</h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 border border-[#f0ebe0]/[0.10]">
-          {PILLARS.map((p, i) => (
-            <div key={p.num} className={`px-7 py-8 ${i < 2 ? "border-b md:border-b-0 md:border-r border-[#f0ebe0]/[0.10]" : ""}`}>
-              <div className="flex items-baseline gap-3 mb-1">
-                <span className="text-3xl font-bold opacity-15 font-mono">{p.num}</span>
-                <span className="text-2xl font-bold">{p.name}</span>
-              </div>
-              <p className="text-[10px] font-mono text-[#f0ebe0]/25 mb-5">{p.codename}</p>
-              <p className="text-sm text-[#f0ebe0]/50 leading-relaxed mb-6">{p.body}</p>
-              <div className="flex flex-wrap gap-1.5">
-                {p.tags.map((t) => (
-                  <span key={t} className="text-[9px] font-mono border border-[#f0ebe0]/15 px-2 py-1 text-[#f0ebe0]/35">
-                    {t}
-                  </span>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── How it works ────────────────────────────────── */}
-      <section id="how-it-works" className="px-8 py-20 border-t border-[#f0ebe0]/[0.08]">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-12">
-            <p className="text-[10px] font-mono text-[#f0ebe0]/25 uppercase tracking-widest mb-3">under the hood</p>
-            <h2 className="text-3xl font-bold tracking-tight">a single call. four systems firing.</h2>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 border border-[#f0ebe0]/[0.10]">
-            {HOW.map((h, i) => (
-              <div key={h.step} className={`px-6 py-7 ${i < 3 ? "border-b lg:border-b-0 lg:border-r border-[#f0ebe0]/[0.10]" : ""}`}>
-                <span className="text-[10px] font-mono text-[#f0ebe0]/20 block mb-4">{h.step}</span>
-                <p className="font-bold text-sm mb-3">{h.title}</p>
-                <p className="text-xs text-[#f0ebe0]/40 leading-relaxed">{h.body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── Silk prosody sample ─────────────────────────── */}
-      <section className="border-t border-[#f0ebe0]/[0.08] px-8 py-16">
-        <div className="max-w-7xl mx-auto">
-          <p className="text-[10px] font-mono text-[#f0ebe0]/25 uppercase tracking-widest mb-6">silk · prosody output sample</p>
-          <div className="border border-[#f0ebe0]/[0.10] bg-[#0a0a0a] px-8 py-7 font-mono">
-            <div className="text-[10px] text-[#f0ebe0]/20 mb-5">
-              MESH → debt: -42 · PEEK → arousal: 8.2/10 · hesitation_spike detected
-            </div>
-            <div className="space-y-3 text-sm">
-              <p className="text-[#f0ebe0]/80 leading-relaxed">
-                <span className="text-amber-400/50 text-[10px]">&lt;apologetic_whisper&gt;</span>
-                {" "}Rajesh Sir, main personally sorry hoon is delay ke liye.{" "}
-                <span className="text-amber-400/50 text-[10px]">&lt;/apologetic_whisper&gt;</span>
-              </p>
-              <p className="text-[#f0ebe0]/80 leading-relaxed">
-                <span className="text-blue-400/50 text-[10px]">&lt;warm&gt;</span>
-                {" "}Aapka report queue mein 47 number pe tha — humne abhi 1 pe kar diya.{" "}
-                <span className="text-blue-400/50 text-[10px]">&lt;/warm&gt;</span>
-              </p>
-              <p className="text-[#f0ebe0]/80 leading-relaxed">
-                <span className="text-emerald-400/50 text-[10px]">&lt;warm_closing&gt;</span>
-                {" "}4 ghante mein milega. Pakka. Dhanyavaad Sir.{" "}
-                <span className="text-emerald-400/50 text-[10px]">&lt;/warm_closing&gt;</span>
-              </p>
-              <div className="text-[10px] text-emerald-400/50 mt-4 pt-4 border-t border-[#f0ebe0]/[0.08]">
-                empathy_score: 96 · outcome: resolved · tension: 88 → 14 · duration: 3m 12s
-              </div>
-            </div>
-          </div>
-          <p className="text-[10px] font-mono text-[#f0ebe0]/20 mt-3">
-            ↑ not scripted. generated in real time based on mesh debt score and peek arousal level.
-          </p>
         </div>
       </section>
 
       {/* ── Enterprise ──────────────────────────────────── */}
-      <section id="enterprise" className="border-t border-[#f0ebe0]/[0.08] px-8 py-20">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+      <section className="px-8 py-16 max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-start">
           <div>
-            <p className="text-[10px] font-mono text-[#f0ebe0]/25 uppercase tracking-widest mb-4">/ enterprise /</p>
-            <h2 className="text-3xl font-bold tracking-tight mb-4">
+            <p className="text-xs font-mono text-black/30 uppercase tracking-widest mb-4">/ enterprise /</p>
+            <h2 className="text-3xl font-bold tracking-tight mb-4 leading-tight">
               built for scale.<br />deployed in 48 hours.
             </h2>
-            <p className="text-sm text-[#f0ebe0]/45 leading-relaxed mb-8">
+            <p className="text-sm text-black/50 leading-relaxed mb-8">
               silk resolve is multi-tenant infrastructure. your data stays yours, isolated at the row level.
-              connect your own database so your agents can look up real orders, process real refunds,
-              and resolve real problems — not just simulate them.
+              connect your own database so your agents look up real orders and process real refunds.
             </p>
             <Link
               href="/register"
-              className="inline-flex items-center gap-2 border border-[#f0ebe0]/25 px-5 py-2.5 text-xs font-mono hover:bg-[#f0ebe0]/5 transition-colors"
+              className="inline-flex items-center gap-2 bg-black text-[#ede8da] px-6 py-2.5 rounded-full text-sm font-medium hover:bg-black/80 transition-colors"
             >
-              request enterprise access <ArrowRight size={11} />
+              request enterprise access <ArrowUpRight size={12} />
             </Link>
           </div>
 
-          <div className="border border-[#f0ebe0]/[0.10]">
-            {ENTERPRISE.map((item, i) => (
-              <div key={i} className={`px-6 py-4 flex items-center gap-3 ${i < ENTERPRISE.length - 1 ? "border-b border-[#f0ebe0]/[0.08]" : ""}`}>
-                <span className="text-[#f0ebe0]/20 font-mono text-xs flex-shrink-0">✓</span>
-                <p className="text-sm text-[#f0ebe0]/55 font-mono">{item}</p>
+          <div className="border border-black/12">
+            {ENTERPRISE_FEATURES.map((item, i) => (
+              <div
+                key={i}
+                className={`px-5 py-3.5 flex items-center gap-3 ${i < ENTERPRISE_FEATURES.length - 1 ? "border-b border-black/8" : ""}`}
+              >
+                <span className="text-black/25 text-sm flex-shrink-0">✓</span>
+                <p className="text-sm text-black/60 font-mono">{item}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ── CTA ─────────────────────────────────────────── */}
-      <section id="pricing" className="border-t border-[#f0ebe0]/[0.08] px-8 py-24">
+      {/* ── Final CTA ───────────────────────────────────── */}
+      <section className="border-t border-black/10 px-8 py-20">
         <div className="max-w-2xl mx-auto text-center">
-          <p className="text-[10px] font-mono text-[#f0ebe0]/25 uppercase tracking-widest mb-5">/ get started /</p>
-          <h2 className="text-4xl font-bold tracking-tight mb-4">
+          <p className="text-xs font-mono text-black/25 uppercase tracking-widest mb-5">/ get started /</p>
+          <h2 className="text-4xl font-bold tracking-tight mb-4 leading-tight">
             ready to resolve<br />
-            <span className="text-[#f0ebe0]/30">with empathy?</span>
+            <span className="text-black/25">with empathy?</span>
           </h2>
-          <p className="text-sm text-[#f0ebe0]/40 mb-10 leading-relaxed">
-            join enterprises already using silk to turn every call into a relationship.
+          <p className="text-sm text-black/45 mb-10 leading-relaxed max-w-md mx-auto">
             set up in 48 hours. no infrastructure. per-minute billing.
+            every call remembered. every customer felt.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/register"
-              className="flex items-center justify-center gap-2 bg-[#f0ebe0] text-[#0e0e0e] px-8 py-3.5 text-sm font-semibold hover:bg-[#f0ebe0]/85 transition-colors"
+              className="flex items-center justify-center gap-2 bg-black text-[#ede8da] px-8 py-3.5 rounded-full text-sm font-semibold hover:bg-black/80 transition-colors"
             >
-              create your account <ArrowRight size={13} />
+              create your account
             </Link>
             <Link
               href="/login"
-              className="flex items-center justify-center gap-2 border border-[#f0ebe0]/20 px-8 py-3.5 text-sm font-mono text-[#f0ebe0]/50 hover:border-[#f0ebe0]/40 hover:text-[#f0ebe0]/70 transition-colors"
+              className="flex items-center justify-center gap-2 border border-black/15 px-8 py-3.5 rounded-full text-sm text-black/45 hover:border-black/40 hover:text-black/70 transition-colors"
             >
               sign in to dashboard
             </Link>
@@ -297,23 +307,21 @@ export default function LandingPage() {
       </section>
 
       {/* ── Footer ──────────────────────────────────────── */}
-      <footer className="border-t border-[#f0ebe0]/[0.08] px-8 py-8">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-6 h-6 border border-[#f0ebe0]/25 rounded-full flex items-center justify-center">
-              <span className="text-[8px] font-bold font-mono">SR</span>
-            </div>
-            <span className="text-sm font-bold">silk resolve</span>
-            <span className="text-[10px] font-mono text-[#f0ebe0]/20 ml-2">/ enterprise voice infrastructure /</span>
+      <footer className="border-t border-black/10 px-8 py-7">
+        <div className="max-w-5xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2">
+            <span className="text-base leading-none">✳</span>
+            <span className="font-bold text-sm">silk resolve</span>
+            <span className="text-[10px] font-mono text-black/25 ml-1">/ enterprise voice infrastructure /</span>
           </div>
           <div className="flex items-center gap-6">
             {["product", "pricing", "docs", "privacy", "terms"].map((l) => (
-              <a key={l} href="#" className="text-[11px] font-mono text-[#f0ebe0]/25 hover:text-[#f0ebe0]/50 transition-colors">
+              <a key={l} href="#" className="text-[11px] font-mono text-black/30 hover:text-black/60 transition-colors">
                 {l}
               </a>
             ))}
           </div>
-          <p className="text-[10px] font-mono text-[#f0ebe0]/20">© 2026 silk resolve</p>
+          <p className="text-[10px] font-mono text-black/25">© 2026 silk resolve</p>
         </div>
       </footer>
     </div>
