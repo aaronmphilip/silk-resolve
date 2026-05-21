@@ -164,26 +164,62 @@ export default function AdminSettingsPage() {
         </Section>
 
         {/* ── Voice Provider ── */}
-        <Section icon={<Mic size={14} />} title="voice infrastructure" subtitle="inbound call routing (Twilio) and voice synthesis (ElevenLabs)">
+        <Section icon={<Mic size={14} />} title="voice infrastructure" subtitle="Vapi handles inbound calls · ElevenLabs handles voice synthesis">
           <div className="border border-[#f0ebe0]/10">
+
+            {/* Vapi */}
             <div className="px-5 py-4 border-b border-[#f0ebe0]/10">
-              <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest mb-3">twilio · call routing</p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest">vapi · call routing</p>
+                <a href="https://vapi.ai" target="_blank" rel="noopener noreferrer"
+                  className="text-[9px] font-mono opacity-20 hover:opacity-60 transition-opacity">vapi.ai ↗</a>
+              </div>
               <div className="space-y-0">
-                <Field label="account sid" value={settings.twilio_account_sid ?? ""} onChange={set("twilio_account_sid")} secret placeholder="ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
-                <Field label="auth token" value={settings.twilio_auth_token ?? ""} onChange={set("twilio_auth_token")} secret placeholder="your auth token" />
-                <Field label="phone number" value={settings.twilio_phone_number ?? ""} onChange={set("twilio_phone_number")} placeholder="+91XXXXXXXXXX" />
+                <Field label="api key" value={settings.vapi_api_key ?? ""} onChange={set("vapi_api_key")} secret placeholder="your Vapi API key" />
+                <Field label="phone number" value={settings.vapi_phone_number ?? ""} onChange={set("vapi_phone_number")} placeholder="+91XXXXXXXXXX or +1XXXXXXXXXX" />
+              </div>
+              <div className="mt-3 bg-[#f0ebe0]/5 border border-[#f0ebe0]/10 px-4 py-3">
+                <p className="text-[9px] font-mono opacity-30 mb-1.5">webhook url — paste into Vapi phone number settings</p>
+                <p className="text-[10px] font-mono opacity-50 break-all">
+                  {typeof window !== "undefined" ? window.location.origin : "https://your-app.vercel.app"}/api/voice/vapi-incoming
+                </p>
               </div>
             </div>
+
+            {/* SILK by Rumik */}
+            <div className="px-5 py-4 border-b border-[#f0ebe0]/10">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest">rumik silk · voice model</p>
+                <span className="text-[9px] font-mono border border-[#f0ebe0]/20 px-1.5 py-0.5 opacity-30">highest priority</span>
+              </div>
+              <p className="text-[9px] font-mono opacity-20 mb-3">
+                When set, SILK overrides ElevenLabs automatically. Add your key when Rumik gives you access.
+              </p>
+              <div className="space-y-0">
+                <Field label="silk api key" value={settings.silk_api_key ?? ""} onChange={set("silk_api_key")} secret placeholder="paste SILK API key when available" />
+                <Field label="voice / model id" value={settings.silk_voice_id ?? ""} onChange={set("silk_voice_id")} placeholder="silk-1 (leave blank for default)" />
+                <Field label="api base url" value={settings.silk_base_url ?? ""} onChange={set("silk_base_url")} placeholder="https://api.rumik.ai/v1" />
+              </div>
+            </div>
+
+            {/* ElevenLabs */}
             <div className="px-5 py-4">
-              <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest mb-3">elevenlabs · voice synthesis</p>
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest">elevenlabs · voice synthesis</p>
+                <a href="https://elevenlabs.io" target="_blank" rel="noopener noreferrer"
+                  className="text-[9px] font-mono opacity-20 hover:opacity-60 transition-opacity">free tier available ↗</a>
+              </div>
               <div className="space-y-0">
                 <Field label="api key" value={settings.elevenlabs_api_key ?? ""} onChange={set("elevenlabs_api_key")} secret placeholder="your ElevenLabs API key" />
-                <Field label="default voice id" value={settings.elevenlabs_voice_id ?? ""} onChange={set("elevenlabs_voice_id")} placeholder="EXAVITQu4vr4xnSDxMaL" />
+                <Field label="voice id" value={settings.elevenlabs_voice_id ?? ""} onChange={set("elevenlabs_voice_id")} placeholder="EXAVITQu4vr4xnSDxMaL" />
               </div>
+              <p className="text-[9px] font-mono opacity-20 mt-2 leading-relaxed">
+                Used for testing until SILK is available. If neither key is set, Vapi's built-in PlayHT voice is the fallback.
+              </p>
             </div>
           </div>
           <p className="text-[9px] font-mono opacity-20 mt-2">
-            Env fallbacks: TWILIO_ACCOUNT_SID · TWILIO_AUTH_TOKEN · TWILIO_PHONE_NUMBER · ELEVENLABS_API_KEY · ELEVENLABS_VOICE_ID
+            Env fallbacks: VAPI_API_KEY · VAPI_PHONE_NUMBER · SILK_API_KEY · SILK_VOICE_ID · ELEVENLABS_API_KEY · ELEVENLABS_VOICE_ID
           </p>
         </Section>
 

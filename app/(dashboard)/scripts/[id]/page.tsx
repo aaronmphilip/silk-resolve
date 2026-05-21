@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, Save, Zap, Plus, Trash2, Sparkles, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Zap, Plus, Trash2, Sparkles, Loader2, Phone, Copy, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import type { AgentScript, ScriptTool, EscalationRule, Integration } from "@/lib/types";
 
@@ -13,7 +13,7 @@ const BUILTIN_TOOLS: Omit<ScriptTool, "enabled">[] = [
   { id: "bt-004", name: "log_complaint", description: "Log a formal complaint with tracking number", source: "builtin", params: ["customer_id", "description", "category"] },
 ];
 
-type Tab = "prompt" | "identity" | "tools" | "rules";
+type Tab = "prompt" | "identity" | "tools" | "rules" | "voice";
 
 function mapDbScript(r: Record<string, unknown>): AgentScript {
   return {
@@ -45,6 +45,10 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<Tab>("prompt");
+  const [twilioPhone, setTwilioPhone] = useState("");
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [phoneSaved, setPhoneSaved] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const loadScript = useCallback(async () => {
     try {
@@ -54,7 +58,14 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
       ]);
       if (scriptRes.ok) {
         const data = await scriptRes.json();
-        setScript(mapDbScript(data));
+        const mapped = mapDbScript(data);
+        setScript(mapped);
+        // Also load agent's twilio_phone
+        const agentRes = await fetch(`/api/agents/${mapped.agentId}`);
+        if (agentRes.ok) {
+          const agent = await agentRes.json();
+          setTwilioPhone(agent.twilio_phone ?? "");
+        }
       }
       if (intgRes.ok) {
         setIntegrations(await intgRes.json());
@@ -128,6 +139,31 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
     if (res.ok) update("status", newStatus);
   }
 
+  async function handleSavePhone() {
+    if (!script) return;
+    setSavingPhone(true);
+    try {
+      await fetch("/api/agents", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: script.agentId, twilioPhone }),
+      });
+      setPhoneSaved(true);
+      setTimeout(() => setPhoneSaved(false), 3000);
+    } catch {
+      setError("failed to save phone number");
+    } finally {
+      setSavingPhone(false);
+    }
+  }
+
+  function copyWebhook(url: string) {
+    navigator.clipboard.writeText(url).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
   async function handleAIRefine() {
     if (!script || refining) return;
     setRefining(true);
@@ -195,7 +231,12 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
     { id: "identity", label: "Identity" },
     { id: "tools", label: `Tools (${script.tools.filter((t) => t.enabled).length})` },
     { id: "rules", label: `Rules (${script.escalationRules.length})` },
+    { id: "voice", label: "Voice Setup" },
   ];
+
+  const appUrl = typeof window !== "undefined" ? window.location.origin : "";
+  const incomingWebhook = `${appUrl}/api/voice/vapi-incoming`;
+  const eventsWebhook   = `${appUrl}/api/voice/vapi-events`;
 
   const connectedIntegrations = integrations.filter((i) => i.status === "connected");
   const pendingIntegrations = integrations.filter((i) => i.status !== "connected");
@@ -462,6 +503,103 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
                   <Plus size={10} /> add
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── VOICE SETUP TAB ── */}
+        {tab === "voice" && (
+          <div className="max-w-2xl space-y-8">
+
+            {/* Status banner */}
+            <div className={`border px-5 py-4 flex items-center gap-4 ${script.status === "active" && twilioPhone ? "border-emerald-700 bg-emerald-50" : "border-black/20 bg-black/[0.02]"}`}>
+              <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${script.status === "active" && twilioPhone ? "bg-emerald-500 animate-pulse" : "bg-black/20"}`} />
+              <div>
+                <p className="text-sm font-bold">
+                  {script.status === "active" && twilioPhone ? "Agent is LIVE — receiving calls" : "Agent not yet live"}
+                </p>
+                <p className="text-[10px] font-mono opacity-40 mt-0.5">
+                  {script.status !== "active"
+                    ? "Activate this script first, then assign a Twilio phone number below."
+                    : !twilioPhone
+                    ? "Script is active but no phone number is assigned. Add one below."
+                    : `Calls to ${twilioPhone} route to this agent.`}
+                </p>
+              </div>
+            </div>
+
+            {/* Phone number assignment */}
+            <div>
+              <div className="mb-4">
+                <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest mb-0.5">twilio phone number</p>
+                <p className="text-xs opacity-40">The number callers dial to reach this agent. Assign one Twilio number per agent.</p>
+              </div>
+              <div className="border border-black">
+                <div className="px-5 py-4">
+                  <label className="block text-[10px] font-mono opacity-30 uppercase tracking-widest mb-2">phone number (E.164 format)</label>
+                  <input
+                    value={twilioPhone}
+                    onChange={(e) => setTwilioPhone(e.target.value)}
+                    placeholder="+91XXXXXXXXXX"
+                    className="w-full bg-transparent text-sm font-mono placeholder:opacity-25 focus:outline-none border-b border-black/20 focus:border-black pb-1"
+                  />
+                  <p className="text-[9px] font-mono opacity-20 mt-1.5">Must match a number in your Twilio console exactly</p>
+                </div>
+                <div className="px-5 py-3 border-t border-black/10 flex items-center gap-3">
+                  <button onClick={handleSavePhone} disabled={savingPhone}
+                    className="flex items-center gap-2 bg-black text-[#f0ebe0] px-4 py-2 text-xs font-mono hover:bg-black/80 transition-colors disabled:opacity-50">
+                    {savingPhone ? <Loader2 size={10} className="animate-spin" /> : <Phone size={10} />}
+                    {savingPhone ? "saving..." : "assign number"}
+                  </button>
+                  {phoneSaved && (
+                    <span className="flex items-center gap-1 text-xs font-mono text-emerald-700">
+                      <CheckCircle2 size={11} /> saved
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Webhook URLs */}
+            <div>
+              <div className="mb-4">
+                <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest mb-0.5">twilio webhook configuration</p>
+                <p className="text-xs opacity-40">Configure these URLs in your Twilio console under the phone number settings.</p>
+              </div>
+              <div className="border border-black divide-y divide-black/10">
+                {[
+                  { label: "Server URL (incoming calls + assistant config)", url: incomingWebhook, method: "HTTP POST" },
+                  { label: "Events URL (end-of-call, tools)", url: eventsWebhook, method: "HTTP POST" },
+                ].map(({ label, url, method }) => (
+                  <div key={url} className="px-5 py-4">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-[10px] font-mono opacity-40">{label}</p>
+                      <span className="text-[9px] font-mono border border-black/20 px-1.5 py-0.5 opacity-30">{method}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <code className="flex-1 text-xs font-mono bg-black/[0.04] px-3 py-2 truncate">{url}</code>
+                      <button onClick={() => copyWebhook(url)} className="flex items-center gap-1 text-[10px] font-mono border border-black/30 px-2.5 py-1.5 hover:border-black transition-colors">
+                        {copied ? <CheckCircle2 size={10} /> : <Copy size={10} />}
+                        {copied ? "copied" : "copy"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Setup guide */}
+            <div className="border border-dashed border-black/20 px-5 py-5">
+              <p className="text-[10px] font-mono opacity-40 uppercase tracking-widest mb-3">setup checklist</p>
+              <ol className="space-y-2.5 text-xs font-mono opacity-50">
+                <li>1. Add your Vapi API key in <Link href="/admin/settings" className="underline">Admin → Platform Config</Link></li>
+                <li>2. Add your ElevenLabs key in Admin → Platform Config (for voice)</li>
+                <li>3. Sign up at <span className="opacity-70">vapi.ai</span> → Phone Numbers → Buy a number</li>
+                <li>4. In Vapi: set the phone number's <span className="opacity-70">Server URL</span> to the webhook URL above</li>
+                <li>5. Paste the phone number in the field above → click "assign number"</li>
+                <li>6. Activate this script — calls will now route to this agent</li>
+                <li className="opacity-30">Later: swap ElevenLabs for Rumik SILK voice model</li>
+              </ol>
             </div>
           </div>
         )}

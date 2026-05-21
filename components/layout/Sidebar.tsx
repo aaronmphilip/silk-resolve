@@ -27,6 +27,10 @@ const INTELLIGENCE_NAV = [
   { href: "/settings",       label: "settings",       icon: Settings,     exact: false },
 ];
 
+const EXTERNAL_NAV = [
+  { href: "/research", label: "research", icon: ExternalLink, exact: false },
+];
+
 interface Me {
   firstName: string;
   lastName: string;
@@ -115,6 +119,16 @@ export default function Sidebar() {
             <span>live observer</span>
           </div>
           <ExternalLink size={9} className="opacity-0 group-hover:opacity-60 transition-opacity" />
+        </Link>
+
+        {/* Research link */}
+        <p className="text-[9px] font-mono opacity-25 uppercase tracking-widest px-2 mb-2 pt-3 border-t border-black/10">docs</p>
+        <Link href="/research"
+          className="flex items-center justify-between px-2.5 py-2 text-xs text-black/50 hover:text-black hover:bg-black/5 transition-all group">
+          <div className="flex items-center gap-2.5">
+            <ExternalLink size={11} />
+            <span>research</span>
+          </div>
         </Link>
 
         {/* Admin link — only shown for platform admins */}
