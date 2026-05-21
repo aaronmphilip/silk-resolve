@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, Check, Eye, EyeOff, Zap, Cpu, Mic, Shield } from "lucide-react";
-import { AI_PROVIDERS, type AIProvider } from "@/lib/ai";
+import { AI_PROVIDERS, type AIProvider } from "@/lib/ai-providers";
 
 type Settings = Record<string, string>;
 
