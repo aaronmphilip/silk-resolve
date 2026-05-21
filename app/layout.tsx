@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Silk Resolve",
-  description: "Level 3 Autonomous Voice Infrastructure",
+  title: "Silk Resolve — Level 3 Autonomous Voice AI",
+  description: "Resolution that remembers. Silk carries emotional memory into every call, detects hidden intent before the complaint, and speaks with prosody that actually lands.",
 };
 
 export default function RootLayout({

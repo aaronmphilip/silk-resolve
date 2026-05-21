@@ -1,160 +1,321 @@
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
-import { getAgents, getCalls, getMetrics } from "@/lib/dal";
-import { AGENTS, CALLS, METRICS, RELATIONSHIP_PULSE } from "@/lib/mock-data";
-import { statusDot, outcomeBorder } from "@/lib/utils";
+import { ArrowRight, ArrowUpRight } from "lucide-react";
+import SilkTerminal from "@/components/marketing/SilkTerminal";
 
-export default async function DashboardPage() {
-  // Try real DB first; fall back to mock data if empty
-  const [dbAgents, dbCalls, dbMetrics] = await Promise.all([
-    getAgents(), getCalls({ limit: 5 }), getMetrics(),
-  ]);
+const STATS = [
+  { value: "94.7%",  label: "resolution rate" },
+  { value: "93%",    label: "avg empathy score" },
+  { value: "2m 41s", label: "avg handle time" },
+  { value: "L3",     label: "autonomy level" },
+];
 
-  const agents = dbAgents.length ? dbAgents : AGENTS;
-  const recentCalls = dbCalls.length ? dbCalls : CALLS.slice(0, 5);
-  const metrics = dbCalls.length ? dbMetrics : METRICS;
+const PILLARS = [
+  {
+    num: "01",
+    name: "peek",
+    codename: "/ intent radar /",
+    body: "identifies when \"theek hai\" means frustrated. detects arousal spikes, latency hesitation, and sarcasm mismatch 140ms before the words fully land.",
+    tags: ["tension_detect", "sarcasm_flag", "latency_spike"],
+  },
+  {
+    num: "02",
+    name: "mesh",
+    codename: "/ relationship vault /",
+    body: "carries 18 months of emotional history into every call. not just what happened — how it made them feel. emotional debt tracked, anchors set, vibe calibrated.",
+    tags: ["emotional_debt", "contextual_anchors", "identity_profile"],
+  },
+  {
+    num: "03",
+    name: "silk",
+    codename: "/ voice synthesis /",
+    body: "injects prosody mid-sentence. not robotic tts. <apologetic_whisper> when debt is negative. <warm_closing> when trust is rebuilt. matched to real-time tension level.",
+    tags: ["<apologetic_whisper>", "<warm>", "<warm_closing>"],
+  },
+];
 
+const HOW = [
+  { step: "01", title: "call comes in",    body: "peek analyzes pitch, jitter, environment and arousal in under 140ms. hidden intent flagged before the customer even finishes their first sentence." },
+  { step: "02", title: "memory loads",     body: "mesh retrieves up to 18 months of interaction history. emotional debt score, preferred name, last outcome — all injected before the first word is spoken." },
+  { step: "03", title: "silk speaks",      body: "prosody-tagged output synthesised in real time. the agent doesn't just say the right thing — it says it the right way, in your customer's language." },
+  { step: "04", title: "action executes",  body: "whitelisted tools fire: refunds processed, queues jumped, tickets raised. your agent resolves — not just talks. every outcome logged to the dashboard." },
+];
+
+const ENTERPRISE = [
+  "multi-tenant · rls-isolated per client",
+  "hinglish, hindi, tamil, telugu, marathi + 8 more",
+  "connects to your crm, database, or rest api",
+  "deploy in 48 hours · no infrastructure overhead",
+  "full call analysis · empathy heatmaps · a/b testing",
+  "soc 2 ready · data never leaves your region",
+];
+
+export default function LandingPage() {
   return (
-    <div className="min-h-screen">
-      <div className="fixed top-3 right-4 pointer-events-none select-none opacity-[0.1] font-mono text-[10px] leading-relaxed text-right z-0">
-        <div>11111111</div><div>111011 1</div><div>000 10</div><div>11111</div><div>0001111</div><div>0000000</div>
-      </div>
-
-      <div className="border-b border-black px-8 py-6 relative z-10">
-        <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest mb-1.5">/ overview /</p>
-        <div className="flex items-end justify-between">
-          <h1 className="text-3xl font-bold tracking-tight">resolution infrastructure.</h1>
-          <p className="text-xs opacity-40 font-mono">Wed 21 May 2026 · 14:34 IST</p>
+    <div
+      className="min-h-screen bg-[#0e0e0e] text-[#f0ebe0]"
+      style={{
+        backgroundImage: "radial-gradient(rgba(240,235,224,0.04) 1px, transparent 1px)",
+        backgroundSize: "28px 28px",
+      }}
+    >
+      {/* ── Nav ─────────────────────────────────────────── */}
+      <nav className="sticky top-0 z-50 border-b border-[#f0ebe0]/[0.08] bg-[#0e0e0e]/90 backdrop-blur-sm px-8 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-7 h-7 border border-[#f0ebe0]/30 rounded-full flex items-center justify-center">
+            <span className="text-[9px] font-bold font-mono leading-none">SR</span>
+          </div>
+          <span className="font-bold text-sm tracking-tight">silk resolve</span>
         </div>
-      </div>
 
-      <div className="px-8 py-8 relative z-10">
-        {/* Metrics */}
-        <div className="grid grid-cols-4 border border-black mb-10">
-          {metrics.map((m, i) => (
-            <div key={i} className={`px-6 py-5 ${i < 3 ? "border-r border-black" : ""}`}>
-              <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest mb-2.5">{m.label}</p>
-              <p className="text-4xl font-bold tracking-tight leading-none">{m.value}</p>
-              <p className="text-[10px] opacity-30 mt-2 font-mono">{m.sub}</p>
-            </div>
+        <div className="hidden md:flex items-center gap-8">
+          {["product", "how it works", "pricing", "enterprise"].map((l) => (
+            <a
+              key={l}
+              href={`#${l.replace(" ", "-")}`}
+              className="text-xs font-mono text-[#f0ebe0]/40 hover:text-[#f0ebe0] transition-colors"
+            >
+              {l}
+            </a>
           ))}
         </div>
 
-        {/* Agents + Recent calls */}
-        <div className="grid grid-cols-5 gap-8 mb-10">
-          <div className="col-span-3">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest">deployed agents</p>
-              <Link href="/agents" className="text-[10px] font-mono underline opacity-50 hover:opacity-100 transition-opacity">view all →</Link>
+        <div className="flex items-center gap-3">
+          <Link href="/login" className="text-xs font-mono text-[#f0ebe0]/50 hover:text-[#f0ebe0] transition-colors">
+            sign in
+          </Link>
+          <Link
+            href="/register"
+            className="flex items-center gap-1.5 bg-[#f0ebe0] text-[#0e0e0e] px-4 py-2 text-xs font-medium hover:bg-[#f0ebe0]/85 transition-colors"
+          >
+            get access <ArrowRight size={11} />
+          </Link>
+        </div>
+      </nav>
+
+      {/* ── Hero ────────────────────────────────────────── */}
+      <section className="px-8 pt-24 pb-20 max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
+          <div>
+            <p className="text-[10px] font-mono text-[#f0ebe0]/30 uppercase tracking-widest mb-6">
+              / silk resolve · level 3 autonomous voice ai /
+            </p>
+            <h1 className="text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05] mb-6">
+              resolution
+              <br />
+              that{" "}
+              <span className="text-[#f0ebe0]/35">remembers.</span>
+            </h1>
+            <p className="text-base text-[#f0ebe0]/50 leading-relaxed mb-10 max-w-md">
+              not just what happened — how it made them feel.
+              silk carries emotional memory into every call, detects hidden intent before the complaint,
+              and speaks with prosody that actually lands.
+            </p>
+            <div className="flex items-center gap-4 flex-wrap">
+              <Link
+                href="/register"
+                className="flex items-center gap-2 bg-[#f0ebe0] text-[#0e0e0e] px-6 py-3 text-sm font-semibold hover:bg-[#f0ebe0]/85 transition-colors"
+              >
+                get early access <ArrowRight size={13} />
+              </Link>
+              <Link
+                href="/dashboard"
+                className="flex items-center gap-2 text-sm font-mono text-[#f0ebe0]/40 hover:text-[#f0ebe0]/70 transition-colors"
+              >
+                view dashboard <ArrowUpRight size={11} />
+              </Link>
             </div>
-            <div className="border border-black">
-              {agents.filter((a) => a.status !== "draft").map((a, i, arr) => (
-                <Link key={a.id} href={`/agents/${a.id}`}
-                  className={`flex items-center justify-between px-5 py-4 hover:bg-black/5 transition-colors ${i < arr.length - 1 ? "border-b border-black" : ""}`}>
-                  <div className="flex items-center gap-3">
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${statusDot(a.status)}`} />
-                    <div>
-                      <p className="font-medium text-sm">{a.name}</p>
-                      <p className="text-[10px] opacity-40 mt-0.5">{a.client}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-7">
-                    <div className="text-right"><p className="text-sm font-mono">{a.stats.callsToday.toLocaleString()}</p><p className="text-[9px] opacity-30 font-mono">today</p></div>
-                    <div className="text-right"><p className="text-sm font-mono">{a.stats.empathyScore > 0 ? `${a.stats.empathyScore}%` : "—"}</p><p className="text-[9px] opacity-30 font-mono">empathy</p></div>
-                    <div className="text-right"><p className="text-sm font-mono">{a.nodeCount}</p><p className="text-[9px] opacity-30 font-mono">nodes</p></div>
-                    <span className={`text-[10px] font-mono px-2 py-1 border ${a.status === "live" ? "border-black" : "border-black/25 opacity-40"}`}>{a.status}</span>
-                  </div>
-                </Link>
+            <div className="flex flex-wrap gap-2 mt-10">
+              {["peek · intent", "mesh · memory", "silk · voice", "action · resolution"].map((t) => (
+                <span key={t} className="text-[10px] font-mono border border-[#f0ebe0]/[0.12] px-2.5 py-1 text-[#f0ebe0]/30">
+                  {t}
+                </span>
               ))}
             </div>
           </div>
 
-          <div className="col-span-2">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest">recent resolutions</p>
-              <Link href="/calls" className="text-[10px] font-mono underline opacity-50 hover:opacity-100 transition-opacity">view all →</Link>
-            </div>
-            <div className="border border-black">
-              {recentCalls.map((r, i) => (
-                <div key={r.id} className={`px-5 py-4 ${i < recentCalls.length - 1 ? "border-b border-black" : ""}`}>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-[10px] font-mono opacity-40">{r.id}</span>
-                    <span className={`text-[10px] font-mono px-2 py-0.5 border ${outcomeBorder(r.outcome)}`}>{r.outcome}</span>
-                  </div>
-                  <p className="text-xs font-medium">{r.agentName}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-[10px] opacity-35 font-mono">{r.duration}</span>
-                    <span className="text-[10px] opacity-20">·</span>
-                    <span className="text-[10px] font-mono font-semibold">{r.empathyScore > 0 ? `${r.empathyScore}%` : "—"}</span>
-                  </div>
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {r.tags.map((t, j) => (
-                      <span key={j} className="text-[9px] font-mono bg-black/5 border border-black/10 px-1.5 py-0.5">{t}</span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div>
+            <SilkTerminal />
+            <p className="text-[10px] font-mono text-[#f0ebe0]/20 mt-3 text-center">
+              ↑ live call simulation · peek → mesh → silk · firing in real time
+            </p>
           </div>
         </div>
+      </section>
 
-        {/* Relationship Pulse */}
-        <div className="mb-10">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest mb-0.5">relationship pulse</p>
-              <p className="text-[11px] opacity-40 font-mono">/ humanity measurement · last 4 interactions /</p>
+      {/* ── Stats strip ─────────────────────────────────── */}
+      <section className="border-y border-[#f0ebe0]/[0.08] px-8 py-8">
+        <div className="max-w-7xl mx-auto grid grid-cols-2 md:grid-cols-4 divide-x divide-[#f0ebe0]/[0.08]">
+          {STATS.map((s) => (
+            <div key={s.label} className="px-8 py-4 text-center">
+              <p className="text-3xl font-bold tracking-tight mb-1">{s.value}</p>
+              <p className="text-[11px] font-mono text-[#f0ebe0]/30 uppercase tracking-widest">{s.label}</p>
             </div>
-            <Link href="/mesh" className="text-[10px] font-mono underline opacity-50 hover:opacity-100 transition-opacity">view all souls →</Link>
+          ))}
+        </div>
+      </section>
+
+      {/* ── Three Pillars ───────────────────────────────── */}
+      <section id="product" className="px-8 py-20 max-w-7xl mx-auto">
+        <div className="mb-12">
+          <p className="text-[10px] font-mono text-[#f0ebe0]/25 uppercase tracking-widest mb-3">the three essentials</p>
+          <h2 className="text-3xl font-bold tracking-tight">resolution requires mastering three things.</h2>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 border border-[#f0ebe0]/[0.10]">
+          {PILLARS.map((p, i) => (
+            <div key={p.num} className={`px-7 py-8 ${i < 2 ? "border-b md:border-b-0 md:border-r border-[#f0ebe0]/[0.10]" : ""}`}>
+              <div className="flex items-baseline gap-3 mb-1">
+                <span className="text-3xl font-bold opacity-15 font-mono">{p.num}</span>
+                <span className="text-2xl font-bold">{p.name}</span>
+              </div>
+              <p className="text-[10px] font-mono text-[#f0ebe0]/25 mb-5">{p.codename}</p>
+              <p className="text-sm text-[#f0ebe0]/50 leading-relaxed mb-6">{p.body}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {p.tags.map((t) => (
+                  <span key={t} className="text-[9px] font-mono border border-[#f0ebe0]/15 px-2 py-1 text-[#f0ebe0]/35">
+                    {t}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ── How it works ────────────────────────────────── */}
+      <section id="how-it-works" className="px-8 py-20 border-t border-[#f0ebe0]/[0.08]">
+        <div className="max-w-7xl mx-auto">
+          <div className="mb-12">
+            <p className="text-[10px] font-mono text-[#f0ebe0]/25 uppercase tracking-widest mb-3">under the hood</p>
+            <h2 className="text-3xl font-bold tracking-tight">a single call. four systems firing.</h2>
           </div>
-          <div className="grid grid-cols-4 border border-black">
-            {RELATIONSHIP_PULSE.map((p, i) => (
-              <Link key={p.callId} href={`/mesh/${p.userId}`}
-                className={`px-5 py-5 hover:bg-black/5 transition-colors ${i < 3 ? "border-r border-black" : ""}`}>
-                <p className="text-[9px] font-mono opacity-30 uppercase tracking-widest mb-2">{p.name.split(" ")[0]}</p>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-xs font-mono opacity-50">{p.before}</span>
-                  <span className="text-[10px] opacity-25">→</span>
-                  <span className="text-xs font-bold">{p.after}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="h-1 flex-1 bg-black/10 mr-3"><div className="h-1 bg-black" style={{ width: `${p.empathy}%` }} /></div>
-                  <span className="text-[10px] font-mono font-bold">{p.empathy}%</span>
-                </div>
-                <p className="text-[9px] font-mono opacity-25 mt-1.5">{p.callId} · debt {p.debtDelta > 0 ? "+" : ""}{p.debtDelta}</p>
-              </Link>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 border border-[#f0ebe0]/[0.10]">
+            {HOW.map((h, i) => (
+              <div key={h.step} className={`px-6 py-7 ${i < 3 ? "border-b lg:border-b-0 lg:border-r border-[#f0ebe0]/[0.10]" : ""}`}>
+                <span className="text-[10px] font-mono text-[#f0ebe0]/20 block mb-4">{h.step}</span>
+                <p className="font-bold text-sm mb-3">{h.title}</p>
+                <p className="text-xs text-[#f0ebe0]/40 leading-relaxed">{h.body}</p>
+              </div>
             ))}
           </div>
         </div>
+      </section>
 
-        {/* Three pillars */}
-        <p className="text-sm opacity-45 mb-0">this requires mastering 3 essentials:</p>
-        <div className="grid grid-cols-3 border border-black mb-8">
-          {[
-            { num: "1.", name: "voice", codename: "/ codename: silk /", desc: "Emotional reactor. Injects mid-sentence prosody tags — <whisper>, <warm>, <apologetic> — matched to user tension level in real-time." },
-            { num: "2.", name: "memory", codename: "/ codename: mesh /", desc: "Relationship vault. Recalls emotional debt from past interactions to calibrate today's greeting and escalation threshold." },
-            { num: "3.", name: "context", codename: "/ codename: peek /", desc: 'Intent radar. Identifies when "Theek hai" means frustrated. Triggers high-priority workflows before explicit complaint.' },
-          ].map((p, i) => (
-            <div key={i} className={`px-7 py-6 ${i < 2 ? "border-r border-black" : ""}`}>
-              <div className="mb-1"><span className="text-3xl font-bold">{p.num} </span><span className="text-3xl font-bold">{p.name}</span></div>
-              <p className="text-[10px] font-mono opacity-30 mb-4">{p.codename}</p>
-              <p className="text-sm opacity-50 leading-relaxed">{p.desc}</p>
+      {/* ── Silk prosody sample ─────────────────────────── */}
+      <section className="border-t border-[#f0ebe0]/[0.08] px-8 py-16">
+        <div className="max-w-7xl mx-auto">
+          <p className="text-[10px] font-mono text-[#f0ebe0]/25 uppercase tracking-widest mb-6">silk · prosody output sample</p>
+          <div className="border border-[#f0ebe0]/[0.10] bg-[#0a0a0a] px-8 py-7 font-mono">
+            <div className="text-[10px] text-[#f0ebe0]/20 mb-5">
+              MESH → debt: -42 · PEEK → arousal: 8.2/10 · hesitation_spike detected
             </div>
-          ))}
+            <div className="space-y-3 text-sm">
+              <p className="text-[#f0ebe0]/80 leading-relaxed">
+                <span className="text-amber-400/50 text-[10px]">&lt;apologetic_whisper&gt;</span>
+                {" "}Rajesh Sir, main personally sorry hoon is delay ke liye.{" "}
+                <span className="text-amber-400/50 text-[10px]">&lt;/apologetic_whisper&gt;</span>
+              </p>
+              <p className="text-[#f0ebe0]/80 leading-relaxed">
+                <span className="text-blue-400/50 text-[10px]">&lt;warm&gt;</span>
+                {" "}Aapka report queue mein 47 number pe tha — humne abhi 1 pe kar diya.{" "}
+                <span className="text-blue-400/50 text-[10px]">&lt;/warm&gt;</span>
+              </p>
+              <p className="text-[#f0ebe0]/80 leading-relaxed">
+                <span className="text-emerald-400/50 text-[10px]">&lt;warm_closing&gt;</span>
+                {" "}4 ghante mein milega. Pakka. Dhanyavaad Sir.{" "}
+                <span className="text-emerald-400/50 text-[10px]">&lt;/warm_closing&gt;</span>
+              </p>
+              <div className="text-[10px] text-emerald-400/50 mt-4 pt-4 border-t border-[#f0ebe0]/[0.08]">
+                empathy_score: 96 · outcome: resolved · tension: 88 → 14 · duration: 3m 12s
+              </div>
+            </div>
+          </div>
+          <p className="text-[10px] font-mono text-[#f0ebe0]/20 mt-3">
+            ↑ not scripted. generated in real time based on mesh debt score and peek arousal level.
+          </p>
         </div>
+      </section>
 
-        {/* Quick launch */}
-        <div className="grid grid-cols-2 gap-4">
-          <Link href="/canvas" className="flex items-center justify-between p-5 border border-black hover:bg-black/5 transition-colors group">
-            <div><p className="font-semibold text-sm">open logic canvas</p><p className="text-xs opacity-40 mt-0.5">build & deploy a new agent workflow</p></div>
-            <ArrowUpRight size={15} className="opacity-25 group-hover:opacity-100 transition-opacity" />
-          </Link>
-          <Link href="/observer" className="flex items-center justify-between p-5 border border-black hover:bg-black/5 transition-colors group">
-            <div><p className="font-semibold text-sm">live observer</p><p className="text-xs opacity-40 mt-0.5">watch peek · mesh · silk fire in real-time</p></div>
-            <ArrowUpRight size={15} className="opacity-25 group-hover:opacity-100 transition-opacity" />
-          </Link>
+      {/* ── Enterprise ──────────────────────────────────── */}
+      <section id="enterprise" className="border-t border-[#f0ebe0]/[0.08] px-8 py-20">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+          <div>
+            <p className="text-[10px] font-mono text-[#f0ebe0]/25 uppercase tracking-widest mb-4">/ enterprise /</p>
+            <h2 className="text-3xl font-bold tracking-tight mb-4">
+              built for scale.<br />deployed in 48 hours.
+            </h2>
+            <p className="text-sm text-[#f0ebe0]/45 leading-relaxed mb-8">
+              silk resolve is multi-tenant infrastructure. your data stays yours, isolated at the row level.
+              connect your own database so your agents can look up real orders, process real refunds,
+              and resolve real problems — not just simulate them.
+            </p>
+            <Link
+              href="/register"
+              className="inline-flex items-center gap-2 border border-[#f0ebe0]/25 px-5 py-2.5 text-xs font-mono hover:bg-[#f0ebe0]/5 transition-colors"
+            >
+              request enterprise access <ArrowRight size={11} />
+            </Link>
+          </div>
+
+          <div className="border border-[#f0ebe0]/[0.10]">
+            {ENTERPRISE.map((item, i) => (
+              <div key={i} className={`px-6 py-4 flex items-center gap-3 ${i < ENTERPRISE.length - 1 ? "border-b border-[#f0ebe0]/[0.08]" : ""}`}>
+                <span className="text-[#f0ebe0]/20 font-mono text-xs flex-shrink-0">✓</span>
+                <p className="text-sm text-[#f0ebe0]/55 font-mono">{item}</p>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>
+      </section>
+
+      {/* ── CTA ─────────────────────────────────────────── */}
+      <section id="pricing" className="border-t border-[#f0ebe0]/[0.08] px-8 py-24">
+        <div className="max-w-2xl mx-auto text-center">
+          <p className="text-[10px] font-mono text-[#f0ebe0]/25 uppercase tracking-widest mb-5">/ get started /</p>
+          <h2 className="text-4xl font-bold tracking-tight mb-4">
+            ready to resolve<br />
+            <span className="text-[#f0ebe0]/30">with empathy?</span>
+          </h2>
+          <p className="text-sm text-[#f0ebe0]/40 mb-10 leading-relaxed">
+            join enterprises already using silk to turn every call into a relationship.
+            set up in 48 hours. no infrastructure. per-minute billing.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              href="/register"
+              className="flex items-center justify-center gap-2 bg-[#f0ebe0] text-[#0e0e0e] px-8 py-3.5 text-sm font-semibold hover:bg-[#f0ebe0]/85 transition-colors"
+            >
+              create your account <ArrowRight size={13} />
+            </Link>
+            <Link
+              href="/login"
+              className="flex items-center justify-center gap-2 border border-[#f0ebe0]/20 px-8 py-3.5 text-sm font-mono text-[#f0ebe0]/50 hover:border-[#f0ebe0]/40 hover:text-[#f0ebe0]/70 transition-colors"
+            >
+              sign in to dashboard
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Footer ──────────────────────────────────────── */}
+      <footer className="border-t border-[#f0ebe0]/[0.08] px-8 py-8">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-6 h-6 border border-[#f0ebe0]/25 rounded-full flex items-center justify-center">
+              <span className="text-[8px] font-bold font-mono">SR</span>
+            </div>
+            <span className="text-sm font-bold">silk resolve</span>
+            <span className="text-[10px] font-mono text-[#f0ebe0]/20 ml-2">/ enterprise voice infrastructure /</span>
+          </div>
+          <div className="flex items-center gap-6">
+            {["product", "pricing", "docs", "privacy", "terms"].map((l) => (
+              <a key={l} href="#" className="text-[11px] font-mono text-[#f0ebe0]/25 hover:text-[#f0ebe0]/50 transition-colors">
+                {l}
+              </a>
+            ))}
+          </div>
+          <p className="text-[10px] font-mono text-[#f0ebe0]/20">© 2026 silk resolve</p>
+        </div>
+      </footer>
     </div>
   );
 }
