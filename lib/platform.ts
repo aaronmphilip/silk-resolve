@@ -53,27 +53,33 @@ export async function getPlatformAIConfig(): Promise<{ provider: AIProvider; api
   const apiKey =
     s.ai_api_key ??
     (provider === "anthropic" ? process.env.ANTHROPIC_API_KEY : null) ??
-    (provider === "openai" ? process.env.OPENAI_API_KEY : null) ??
-    (provider === "gemini" ? process.env.GEMINI_API_KEY : null) ??
+    (provider === "openai"    ? process.env.OPENAI_API_KEY    : null) ??
+    (provider === "gemini"    ? process.env.GEMINI_API_KEY    : null) ??
+    (provider === "xai"       ? process.env.XAI_API_KEY       : null) ??
     "";
   return { provider, apiKey };
 }
 
 /**
- * Get voice provider config (Twilio + ElevenLabs).
+ * Get voice provider config.
+ * Priority for voice synthesis: SILK (Rumik) → ElevenLabs → Vapi built-in.
  * Keys never leave the server.
  */
 export async function getPlatformVoiceConfig() {
   const s = await getPlatformSettings();
   return {
-    voiceProvider: s.voice_provider ?? "twilio",
-    twilio: {
-      accountSid: s.twilio_account_sid ?? process.env.TWILIO_ACCOUNT_SID ?? "",
-      authToken: s.twilio_auth_token ?? process.env.TWILIO_AUTH_TOKEN ?? "",
-      phoneNumber: s.twilio_phone_number ?? process.env.TWILIO_PHONE_NUMBER ?? "",
+    vapi: {
+      apiKey:      s.vapi_api_key      ?? process.env.VAPI_API_KEY      ?? "",
+      phoneNumber: s.vapi_phone_number ?? process.env.VAPI_PHONE_NUMBER ?? "",
+    },
+    // Rumik SILK — add key here when available, system auto-switches
+    silk: {
+      apiKey:  s.silk_api_key  ?? process.env.SILK_API_KEY  ?? "",
+      voiceId: s.silk_voice_id ?? process.env.SILK_VOICE_ID ?? "",  // optional model/voice ID
+      baseUrl: s.silk_base_url ?? process.env.SILK_BASE_URL ?? "https://api.rumik.ai/v1",
     },
     elevenlabs: {
-      apiKey: s.elevenlabs_api_key ?? process.env.ELEVENLABS_API_KEY ?? "",
+      apiKey:  s.elevenlabs_api_key  ?? process.env.ELEVENLABS_API_KEY  ?? "",
       voiceId: s.elevenlabs_voice_id ?? process.env.ELEVENLABS_VOICE_ID ?? "EXAVITQu4vr4xnSDxMaL",
     },
   };
