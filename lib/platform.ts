@@ -4,7 +4,7 @@
  * API keys never returned to the client — server-side only.
  */
 import { createClient } from "@supabase/supabase-js";
-import type { AIProvider } from "./ai";
+import type { AIProvider } from "./ai-providers";
 
 function svc() {
   return createClient(
