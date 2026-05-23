@@ -33,9 +33,17 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
 
     async function init() {
       try {
-        const tokenRes = await fetch("/api/voice/vapi-token");
-        if (!tokenRes.ok) throw new Error((await tokenRes.json()).error ?? "Failed to get token");
+        // Fetch public key and agent config in parallel
+        const [tokenRes, configRes] = await Promise.all([
+          fetch("/api/voice/vapi-token"),
+          fetch(`/api/agents/${agentId}/vapi-config`),
+        ]);
+
+        if (!tokenRes.ok) throw new Error((await tokenRes.json()).error ?? "Failed to get Vapi token — check your Vapi public key in Admin → Settings");
+        if (!configRes.ok) throw new Error((await configRes.json()).error ?? "Failed to load agent config");
+
         const { apiKey } = await tokenRes.json();
+        const assistantConfig = await configRes.json();
 
         const { default: Vapi } = await import("@vapi-ai/web");
         const vapi = new Vapi(apiKey) as unknown as Record<string, unknown>;
@@ -62,7 +70,6 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
         on("transcript", (msg: { role: string; transcript: string; transcriptType: string }) => {
           if (!mounted || msg.transcriptType !== "final") return;
           setTranscript(t => [...t, { role: msg.role as "user" | "assistant", text: msg.transcript, ts: Date.now() }]);
-          // Simulate tension increase on user turns (real PEEK scores come back via vapi-events)
           if (msg.role === "user") setTension(t => Math.min(10, t + 0.3));
         });
 
@@ -73,14 +80,10 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
           if (timerRef.current) clearInterval(timerRef.current);
         });
 
-        // Start the call — pass agentId in metadata so vapi-incoming routes correctly
+        // Start call with full inline assistant config + serverUrl for webhooks
         await start({
-          assistantOverrides: {
-            serverUrl:       `${appUrl}/api/voice/vapi-incoming`,
-            clientMessages:  ["transcript", "hang", "speech-update"],
-            serverMessages:  ["end-of-call-report", "status-update"],
-            metadata:        { agentId },
-          },
+          ...assistantConfig,
+          serverUrl: `${appUrl}/api/voice/vapi-incoming`,
         });
 
       } catch (err) {
