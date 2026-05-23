@@ -45,9 +45,12 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
         const { apiKey } = await tokenRes.json();
         const assistantConfig = await configRes.json();
 
-        const { default: Vapi } = await import("@vapi-ai/web");
+        // CJS default export can land as module.default OR module itself
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const vapi = new Vapi(apiKey) as any;
+        const vapiModule = await import("@vapi-ai/web") as any;
+        const VapiClass = vapiModule.default ?? vapiModule;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const vapi = new VapiClass(apiKey) as any;
         if (!mounted) return;
         vapiRef.current = vapi;
 

@@ -57,8 +57,10 @@ export default function TestCallPage() {
       const { apiKey }        = await tokenRes.json();
       const assistantConfig   = await configRes.json();
 
-      const { default: Vapi } = await import("@vapi-ai/web");
-      const vapi = new Vapi(apiKey) as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const vapiModule = await import("@vapi-ai/web") as any;
+      const VapiClass = vapiModule.default ?? vapiModule;
+      const vapi = new VapiClass(apiKey) as any;
       vapiRef.current = vapi;
 
       const appUrl = window.location.origin;
