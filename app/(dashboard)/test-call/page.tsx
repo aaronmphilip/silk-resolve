@@ -1,94 +1,95 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
-import { Mic, MicOff, Phone, PhoneOff, Loader2, Volume2, AlertTriangle } from "lucide-react";
+import { Mic, MicOff, Phone, PhoneOff, Loader2, Volume2, AlertTriangle, ChevronDown } from "lucide-react";
 
 type CallState = "idle" | "connecting" | "active" | "ending" | "ended" | "error";
 
-interface LiveMetrics {
-  tension: number;
-  turn: number;
-  duration: number;
-  transcript: { role: "user" | "assistant"; text: string }[];
-}
+interface Agent { id: string; name: string; status: string; }
+interface Transcript { role: "user" | "assistant"; text: string; }
 
 export default function TestCallPage() {
-  const [state, setState] = useState<CallState>("idle");
-  const [error, setError] = useState("");
-  const [muted, setMuted] = useState(false);
-  const [metrics, setMetrics] = useState<LiveMetrics>({ tension: 0, turn: 0, duration: 0, transcript: [] });
-  const [vapiReady, setVapiReady] = useState(false);
-  const vapiRef = useRef<unknown>(null);
+  const [state, setState]     = useState<CallState>("idle");
+  const [error, setError]     = useState("");
+  const [muted, setMuted]     = useState(false);
+  const [duration, setDur]    = useState(0);
+  const [tension, setTension] = useState(0);
+  const [transcript, setTranscript] = useState<Transcript[]>([]);
+  const [agents, setAgents]   = useState<Agent[]>([]);
+  const [agentId, setAgentId] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const vapiRef  = useRef<any>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Load agents
   useEffect(() => {
-    import("@vapi-ai/web").then(({ default: Vapi }) => {
-      (window as unknown as Record<string, unknown>).__VapiSDK = Vapi;
-      setVapiReady(true);
-    }).catch(() => setError("Failed to load Vapi SDK"));
+    fetch("/api/agents")
+      .then(r => r.json())
+      .then((data: Agent[]) => {
+        setAgents(data ?? []);
+        if (data?.length > 0) setAgentId(data[0].id);
+      })
+      .catch(() => {});
   }, []);
 
+  // Auto-scroll transcript
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [metrics.transcript]);
+  }, [transcript]);
 
   async function startCall() {
+    if (!agentId) { setError("Select an agent first"); return; }
     setState("connecting");
     setError("");
-    setMetrics({ tension: 0, turn: 0, duration: 0, transcript: [] });
+    setTranscript([]);
+    setTension(0);
+    setDur(0);
 
     try {
-      const res = await fetch("/api/voice/vapi-token");
-      if (!res.ok) {
-        const d = await res.json();
-        throw new Error(d.error ?? "Failed to get Vapi token");
-      }
-      const { apiKey } = await res.json();
+      const [tokenRes, configRes] = await Promise.all([
+        fetch("/api/voice/vapi-token"),
+        fetch(`/api/agents/${agentId}/vapi-config`),
+      ]);
 
-      const VapiSDK = (window as unknown as Record<string, unknown>).__VapiSDK as new (key: string) => unknown;
-      const vapi = new VapiSDK(apiKey);
+      if (!tokenRes.ok) throw new Error((await tokenRes.json()).error ?? "Vapi public key not set — go to Admin → Settings");
+      if (!configRes.ok) throw new Error((await configRes.json()).error ?? "Failed to load agent config");
+
+      const { apiKey }        = await tokenRes.json();
+      const assistantConfig   = await configRes.json();
+
+      const { default: Vapi } = await import("@vapi-ai/web");
+      const vapi = new Vapi(apiKey) as any;
       vapiRef.current = vapi;
 
       const appUrl = window.location.origin;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      await (vapi as any).start({
-        assistantOverrides: {
-          serverUrl: `${appUrl}/api/voice/vapi-incoming`,
-          clientMessages: ["transcript", "hang", "function-call", "speech-update"],
-          serverMessages: ["end-of-call-report", "status-update", "transcript"],
-        },
-      });
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const v = vapi as any;
-
-      v.on("call-start", () => {
+      // Register events BEFORE start() so call-start isn't missed
+      vapi.on("call-start", () => {
         setState("active");
-        const start = Date.now();
-        timerRef.current = setInterval(() => {
-          setMetrics(m => ({ ...m, duration: Math.floor((Date.now() - start) / 1000) }));
-        }, 1000);
+        const t0 = Date.now();
+        timerRef.current = setInterval(() => setDur(Math.floor((Date.now() - t0) / 1000)), 1000);
       });
 
-      v.on("call-end", () => {
+      vapi.on("call-end", () => {
         setState("ended");
         if (timerRef.current) clearInterval(timerRef.current);
       });
 
-      v.on("transcript", (msg: { role: string; transcript: string; transcriptType: string }) => {
+      vapi.on("transcript", (msg: { role: string; transcript: string; transcriptType: string }) => {
         if (msg.transcriptType !== "final") return;
-        setMetrics(m => ({
-          ...m,
-          turn: m.turn + (msg.role === "user" ? 1 : 0),
-          transcript: [...m.transcript, { role: msg.role as "user" | "assistant", text: msg.transcript }],
-        }));
+        setTranscript(t => [...t, { role: msg.role as "user" | "assistant", text: msg.transcript }]);
+        if (msg.role === "user") setTension(t => Math.min(10, t + 0.4));
       });
 
-      v.on("error", (err: Error) => {
-        setError(err.message ?? "Call error");
+      vapi.on("error", (err: Error) => {
+        setError(err?.message ?? "Call error");
         setState("error");
         if (timerRef.current) clearInterval(timerRef.current);
+      });
+
+      await vapi.start({
+        ...assistantConfig,
+        serverUrl: `${appUrl}/api/voice/vapi-incoming`,
       });
 
     } catch (err) {
@@ -99,14 +100,12 @@ export default function TestCallPage() {
 
   function endCall() {
     setState("ending");
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (vapiRef.current as any)?.stop();
+    vapiRef.current?.stop();
     if (timerRef.current) clearInterval(timerRef.current);
   }
 
   function toggleMute() {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (vapiRef.current as any)?.setMuted(!muted);
+    vapiRef.current?.setMuted(!muted);
     setMuted(m => !m);
   }
 
@@ -114,22 +113,49 @@ export default function TestCallPage() {
     setState("idle");
     setError("");
     vapiRef.current = null;
-    setMetrics({ tension: 0, turn: 0, duration: 0, transcript: [] });
+    setTranscript([]);
+    setTension(0);
+    setDur(0);
   }
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  const selectedAgent = agents.find(a => a.id === agentId);
 
   return (
     <div className="min-h-screen">
       <div className="border-b-2 border-black px-5 sm:px-8 py-6">
         <p className="text-[10px] font-mono text-black/50 uppercase tracking-widest mb-1.5">/ test call /</p>
         <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">browser test call.</h1>
-        <p className="text-xs text-black/50 mt-1 font-mono">
-          Full pipeline — same as a real phone call. No phone number needed.
-        </p>
+        <p className="text-xs text-black/50 mt-1 font-mono">Full pipeline — no phone number needed.</p>
       </div>
 
       <div className="px-5 sm:px-8 py-6 sm:py-8 max-w-4xl">
+
+        {/* Agent selector */}
+        {agents.length > 0 && state === "idle" && (
+          <div className="mb-6">
+            <label className="block text-xs font-semibold text-black mb-1.5">Agent to test</label>
+            <div className="relative max-w-xs">
+              <select
+                value={agentId}
+                onChange={e => setAgentId(e.target.value)}
+                className="w-full border-2 border-black bg-white px-3 py-2.5 text-sm font-mono appearance-none focus:outline-none pr-8"
+              >
+                {agents.map(a => (
+                  <option key={a.id} value={a.id}>{a.name} — {a.status}</option>
+                ))}
+              </select>
+              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-black/50" />
+            </div>
+          </div>
+        )}
+
+        {agents.length === 0 && (
+          <div className="mb-6 border-2 border-amber-400 bg-amber-50 px-4 py-3">
+            <p className="text-xs font-mono text-amber-800">No agents found — <a href="/agents/new" className="underline">create one first</a>.</p>
+          </div>
+        )}
+
         <div className="flex flex-col sm:grid sm:grid-cols-3 gap-6">
 
           {/* Call panel */}
@@ -142,9 +168,9 @@ export default function TestCallPage() {
                   state === "error"      ? "bg-red-500" : "bg-black/20"
                 }`} />
                 <p className="text-sm font-bold text-black uppercase tracking-widest">
-                  {state === "idle"       ? "ready" :
+                  {state === "idle"       ? (selectedAgent?.name ?? "ready") :
                    state === "connecting" ? "connecting..." :
-                   state === "active"     ? fmt(metrics.duration) :
+                   state === "active"     ? fmt(duration) :
                    state === "ending"     ? "ending..." :
                    state === "ended"      ? "call ended" : "error"}
                 </p>
@@ -153,25 +179,12 @@ export default function TestCallPage() {
               {state === "active" && (
                 <div>
                   <p className="text-[10px] font-mono text-black/50 uppercase tracking-widest mb-2 font-semibold">peek tension</p>
-                  <p className="text-3xl font-bold font-mono text-black">{metrics.tension.toFixed(1)}</p>
+                  <p className="text-3xl font-bold font-mono">{tension.toFixed(1)}</p>
                   <div className="w-full bg-black/10 h-2 mt-2 rounded-full overflow-hidden">
                     <div
-                      className={`h-2 transition-all rounded-full ${metrics.tension > 7 ? "bg-red-500" : metrics.tension > 5 ? "bg-amber-400" : "bg-emerald-500"}`}
-                      style={{ width: `${metrics.tension * 10}%` }}
+                      className={`h-2 transition-all rounded-full ${tension > 7 ? "bg-red-500" : tension > 5 ? "bg-amber-400" : "bg-emerald-500"}`}
+                      style={{ width: `${tension * 10}%` }}
                     />
-                  </div>
-                </div>
-              )}
-
-              {state === "active" && (
-                <div className="grid grid-cols-2 gap-3 border-t border-black/10 pt-4">
-                  <div>
-                    <p className="text-[10px] font-mono text-black/40 uppercase tracking-widest font-semibold">turns</p>
-                    <p className="text-2xl font-bold font-mono text-black">{metrics.turn}</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-mono text-black/40 uppercase tracking-widest font-semibold">msgs</p>
-                    <p className="text-2xl font-bold font-mono text-black">{metrics.transcript.length}</p>
                   </div>
                 </div>
               )}
@@ -189,11 +202,11 @@ export default function TestCallPage() {
                 {(state === "idle" || state === "ended" || state === "error") && (
                   <button
                     onClick={state === "idle" ? startCall : reset}
-                    disabled={!vapiReady}
+                    disabled={!agentId}
                     className="w-full flex items-center justify-center gap-2 bg-black text-[#e8dece] py-3.5 text-sm font-bold hover:opacity-75 transition-opacity disabled:opacity-30"
                   >
-                    {!vapiReady ? <Loader2 size={14} className="animate-spin" /> : <Phone size={14} />}
-                    {!vapiReady ? "loading sdk..." : state === "idle" ? "start call" : "start new call"}
+                    <Phone size={14} />
+                    {state === "idle" ? "start call" : "start new call"}
                   </button>
                 )}
                 {state === "connecting" && (
@@ -225,7 +238,7 @@ export default function TestCallPage() {
 
               <div className="border-t border-black/10 pt-4 text-left">
                 <p className="text-[10px] font-mono text-black/40 leading-relaxed">
-                  mic → Vapi STT → LLM → ElevenLabs/SILK → speaker
+                  mic → Vapi STT → grok-4 → ElevenLabs → speaker
                 </p>
               </div>
             </div>
@@ -235,7 +248,7 @@ export default function TestCallPage() {
           <div className="sm:col-span-2">
             <p className="text-[10px] font-mono text-black/50 uppercase tracking-widest mb-3 font-semibold">live transcript</p>
             <div ref={scrollRef} className="border-2 border-black min-h-72 max-h-[500px] overflow-y-auto">
-              {metrics.transcript.length === 0 ? (
+              {transcript.length === 0 ? (
                 <div className="flex items-center justify-center h-72">
                   <div className="text-center">
                     <Volume2 size={24} className="text-black/20 mx-auto mb-3" />
@@ -246,13 +259,13 @@ export default function TestCallPage() {
                 </div>
               ) : (
                 <div className="p-5 space-y-4">
-                  {metrics.transcript.map((msg, i) => (
+                  {transcript.map((msg, i) => (
                     <div key={i} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                       <div className={`max-w-[80%] px-4 py-3 ${
                         msg.role === "assistant" ? "bg-black/5 border-2 border-black/15" : "bg-black text-[#e8dece]"
                       }`}>
                         <p className={`text-[10px] font-mono font-semibold mb-1.5 ${msg.role === "assistant" ? "text-black/40" : "text-[#e8dece]/60"}`}>
-                          {msg.role === "assistant" ? "agent (SILK)" : "you"}
+                          {msg.role === "assistant" ? "agent" : "you"}
                         </p>
                         <p className={`text-sm leading-relaxed ${msg.role === "user" ? "text-[#e8dece]" : "text-black"}`}>{msg.text}</p>
                       </div>
@@ -267,10 +280,9 @@ export default function TestCallPage() {
                 <p className="text-[10px] font-mono text-black/50 uppercase tracking-widest font-semibold">what to test</p>
                 {[
                   { label: "First message", desc: "Agent speaks immediately when call connects" },
-                  { label: "PEEK",          desc: "Express frustration — tension score should rise above 6" },
-                  { label: "MESH",          desc: "Call again — agent should recall your history" },
-                  { label: "Voice",         desc: "Neural TTS — ElevenLabs now, SILK when key is added" },
-                  { label: "Escalation",    desc: "Say something that triggers your agent's escalation rule" },
+                  { label: "PEEK",          desc: "Express frustration — tension score should rise" },
+                  { label: "Voice",         desc: "ElevenLabs TTS — or SILK when key is added" },
+                  { label: "Escalation",    desc: "Push hard — agent should offer to escalate" },
                 ].map(item => (
                   <div key={item.label} className="flex items-start gap-3">
                     <span className="text-[10px] font-mono border-2 border-black/20 px-2 py-0.5 text-black/50 flex-shrink-0 mt-0.5">{item.label}</span>
