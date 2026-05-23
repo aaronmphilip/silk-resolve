@@ -540,7 +540,7 @@ export default function AgentEditor({
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-[#0a0a0a] text-[#f0ebe0]">
       {showTalk && <TalkModal agentId={agent.id} agentName={agent.name} onClose={() => setShowTalk(false)} />}
 
       {/* Top bar */}
