@@ -12,8 +12,17 @@ async function requireAdmin() {
   return user;
 }
 
-// Keys that contain secrets — stripped before sending to client
-const SECRET_KEYS = ["ai_api_key", "twilio_auth_token", "elevenlabs_api_key", "twilio_account_sid"];
+// Keys that contain secrets — masked before sending to client, never returned as plaintext
+const SECRET_KEYS = [
+  "ai_api_key",
+  "vapi_public_key",
+  "vapi_private_key",
+  "vapi_api_key",          // legacy — keep masking for backward compat
+  "silk_api_key",
+  "elevenlabs_api_key",
+  "twilio_auth_token",
+  "twilio_account_sid",
+];
 
 export async function GET() {
   const user = await requireAdmin();
@@ -43,8 +52,13 @@ export async function PUT(req: Request) {
     else if (!SECRET_KEYS.includes(k)) filtered[k] = v; // non-secret fields always saved
   }
 
-  await setPlatformSettings(filtered);
-  return NextResponse.json({ success: true });
+  try {
+    await setPlatformSettings(filtered);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("[admin/settings PUT]", err);
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to save settings" }, { status: 500 });
+  }
 }
 
 export async function POST(req: Request) {

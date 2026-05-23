@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Bot, Phone, Settings, ExternalLink, LogOut,
   BarChart2, FlaskConical, Server, Brain, FileText, Plug,
-  CreditCard, Shield, PhoneCall,
+  CreditCard, Shield, PhoneCall, Menu, X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -28,10 +28,6 @@ const INTELLIGENCE_NAV = [
   { href: "/settings",       label: "settings",       icon: Settings,     exact: false },
 ];
 
-const EXTERNAL_NAV = [
-  { href: "/research", label: "research", icon: ExternalLink, exact: false },
-];
-
 interface Me {
   firstName: string;
   lastName: string;
@@ -40,20 +36,80 @@ interface Me {
   tenant: { name: string; plan: string; callsThisMonth: number; callLimit: number } | null;
 }
 
+function NavLinks({ pathname }: { pathname: string }) {
+  return (
+    <nav className="flex-1 px-3 pt-4 pb-2 overflow-y-auto">
+      <p className="text-[9px] font-mono text-black/50 uppercase tracking-widest px-2 mb-2 font-semibold">platform</p>
+      <div className="space-y-0.5 mb-5">
+        {PLATFORM_NAV.map((item) => {
+          const active = item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(item.href + "/");
+          return (
+            <Link key={item.href} href={item.href}
+              className={cn(
+                "flex items-center gap-2.5 px-3 py-2.5 text-xs transition-all",
+                active ? "bg-black text-[#e8dece] font-semibold" : "text-black/70 hover:text-black hover:bg-black/10"
+              )}>
+              <item.icon size={13} strokeWidth={active ? 2.5 : 2} />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+
+      <p className="text-[9px] font-mono text-black/50 uppercase tracking-widest px-2 mb-2 pt-3 border-t border-black/15 font-semibold">intelligence</p>
+      <div className="space-y-0.5 mb-5">
+        {INTELLIGENCE_NAV.map((item) => {
+          const active = item.exact ? pathname === item.href : pathname === item.href || pathname.startsWith(item.href + "/");
+          return (
+            <Link key={item.href} href={item.href}
+              className={cn(
+                "flex items-center gap-2.5 px-3 py-2.5 text-xs transition-all",
+                active ? "bg-black text-[#e8dece] font-semibold" : "text-black/70 hover:text-black hover:bg-black/10"
+              )}>
+              <item.icon size={13} strokeWidth={active ? 2.5 : 2} />
+              <span>{item.label}</span>
+            </Link>
+          );
+        })}
+      </div>
+
+      <p className="text-[9px] font-mono text-black/50 uppercase tracking-widest px-2 mb-2 pt-3 border-t border-black/15 font-semibold">launch</p>
+      <Link href="/observer"
+        className="flex items-center justify-between px-3 py-2.5 text-xs text-black/70 hover:text-black hover:bg-black/10 transition-all group">
+        <div className="flex items-center gap-2.5">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-60" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-black" />
+          </span>
+          <span>live observer</span>
+        </div>
+        <ExternalLink size={9} className="opacity-0 group-hover:opacity-60 transition-opacity" />
+      </Link>
+
+      <p className="text-[9px] font-mono text-black/50 uppercase tracking-widest px-2 mb-2 pt-3 border-t border-black/15 font-semibold">docs</p>
+      <Link href="/research"
+        className="flex items-center gap-2.5 px-3 py-2.5 text-xs text-black/70 hover:text-black hover:bg-black/10 transition-all">
+        <ExternalLink size={13} />
+        <span>research</span>
+      </Link>
+    </nav>
+  );
+}
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const [me, setMe] = useState<Me | null>(null);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     fetch("/api/me").then((r) => r.ok ? r.json() : null).then((d) => { if (d) setMe(d); });
   }, []);
 
-  if (pathname === "/") return null;
+  // Close mobile menu on route change
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
 
-  function isActive(href: string, exact: boolean) {
-    return exact ? pathname === href : pathname === href || pathname.startsWith(href + "/");
-  }
+  if (pathname === "/") return null;
 
   async function handleSignOut() {
     const supabase = createClient();
@@ -65,113 +121,114 @@ export default function Sidebar() {
   const tenant = me?.tenant;
   const displayName = me ? (`${me.firstName} ${me.lastName}`.trim() || me.email) : "…";
   const initials = me
-    ? (`${me.firstName[0] ?? ""}${me.lastName[0] ?? ""}`.toUpperCase() || me.email?.[0]?.toUpperCase() || "?")
+    ? (`${me.firstName?.[0] ?? ""}${me.lastName?.[0] ?? ""}`.toUpperCase() || me.email?.[0]?.toUpperCase() || "?")
     : "…";
-  const usagePct = tenant ? Math.round((tenant.callsThisMonth / tenant.callLimit) * 100) : 0;
+  const usagePct = tenant ? Math.min(100, Math.round((tenant.callsThisMonth / tenant.callLimit) * 100)) : 0;
 
-  return (
-    <aside className="w-[210px] flex-shrink-0 border-r border-black flex flex-col h-screen sticky top-0 bg-[#e8dece] z-20">
-      {/* Logo */}
-      <div className="px-5 py-4 border-b border-black flex items-center gap-2">
+  const Footer = () => (
+    <div className="border-t-2 border-black px-4 py-3">
+      <div className="flex items-center gap-2.5 mb-2.5">
+        <div className="w-7 h-7 border-2 border-black flex items-center justify-center text-[10px] font-bold font-mono flex-shrink-0 bg-black text-[#e8dece]">
+          {initials}
+        </div>
+        <div className="overflow-hidden flex-1 min-w-0">
+          <p className="text-xs font-semibold truncate leading-none mb-0.5">{tenant?.name ?? displayName}</p>
+          <p className="text-[10px] font-mono text-black/50 leading-none capitalize">{tenant?.plan ?? "—"} plan</p>
+        </div>
+      </div>
+      {tenant && (
+        <div className="mb-3">
+          <p className="text-[10px] font-mono text-black/50 mb-1">
+            {tenant.callsThisMonth.toLocaleString()} / {(tenant.callLimit / 1000).toFixed(0)}k calls
+          </p>
+          <div className="h-1 bg-black/15 rounded-full overflow-hidden">
+            <div className="h-1 bg-black rounded-full transition-all" style={{ width: `${usagePct}%` }} />
+          </div>
+        </div>
+      )}
+      <button onClick={handleSignOut}
+        className="flex items-center gap-2 text-xs font-mono text-black/50 hover:text-black transition-colors">
+        <LogOut size={11} /> sign out
+      </button>
+    </div>
+  );
+
+  const Logo = ({ onClose }: { onClose?: () => void }) => (
+    <div className="px-5 py-4 border-b-2 border-black flex items-center justify-between flex-shrink-0">
+      <div className="flex items-center gap-2">
         <span className="text-base leading-none">✳</span>
         <span className="font-bold text-sm tracking-tight">silk resolve</span>
       </div>
+      {onClose && (
+        <button onClick={onClose} className="text-black/50 hover:text-black transition-colors lg:hidden">
+          <X size={16} />
+        </button>
+      )}
+    </div>
+  );
 
-      {/* Nav */}
-      <nav className="flex-1 px-3 pt-4 pb-2 overflow-y-auto">
-        <p className="text-[9px] font-mono opacity-25 uppercase tracking-widest px-2 mb-2">platform</p>
-        <div className="space-y-0.5 mb-4">
-          {PLATFORM_NAV.map((item) => {
-            const active = isActive(item.href, item.exact);
-            return (
-              <Link key={item.href} href={item.href}
-                className={cn("flex items-center gap-2.5 px-2.5 py-2 text-xs transition-all",
-                  active ? "bg-black text-[#e8dece]" : "text-black/60 hover:text-black hover:bg-black/5")}>
-                <item.icon size={11} strokeWidth={active ? 2.5 : 2} />
-                <span className={active ? "font-medium" : ""}>{item.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-
-        <p className="text-[9px] font-mono opacity-25 uppercase tracking-widest px-2 mb-2 pt-3 border-t border-black/10">intelligence</p>
-        <div className="space-y-0.5 mb-4">
-          {INTELLIGENCE_NAV.map((item) => {
-            const active = isActive(item.href, item.exact);
-            return (
-              <Link key={item.href} href={item.href}
-                className={cn("flex items-center gap-2.5 px-2.5 py-2 text-xs transition-all",
-                  active ? "bg-black text-[#e8dece]" : "text-black/60 hover:text-black hover:bg-black/5")}>
-                <item.icon size={11} strokeWidth={active ? 2.5 : 2} />
-                <span className={active ? "font-medium" : ""}>{item.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-
-        <p className="text-[9px] font-mono opacity-25 uppercase tracking-widest px-2 mb-2 pt-3 border-t border-black/10">launch</p>
-        <Link href="/observer"
-          className="flex items-center justify-between px-2.5 py-2 text-xs text-black/50 hover:text-black hover:bg-black/5 transition-all group">
-          <div className="flex items-center gap-2">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-black opacity-50" />
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-black" />
-            </span>
-            <span>live observer</span>
-          </div>
-          <ExternalLink size={9} className="opacity-0 group-hover:opacity-60 transition-opacity" />
+  const AdminLink = () => me?.isPlatformAdmin ? (
+    <>
+      <p className="text-[9px] font-mono text-black/50 uppercase tracking-widest px-5 mb-2 pt-3 border-t border-black/15 font-semibold mx-0">admin</p>
+      <div className="px-3 pb-1">
+        <Link href="/admin"
+          className={cn(
+            "flex items-center gap-2.5 px-3 py-2.5 text-xs transition-all",
+            pathname.startsWith("/admin") ? "bg-black text-[#e8dece] font-semibold" : "text-black/70 hover:text-black hover:bg-black/10"
+          )}>
+          <Shield size={13} />
+          <span>platform admin</span>
         </Link>
+      </div>
+    </>
+  ) : null;
 
-        {/* Research link */}
-        <p className="text-[9px] font-mono opacity-25 uppercase tracking-widest px-2 mb-2 pt-3 border-t border-black/10">docs</p>
-        <Link href="/research"
-          className="flex items-center justify-between px-2.5 py-2 text-xs text-black/50 hover:text-black hover:bg-black/5 transition-all group">
-          <div className="flex items-center gap-2.5">
-            <ExternalLink size={11} />
-            <span>research</span>
-          </div>
-        </Link>
-
-        {/* Admin link — only shown for platform admins */}
-        {me?.isPlatformAdmin && (
-          <>
-            <p className="text-[9px] font-mono opacity-25 uppercase tracking-widest px-2 mb-2 pt-3 border-t border-black/10">admin</p>
-            <Link href="/admin"
-              className={cn("flex items-center gap-2.5 px-2.5 py-2 text-xs transition-all",
-                pathname.startsWith("/admin") ? "bg-black text-[#e8dece]" : "text-black/60 hover:text-black hover:bg-black/5")}>
-              <Shield size={11} />
-              <span className={pathname.startsWith("/admin") ? "font-medium" : ""}>platform admin</span>
-            </Link>
-          </>
-        )}
-      </nav>
-
-      {/* Tenant footer */}
-      <div className="border-t border-black px-4 py-3">
-        <div className="flex items-center gap-2.5 mb-2.5">
-          <div className="w-6 h-6 border border-black flex items-center justify-center text-[9px] font-bold font-mono flex-shrink-0 bg-black text-[#e8dece]">
-            {initials}
-          </div>
-          <div className="overflow-hidden flex-1">
-            <p className="text-xs font-medium truncate leading-none mb-0.5">{tenant?.name ?? displayName}</p>
-            <p className="text-[9px] font-mono opacity-35 leading-none capitalize">{tenant?.plan ?? "—"} plan</p>
-          </div>
+  return (
+    <>
+      {/* Mobile top bar — shown on small screens */}
+      <div className="lg:hidden fixed top-0 left-0 right-0 z-40 bg-[#e8dece] border-b-2 border-black flex items-center justify-between px-4 py-3 h-14">
+        <div className="flex items-center gap-2">
+          <span className="text-base leading-none">✳</span>
+          <span className="font-bold text-sm tracking-tight">silk resolve</span>
         </div>
-        {tenant && (
-          <div className="mb-2.5">
-            <p className="text-[9px] font-mono opacity-25 mb-1">
-              {tenant.callsThisMonth.toLocaleString()} / {(tenant.callLimit / 1000).toFixed(0)}k calls
-            </p>
-            <div className="h-0.5 bg-black/10">
-              <div className="h-0.5 bg-black transition-all" style={{ width: `${usagePct}%` }} />
-            </div>
-          </div>
-        )}
-        <button onClick={handleSignOut}
-          className="flex items-center gap-2 text-[10px] font-mono opacity-25 hover:opacity-60 transition-opacity">
-          <LogOut size={10} /> sign out
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="text-black hover:text-black/60 transition-colors"
+          aria-label="Open menu"
+        >
+          <Menu size={20} />
         </button>
       </div>
-    </aside>
+
+      {/* Mobile: spacer so content doesn't hide under top bar */}
+      <div className="lg:hidden h-14 flex-shrink-0" />
+
+      {/* Mobile overlay */}
+      {mobileOpen && (
+        <div
+          className="lg:hidden fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
+
+      {/* Mobile drawer */}
+      <aside className={cn(
+        "lg:hidden fixed top-0 left-0 z-50 h-screen w-[240px] bg-[#e8dece] flex flex-col transition-transform duration-200 ease-out shadow-2xl",
+        mobileOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
+        <Logo onClose={() => setMobileOpen(false)} />
+        <NavLinks pathname={pathname} />
+        <AdminLink />
+        <Footer />
+      </aside>
+
+      {/* Desktop sidebar — hidden on mobile */}
+      <aside className="hidden lg:flex w-[220px] flex-shrink-0 border-r-2 border-black flex-col h-screen sticky top-0 bg-[#e8dece] z-20">
+        <Logo />
+        <NavLinks pathname={pathname} />
+        <AdminLink />
+        <Footer />
+      </aside>
+    </>
   );
 }

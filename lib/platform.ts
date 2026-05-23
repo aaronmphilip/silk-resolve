@@ -35,12 +35,16 @@ export async function setPlatformSetting(key: string, value: string): Promise<vo
 
 /** Upsert multiple settings */
 export async function setPlatformSettings(pairs: Record<string, string>): Promise<void> {
+  if (Object.keys(pairs).length === 0) return;
   const rows = Object.entries(pairs).map(([key, value]) => ({
     key,
     value,
     updated_at: new Date().toISOString(),
   }));
-  await svc().from("platform_settings").upsert(rows);
+  const { error } = await svc()
+    .from("platform_settings")
+    .upsert(rows, { onConflict: "key" });
+  if (error) throw new Error(`Failed to save platform settings: ${error.message}`);
 }
 
 /**
@@ -69,7 +73,10 @@ export async function getPlatformVoiceConfig() {
   const s = await getPlatformSettings();
   return {
     vapi: {
-      apiKey:      s.vapi_api_key      ?? process.env.VAPI_API_KEY      ?? "",
+      // Public key → browser SDK (vapi-token endpoint returns this)
+      publicKey:   s.vapi_public_key   ?? process.env.VAPI_PUBLIC_KEY   ?? s.vapi_api_key ?? process.env.VAPI_API_KEY ?? "",
+      // Private key → server-side API calls only (never sent to browser)
+      privateKey:  s.vapi_private_key  ?? process.env.VAPI_PRIVATE_KEY  ?? s.vapi_api_key ?? process.env.VAPI_API_KEY ?? "",
       phoneNumber: s.vapi_phone_number ?? process.env.VAPI_PHONE_NUMBER ?? "",
     },
     // Rumik SILK — add key here when available, system auto-switches

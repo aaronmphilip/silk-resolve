@@ -4,19 +4,18 @@
  */
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getPlatformSettings } from "@/lib/platform";
+import { getPlatformVoiceConfig } from "@/lib/platform";
 
 export async function GET() {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const settings = await getPlatformSettings();
-  const apiKey = settings.vapi_api_key ?? process.env.VAPI_API_KEY ?? "";
+  const { vapi } = await getPlatformVoiceConfig();
+  const publicKey = vapi.publicKey;
 
-  if (!apiKey) return NextResponse.json({ error: "Vapi API key not configured" }, { status: 400 });
+  if (!publicKey) return NextResponse.json({ error: "Vapi public key not configured. Add it in Admin → Settings." }, { status: 400 });
 
-  // Vapi public key is the same as the private key prefix (first part before the dash)
-  // We return just enough for the client to start a web call
-  return NextResponse.json({ apiKey });
+  // Only the PUBLIC key goes to the browser — never the private key
+  return NextResponse.json({ apiKey: publicKey });
 }

@@ -32,14 +32,15 @@ function esc(s: string) {
  * <warm_closing>text</warm_closing>              → slow, warm farewell
  */
 export function silkToSSML(text: string): string {
+  // Use [\s\S]*? instead of .*? with s-flag for ES2017 compat
   return text
-    .replace(/<apologetic_whisper>(.*?)<\/apologetic_whisper>/gs,
+    .replace(/<apologetic_whisper>([\s\S]*?)<\/apologetic_whisper>/g,
       '<prosody rate="slow" pitch="-2st" volume="soft">$1</prosody>')
-    .replace(/<warm>(.*?)<\/warm>/gs,
+    .replace(/<warm>([\s\S]*?)<\/warm>/g,
       '<prosody pitch="+1st" volume="medium">$1</prosody>')
-    .replace(/<warm_closing>(.*?)<\/warm_closing>/gs,
+    .replace(/<warm_closing>([\s\S]*?)<\/warm_closing>/g,
       '<prosody rate="slow" pitch="+1st">$1</prosody>')
-    .replace(/<[a-z_]+>(.*?)<\/[a-z_]+>/gs, "$1"); // strip any unknown tags
+    .replace(/<[a-z_]+>([\s\S]*?)<\/[a-z_]+>/g, "$1"); // strip unknown tags
 }
 
 /** Strip all SILK / XML tags, return plain text */
