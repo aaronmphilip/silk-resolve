@@ -1,18 +1,16 @@
 /**
  * POST /api/voice/vapi-incoming
  *
- * Vapi calls this when an inbound call arrives (assistant-request event).
- * We return a full dynamic assistant config — system prompt injected with
- * MESH context, ElevenLabs voice, and a pointer to our custom LLM endpoint.
+ * Vapi calls this when a call arrives (assistant-request).
+ * Works for both phone calls (lookup by phone number) and
+ * web/browser calls (lookup by agentId passed in call metadata).
  *
- * Response must arrive within 7.5 seconds.
+ * Returns a full dynamic assistant config to Vapi.
+ * Response must arrive within 7.5s.
  */
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
-import { generateGreeting } from "@/lib/voice-ai";
-import { stripTags } from "@/lib/twiml";
 import { getPlatformVoiceConfig } from "@/lib/platform";
-import type { AgentScript } from "@/lib/types";
 
 export const runtime = "nodejs";
 
@@ -24,68 +22,53 @@ function svc() {
   );
 }
 
-function mapScript(r: Record<string, unknown>): AgentScript {
-  return {
-    id:               r.id as string,
-    agentId:          r.agent_id as string,
-    agentName:        r.agent_name as string,
-    name:             r.name as string,
-    version:          (r.version as number) ?? 1,
-    status:           r.status as AgentScript["status"],
-    systemPrompt:     r.system_prompt as string,
-    companionVibe:    r.companion_vibe as AgentScript["companionVibe"],
-    language:         (r.language as string) ?? "en-IN",
-    preferredAddress: (r.preferred_address as string) ?? "ji",
-    linguisticNotes:  (r.linguistic_notes as string) ?? "",
-    tools:            (r.tools as AgentScript["tools"]) ?? [],
-    escalationRules:  (r.escalation_rules as AgentScript["escalationRules"]) ?? [],
-    noGoTopics:       (r.no_go_topics as string[]) ?? [],
-    createdAt:        ((r.created_at as string) ?? "").slice(0, 10),
-    updatedAt:        ((r.updated_at as string) ?? "").slice(0, 10),
-  };
-}
-
 function buildMeshContext(profile: Record<string, unknown> | null): string {
   if (!profile) return "";
   const identity = (profile.identity_profile as Record<string, unknown>) ?? {};
   const anchors = (profile.contextual_anchors as Array<{ text: string; active: boolean }>) ?? [];
-  const active = anchors.filter((a) => a.active).map((a) => a.text);
+  const active = anchors.filter((a) => a.active).map((a) => `- ${a.text}`);
   return [
     `Caller: ${profile.name ?? "Unknown"} | Emotional debt: ${profile.emotional_debt_level ?? "neutral"} (score: ${profile.emotional_debt_score ?? 0})`,
-    `Preferred address: ${identity.preferred_address ?? identity.preferredAddress ?? "ji"} | Vibe: ${identity.companion_vibe ?? "professional"}`,
+    `Preferred address: ${identity.preferred_address ?? identity.preferredAddress ?? "Sir/Ma'am"} | Vibe: ${identity.companion_vibe ?? "professional"}`,
     `Last resolution: ${profile.last_resolution ?? "no prior calls"}`,
-    active.length ? `Context anchors:\n${active.map((a) => `- ${a}`).join("\n")}` : "",
+    active.length ? `Context:\n${active.join("\n")}` : "",
   ].filter(Boolean).join("\n");
 }
 
-function buildSystemPrompt(script: AgentScript, meshContext: string): string {
+function buildSystemPrompt(agent: Record<string, unknown>, meshContext: string): string {
+  const base = (agent.system_prompt as string) || "You are a helpful customer support agent. Resolve issues with warmth and efficiency.";
+  const rules = (agent.escalation_rules as Array<{ condition: string; action: string }>) ?? [];
+  const noGo  = (agent.no_go_topics as string[]) ?? [];
+  const addr  = (agent.preferred_address as string) || "Sir/Ma'am";
+
   return [
-    script.systemPrompt,
+    base,
     "",
-    script.linguisticNotes ? `LINGUISTIC RULES:\n${script.linguisticNotes}` : "",
+    agent.linguistic_notes ? `LINGUISTIC RULES:\n${agent.linguistic_notes}` : "",
     meshContext ? `CUSTOMER MEMORY (MESH):\n${meshContext}` : "",
     "",
-    "ESCALATION RULES:",
-    ...script.escalationRules.map((r) => `- If ${r.condition} → ${r.action}`),
-    "",
-    `NO-GO TOPICS (redirect if raised): ${script.noGoTopics.join(", ") || "none"}`,
+    rules.length ? "ESCALATION RULES:\n" + rules.map(r => `- If ${r.condition} → ${r.action}`).join("\n") : "",
+    noGo.length  ? `NO-GO TOPICS: ${noGo.join(", ")}` : "",
     "",
     "RESPONSE FORMAT:",
-    "- Keep responses to 1-3 SHORT sentences (this is spoken aloud over phone)",
-    "- Never use bullet points, markdown, or formatting",
+    "- Keep responses to 1–3 SHORT sentences (spoken aloud over phone/browser)",
+    "- Never use bullet points, markdown, or special characters",
     "- Respond in the same language the customer uses",
-    "- Sound warm and human, not robotic",
-    `- Preferred address for this caller: ${script.preferredAddress}`,
+    "- Sound warm and human, never robotic",
+    `- Preferred address for this caller: ${addr}`,
   ].filter(Boolean).join("\n");
 }
 
 export async function POST(req: NextRequest) {
   const db = svc();
+
   const body = await req.json() as {
     message: {
       type: string;
       call?: {
         id: string;
+        type?: string;                          // "webCall" | "inboundPhoneCall"
+        metadata?: Record<string, string>;      // agentId passed from our web client
         phoneNumber?: { number: string };
         customer?: { number: string };
       };
@@ -93,165 +76,158 @@ export async function POST(req: NextRequest) {
   };
 
   const { message } = body;
-
-  // Only handle assistant-request
   if (message.type !== "assistant-request") {
     return NextResponse.json({}, { status: 200 });
   }
 
-  const callId      = message.call?.id ?? "";
-  const toPhone     = message.call?.phoneNumber?.number ?? "";   // our Vapi number
-  const fromPhone   = message.call?.customer?.number ?? "";      // caller
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? `https://${req.headers.get("host")}`;
+  const callId         = message.call?.id ?? "";
+  const callType       = message.call?.type ?? "inboundPhoneCall";
+  const toPhone        = message.call?.phoneNumber?.number ?? "";
+  const fromPhone      = message.call?.customer?.number ?? "";
+  const agentIdMeta    = message.call?.metadata?.agentId ?? "";   // web calls pass this
+  const appUrl         = process.env.NEXT_PUBLIC_APP_URL ?? `https://${req.headers.get("host")}`;
 
   try {
-    // 1. Find agent by vapi_phone (same column, repurposed)
-    const { data: agentRow } = await db
-      .from("agents")
-      .select("id, name, tenant_id, status")
-      .eq("twilio_phone", toPhone)   // column is reused for Vapi number
-      .eq("status", "live")
-      .single();
+    // ── 1. Find agent ─────────────────────────────────────────────────────────
+    let agentRow: Record<string, unknown> | null = null;
+
+    if (agentIdMeta) {
+      // Web/browser call — agent ID passed directly from our UI
+      const { data } = await db.from("agents").select("*").eq("id", agentIdMeta).single();
+      agentRow = data as Record<string, unknown> | null;
+    } else if (toPhone) {
+      // Real phone call — look up by number
+      const { data } = await db.from("agents").select("*").eq("twilio_phone", toPhone).eq("status", "live").single();
+      agentRow = data as Record<string, unknown> | null;
+    }
+
+    // Fallback: grab the first live agent for the platform (demo/test mode)
+    if (!agentRow) {
+      const { data } = await db.from("agents").select("*").eq("status", "live").limit(1).single();
+      agentRow = data as Record<string, unknown> | null;
+    }
 
     if (!agentRow) {
-      return NextResponse.json({
-        error: "No active agent found for this number. Please try again later.",
-      });
+      return NextResponse.json({ assistant: {
+        firstMessage: "Hello! No agents are currently configured. Please set up an agent in the dashboard.",
+        model: { provider: "openai", model: "gpt-4o-mini", messages: [{ role: "system", content: "You are a helpful assistant." }] },
+        voice: { provider: "playht", voiceId: "jennifer" },
+      }});
     }
 
-    // 2. Get active script
-    const { data: scriptRow } = await db
-      .from("scripts")
-      .select("*")
-      .eq("agent_id", agentRow.id)
-      .eq("status", "active")
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    if (!scriptRow) {
-      return NextResponse.json({ error: "Agent configuration not ready. Please try again." });
+    // ── 2. MESH — recall caller's history ────────────────────────────────────
+    let meshRow: Record<string, unknown> | null = null;
+    if (fromPhone) {
+      const { data } = await db.from("mesh_profiles")
+        .select("*")
+        .eq("phone", fromPhone)
+        .eq("tenant_id", agentRow.tenant_id)
+        .single();
+      meshRow = data as Record<string, unknown> | null;
     }
 
-    const script = mapScript(scriptRow as Record<string, unknown>);
+    const meshContext = buildMeshContext(meshRow);
 
-    // 3. MESH lookup by caller phone
-    const { data: meshRow } = await db
-      .from("mesh_profiles")
-      .select("*")
-      .eq("phone", fromPhone)
-      .eq("tenant_id", agentRow.tenant_id)
-      .single();
+    // ── 3. Build first message ────────────────────────────────────────────────
+    const storedFirstMsg = (agentRow.first_message as string) || "";
+    const callerName = (meshRow?.name as string) ?? "";
 
-    const meshContext = buildMeshContext(meshRow as Record<string, unknown> | null);
+    let firstMessage = storedFirstMsg;
+    if (!firstMessage) {
+      // Auto-generate based on MESH context
+      const addr = (meshRow?.identity_profile as Record<string, unknown>)?.preferred_address
+        ?? (agentRow.preferred_address as string)
+        ?? "there";
+      firstMessage = callerName
+        ? `Hello ${addr}, welcome back. How can I help you today?`
+        : `Hello ${addr}! How can I help you today?`;
+    }
+    // Replace {{variables}} in first message
+    firstMessage = firstMessage
+      .replace(/\{\{preferred_address\}\}/g, callerName ? String((meshRow?.identity_profile as Record<string, unknown>)?.preferred_address ?? agentRow.preferred_address ?? "there") : String(agentRow.preferred_address ?? "there"))
+      .replace(/\{\{caller_name\}\}/g, callerName)
+      .replace(/\{\{company_name\}\}/g, String(agentRow.client ?? "us"));
 
-    // 4. Previous call outcome (for personalised greeting)
-    const { data: lastSession } = await db
-      .from("voice_sessions")
-      .select("resolution")
-      .eq("caller_phone", fromPhone)
-      .eq("tenant_id", agentRow.tenant_id)
-      .order("ended_at", { ascending: false })
-      .limit(1)
-      .single();
-
-    // 5. Generate first message (greeting)
-    const greeting = await generateGreeting({
-      script,
-      callerName: (meshRow as Record<string, unknown> | null)?.name as string | undefined,
-      meshContext: meshContext || undefined,
-      previousOutcome: lastSession?.resolution ?? undefined,
-    });
-
-    // 6. Create voice session
-    await db.from("voice_sessions").insert({
-      call_sid:        callId,          // Vapi call ID stored here
+    // ── 4. Create voice session ───────────────────────────────────────────────
+    await db.from("voice_sessions").upsert({
+      call_sid:        callId,
       tenant_id:       agentRow.tenant_id,
       agent_id:        agentRow.id,
-      script_id:       script.id,
-      caller_phone:    fromPhone,
-      platform_phone:  toPhone,
-      mesh_profile_id: (meshRow as Record<string, unknown> | null)?.id ?? null,
-      messages:        [{ role: "agent", content: greeting, timestamp: new Date().toISOString() }],
+      caller_phone:    fromPhone || "web-call",
+      platform_phone:  toPhone || "web",
+      call_type:       callType,
+      mesh_profile_id: meshRow?.id ?? null,
+      messages:        [{ role: "agent", content: firstMessage, ts: new Date().toISOString() }],
       tension_level:   0,
       turn_count:      0,
       status:          "active",
-    });
+    }, { onConflict: "call_sid", ignoreDuplicates: true });
 
-    // 7. Get voice config — SILK → ElevenLabs → built-in fallback
+    // ── 5. Voice config ───────────────────────────────────────────────────────
     const { elevenlabs, silk } = await getPlatformVoiceConfig();
 
-    // 8. Build and return Vapi assistant config
     const vapiAssistant: Record<string, unknown> = {
-      firstMessage: stripTags(greeting),  // strip SILK tags — ElevenLabs handles prosody naturally
+      firstMessage,
       model: {
-        provider: "custom-llm",
-        url: `${appUrl}/api/voice/vapi-llm`,
-        model: "silk-resolve-v1",
-        messages: [
-          { role: "system", content: buildSystemPrompt(script, meshContext) },
-        ],
+        provider:    "custom-llm",
+        url:         `${appUrl}/api/voice/vapi-llm`,
+        model:       "silk-resolve-v1",
+        messages:    [{ role: "system", content: buildSystemPrompt(agentRow, meshContext) }],
         temperature: 0.7,
-        maxTokens: 200,
+        maxTokens:   200,
+        // Pass agent context so vapi-llm can look up session
+        metadata: { agentId: String(agentRow.id), callId },
       },
-      serverUrl: `${appUrl}/api/voice/vapi-events`,
-      endCallMessage: "Thank you for calling. Have a great day!",
-      endCallPhrases: ["goodbye", "bye", "thank you bye", "ok bye", "alvida"],
-      silenceTimeoutSeconds: 20,
-      maxDurationSeconds: 1800,      // 30 min max call
-      backgroundSound: "off",
-      backchannelingEnabled: false,  // no "uh-huh" filler
+      serverUrl:              `${appUrl}/api/voice/vapi-events`,
+      endCallMessage:         "Thank you for calling. Have a great day!",
+      endCallPhrases:         ["goodbye", "bye", "thank you bye", "ok bye", "alvida", "shukriya"],
+      silenceTimeoutSeconds:  20,
+      maxDurationSeconds:     1800,
+      backgroundSound:        "off",
+      backchannelingEnabled:  false,
       analysisPlan: {
-        summaryPrompt: "Summarise this customer service call in 2-3 sentences. State the issue, outcome, and customer sentiment.",
-        structuredDataPrompt: JSON.stringify({
-          intent: "main customer intent",
-          outcome: "resolved | escalated | abandoned",
-          tensionLevel: "0-10",
-          sentiment: "positive | neutral | negative",
-        }),
-        successEvaluationPrompt: "Did the agent resolve the customer's issue? Answer yes/no with a brief reason.",
-        successEvaluationRubric: "NumericScale",
+        summaryPrompt:            "Summarise this call in 2 sentences: issue raised, outcome, and customer sentiment.",
+        successEvaluationPrompt:  "Did the agent resolve the customer's issue? yes/no with brief reason.",
+        successEvaluationRubric:  "NumericScale",
+        structuredDataSchema: {
+          type: "object",
+          properties: {
+            outcome:      { type: "string", enum: ["resolved", "escalated", "abandoned"] },
+            tensionPeak:  { type: "number" },
+            sentiment:    { type: "string", enum: ["positive", "neutral", "negative"] },
+          },
+        },
       },
     };
 
-    // ── Voice priority: SILK → ElevenLabs → Vapi built-in ──────────────────
+    // Voice priority: SILK → ElevenLabs → Vapi built-in
     if (silk.apiKey) {
-      // Rumik SILK — custom voice via our TTS proxy endpoint
-      // Vapi calls our /api/voice/silk-tts which proxies to Rumik's API
       vapiAssistant.voice = {
         provider: "custom-voice",
-        server: {
-          url: `${appUrl}/api/voice/silk-tts`,
-          timeoutSeconds: 10,
-          headers: { "x-silk-key": silk.apiKey },
-        },
+        server:   { url: `${appUrl}/api/voice/silk-tts`, timeoutSeconds: 10 },
       };
     } else if (elevenlabs.apiKey && elevenlabs.voiceId) {
-      // ElevenLabs — testing/production until SILK is ready
       vapiAssistant.voice = {
-        provider: "elevenlabs",
-        voiceId: elevenlabs.voiceId,
-        model: "eleven_turbo_v2",   // lowest latency model
-        stability: 0.5,
+        provider:        "elevenlabs",
+        voiceId:         elevenlabs.voiceId,
+        model:           "eleven_turbo_v2",
+        stability:       0.5,
         similarityBoost: 0.75,
-        style: 0.0,
+        style:           0.0,
         useSpeakerBoost: true,
       };
     } else {
-      // Free built-in Vapi voice — zero config needed
-      vapiAssistant.voice = {
-        provider: "playht",
-        voiceId: "jennifer",
-      };
+      vapiAssistant.voice = { provider: "playht", voiceId: "jennifer" };
     }
 
     return NextResponse.json({ assistant: vapiAssistant });
 
   } catch (err) {
-    console.error("[vapi-incoming] error:", err);
-    return NextResponse.json({
-      error: "Technical issue. Please try again shortly.",
-    });
+    console.error("[vapi-incoming]", err);
+    return NextResponse.json({ assistant: {
+      firstMessage: "We're experiencing a technical issue. Please try again shortly.",
+      model: { provider: "openai", model: "gpt-4o-mini", messages: [{ role: "system", content: "You are a helpful assistant." }] },
+      voice: { provider: "playht", voiceId: "jennifer" },
+    }});
   }
 }

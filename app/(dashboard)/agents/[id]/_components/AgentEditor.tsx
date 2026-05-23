@@ -3,9 +3,10 @@ import { useState, useCallback } from "react";
 import Link from "next/link";
 import {
   ArrowLeft, Check, Loader2, Plus, Trash2, AlertTriangle,
-  Zap, Brain, Mic, Database, ChevronDown, ChevronUp, Eye,
+  Zap, Brain, Mic, Database, ChevronDown, ChevronUp, Eye, PhoneCall,
 } from "lucide-react";
 import PromptEditor, { SYSTEM_VARIABLES, type PromptVariable } from "./PromptEditor";
+import TalkModal from "./TalkModal";
 import { AI_PROVIDERS } from "@/lib/ai-providers";
 import type { Call } from "@/lib/types";
 import { outcomeBorder } from "@/lib/utils";
@@ -55,7 +56,7 @@ interface EscalationRule {
   action: "transfer_human" | "offer_callback" | "send_email";
 }
 
-type Tab = "configure" | "tools" | "conversations";
+type Tab = "configure" | "tools" | "logs";
 
 const LANGUAGES = [
   "English (en-IN)", "Hindi (hi-IN)", "Hinglish (hi-IN / en-IN)",
@@ -129,6 +130,7 @@ export default function AgentEditor({
   const [error, setError] = useState("");
   const [newTopic, setNewTopic] = useState("");
   const [expandedRule, setExpandedRule] = useState<string | null>(null);
+  const [showTalk, setShowTalk] = useState(false);
 
   const changed = JSON.stringify(agent) !== JSON.stringify(initial);
   const set = useCallback(<K extends keyof AgentRow>(k: K) => (v: AgentRow[K]) => {
@@ -651,48 +653,72 @@ export default function AgentEditor({
     </div>
   );
 
-  // ── Tab: Conversations ──────────────────────────────────────────────────────
+  // ── Tab: Logs ───────────────────────────────────────────────────────────────
 
-  const ConversationsTab = (
+  const LogsTab = (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest">recent conversations</p>
-        <Link href="/calls" className="text-[10px] font-mono opacity-40 hover:opacity-100 underline">view all →</Link>
+        <p className="text-[10px] font-mono opacity-30 uppercase tracking-widest">call logs</p>
+        <Link href="/calls" className="text-[10px] font-mono opacity-40 hover:opacity-100">view all →</Link>
       </div>
       {calls.length === 0 ? (
-        <div className="border border-[#f0ebe0]/10 px-6 py-12 text-center">
+        <div className="border border-[#f0ebe0]/10 px-6 py-16 text-center space-y-3">
+          <PhoneCall size={20} className="opacity-10 mx-auto" />
           <p className="text-xs font-mono opacity-30">no calls yet</p>
-          <p className="text-[10px] font-mono opacity-20 mt-1">
-            Configure Vapi + voice keys to start receiving calls.
+          <p className="text-[10px] font-mono opacity-20">
+            Click <strong>Talk</strong> in the header to make a test call, or configure a phone number for inbound calls.
           </p>
         </div>
       ) : (
-        <div className="border border-[#f0ebe0]/10 divide-y divide-[#f0ebe0]/10">
-          {calls.map(call => (
-            <Link
-              key={call.id}
-              href={`/calls/${call.id}`}
-              className="flex items-center justify-between px-5 py-3.5 hover:bg-[#f0ebe0]/5 transition-colors"
-            >
-              <div>
-                <div className="flex items-center gap-3 mb-1">
-                  <span className="text-[10px] font-mono opacity-40">{call.id}</span>
-                  <span className={`text-[10px] font-mono px-2 py-0.5 border ${outcomeBorder(call.outcome)}`}>{call.outcome}</span>
+        <>
+          {/* Table header */}
+          <div className="border border-[#f0ebe0]/10">
+            <div className="grid grid-cols-12 px-4 py-2.5 border-b border-[#f0ebe0]/10 bg-[#f0ebe0]/[0.02]">
+              {[
+                { label: "call id",  span: 3 },
+                { label: "type",     span: 2 },
+                { label: "outcome",  span: 2 },
+                { label: "duration", span: 2 },
+                { label: "empathy",  span: 2 },
+                { label: "time",     span: 1 },
+              ].map(col => (
+                <div key={col.label} className={`col-span-${col.span}`}>
+                  <p className="text-[9px] font-mono opacity-25 uppercase tracking-widest">{col.label}</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-xs font-mono opacity-50">{call.duration}</span>
-                  <span className="text-xs font-mono font-bold">{call.empathyScore > 0 ? `${call.empathyScore}%` : "—"}</span>
-                  <div className="flex gap-1">
-                    {call.tags.slice(0, 2).map((t, j) => (
-                      <span key={j} className="text-[9px] font-mono bg-[#f0ebe0]/5 border border-[#f0ebe0]/10 px-1.5 py-0.5">{t}</span>
-                    ))}
-                  </div>
+              ))}
+            </div>
+            {calls.map((call, i) => (
+              <Link key={call.id} href={`/calls/${call.id}`}
+                className={`grid grid-cols-12 px-4 py-3 items-center hover:bg-[#f0ebe0]/5 transition-colors ${i < calls.length - 1 ? "border-b border-[#f0ebe0]/5" : ""}`}>
+                <div className="col-span-3">
+                  <p className="text-[10px] font-mono opacity-60">{call.id}</p>
                 </div>
-              </div>
-              <span className="text-[10px] font-mono opacity-30">{call.timestamp.slice(11, 16)}</span>
-            </Link>
-          ))}
-        </div>
+                <div className="col-span-2">
+                  <span className="text-[9px] font-mono border border-[#f0ebe0]/20 px-1.5 py-0.5 opacity-50">
+                    {call.tags?.includes("web") ? "web" : "phone"}
+                  </span>
+                </div>
+                <div className="col-span-2">
+                  <span className={`text-[9px] font-mono px-1.5 py-0.5 border ${outcomeBorder(call.outcome)}`}>
+                    {call.outcome}
+                  </span>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[10px] font-mono opacity-60">{call.duration}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[10px] font-mono opacity-60">{call.empathyScore > 0 ? `${call.empathyScore}%` : "—"}</p>
+                </div>
+                <div className="col-span-1">
+                  <p className="text-[9px] font-mono opacity-30">{call.timestamp.slice(11, 16)}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+          <p className="text-[9px] font-mono opacity-20 mt-2">
+            {calls.length} call{calls.length !== 1 ? "s" : ""} · showing most recent
+          </p>
+        </>
       )}
     </div>
   );
@@ -701,6 +727,11 @@ export default function AgentEditor({
 
   return (
     <div className="min-h-screen">
+      {/* Talk modal */}
+      {showTalk && (
+        <TalkModal agentId={agent.id} agentName={agent.name} onClose={() => setShowTalk(false)} />
+      )}
+
       {/* Top bar */}
       <div className="border-b border-[#f0ebe0]/10 px-8 py-4 flex items-center justify-between sticky top-0 bg-[#0a0a0a] z-40">
         <div className="flex items-center gap-4">
@@ -726,6 +757,16 @@ export default function AgentEditor({
           {changed && <span className="text-[10px] font-mono opacity-30">unsaved changes</span>}
           {error && <span className="text-[10px] font-mono text-red-400">{error}</span>}
           {saved && <span className="text-[10px] font-mono text-emerald-400">✓ saved</span>}
+
+          {/* Talk button — like Vapi's */}
+          <button
+            type="button"
+            onClick={() => setShowTalk(true)}
+            className="flex items-center gap-1.5 text-xs font-mono border border-emerald-400/40 text-emerald-400 px-4 py-2 hover:bg-emerald-400/10 transition-colors"
+          >
+            <PhoneCall size={11} /> Talk
+          </button>
+
           <button
             type="button"
             onClick={() => save()}
@@ -752,9 +793,9 @@ export default function AgentEditor({
         {/* Sidebar tabs */}
         <div className="w-44 border-r border-[#f0ebe0]/10 min-h-screen flex-shrink-0 pt-6">
           {([
-            { id: "configure",     label: "Configure" },
-            { id: "tools",         label: "Tools" },
-            { id: "conversations", label: "Conversations", count: calls.length },
+            { id: "configure", label: "Configure" },
+            { id: "tools",     label: "Tools" },
+            { id: "logs",      label: "Logs", count: calls.length },
           ] as const).map(t => (
             <button
               key={t.id}
@@ -788,9 +829,9 @@ export default function AgentEditor({
 
         {/* Main content */}
         <div className="flex-1 px-10 py-8 max-w-2xl">
-          {tab === "configure"     && ConfigureTab}
-          {tab === "tools"         && ToolsTab}
-          {tab === "conversations" && ConversationsTab}
+          {tab === "configure" && ConfigureTab}
+          {tab === "tools"     && ToolsTab}
+          {tab === "logs"      && LogsTab}
         </div>
       </div>
     </div>
