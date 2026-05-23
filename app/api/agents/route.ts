@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase
     .from("agents")
     .insert({
+      id:              `agt-${crypto.randomUUID()}`,
       tenant_id:       profile.tenant_id,
       name:            body.name,
       client:          body.client ?? "",
