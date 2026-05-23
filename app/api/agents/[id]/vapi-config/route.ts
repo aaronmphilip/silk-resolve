@@ -48,12 +48,12 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const assistantConfig = {
     name: agent.name,
     // custom-llm routes every LLM turn through our server, which uses
-    // whatever provider key (xAI grok-3, Anthropic, etc.) is stored in
+    // whatever provider key (xAI grok-4, Anthropic, etc.) is stored in
     // platform_settings — Vapi never needs its own copies of those keys.
     model: {
       provider: "custom-llm",
       url: `${origin}/api/voice/vapi-llm`,
-      model: agent.llm_model || "grok-3",
+      model: agent.llm_model || "grok-4",
       messages: [{ role: "system", content: systemPrompt }],
       temperature: 0.7,
       maxTokens: 250,

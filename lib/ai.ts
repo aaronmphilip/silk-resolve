@@ -72,7 +72,7 @@ export async function callAI(opts: {
     return callOpenAICompat({
       baseUrl: "https://api.x.ai/v1",
       apiKey,
-      model: "grok-3",
+      model: "grok-4",
       system,
       user,
       maxTokens,

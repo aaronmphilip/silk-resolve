@@ -16,7 +16,7 @@ export const AI_PROVIDERS: {
   {
     id: "xai",
     label: "xAI Grok",
-    model: "grok-3",
+    model: "grok-4",
     note: "Fast, smart, cost-effective. OpenAI-compatible API. Great for voice scripts.",
     keyHint: "xai-...",
   },
