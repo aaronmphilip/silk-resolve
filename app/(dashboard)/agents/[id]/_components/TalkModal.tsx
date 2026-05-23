@@ -46,42 +46,41 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
         const assistantConfig = await configRes.json();
 
         const { default: Vapi } = await import("@vapi-ai/web");
-        const vapi = new Vapi(apiKey) as unknown as Record<string, unknown>;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const vapi = new Vapi(apiKey) as any;
         if (!mounted) return;
         vapiRef.current = vapi;
 
         const appUrl = window.location.origin;
-        const on = vapi.on as (event: string, cb: unknown) => void;
-        const start = vapi.start as (cfg: unknown) => Promise<void>;
 
-        on("call-start", () => {
+        // Call methods directly on the instance to preserve `this` binding
+        vapi.on("call-start", () => {
           if (!mounted) return;
           setState("active");
           const t0 = Date.now();
           timerRef.current = setInterval(() => setDuration(Math.floor((Date.now() - t0) / 1000)), 1000);
         });
 
-        on("call-end", () => {
+        vapi.on("call-end", () => {
           if (!mounted) return;
           setState("ended");
           if (timerRef.current) clearInterval(timerRef.current);
         });
 
-        on("transcript", (msg: { role: string; transcript: string; transcriptType: string }) => {
+        vapi.on("transcript", (msg: { role: string; transcript: string; transcriptType: string }) => {
           if (!mounted || msg.transcriptType !== "final") return;
           setTranscript(t => [...t, { role: msg.role as "user" | "assistant", text: msg.transcript, ts: Date.now() }]);
           if (msg.role === "user") setTension(t => Math.min(10, t + 0.3));
         });
 
-        on("error", (err: Error) => {
+        vapi.on("error", (err: Error) => {
           if (!mounted) return;
           setError(err?.message ?? "Call error");
           setState("error");
           if (timerRef.current) clearInterval(timerRef.current);
         });
 
-        // Start call with full inline assistant config + serverUrl for webhooks
-        await start({
+        await vapi.start({
           ...assistantConfig,
           serverUrl: `${appUrl}/api/voice/vapi-incoming`,
         });
@@ -98,21 +97,21 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
     return () => {
       mounted = false;
       if (timerRef.current) clearInterval(timerRef.current);
-      const stop = vapiRef.current?.stop as (() => void) | undefined;
-      stop?.();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      vapiRef.current?.stop?.();
     };
   }, [agentId]);
 
   function endCall() {
     setState("ending");
-    const stop = vapiRef.current?.stop as (() => void) | undefined;
-    stop?.();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (vapiRef.current as any)?.stop?.();
     if (timerRef.current) clearInterval(timerRef.current);
   }
 
   function toggleMute() {
-    const setMutedFn = vapiRef.current?.setMuted as ((v: boolean) => void) | undefined;
-    setMutedFn?.(!muted);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (vapiRef.current as any)?.setMuted?.(!muted);
     setMuted(m => !m);
   }
 
