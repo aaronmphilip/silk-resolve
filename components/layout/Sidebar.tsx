@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Bot, Phone, Settings, ExternalLink, LogOut,
   BarChart2, FlaskConical, Server, Brain, FileText, Plug,
-  CreditCard, Shield,
+  CreditCard, Shield, PhoneCall,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
@@ -15,6 +15,7 @@ const PLATFORM_NAV = [
   { href: "/agents",     label: "agents",     icon: Bot,             exact: false },
   { href: "/scripts",    label: "scripts",    icon: FileText,        exact: false },
   { href: "/calls",      label: "call logs",  icon: Phone,           exact: false },
+  { href: "/test-call",  label: "test call",  icon: PhoneCall,       exact: false },
   { href: "/analytics",  label: "analytics",  icon: BarChart2,       exact: false },
 ];
 
