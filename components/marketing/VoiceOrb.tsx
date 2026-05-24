@@ -84,16 +84,19 @@ export function VoiceOrb({ size = 300 }: { size?: number }) {
         </div>
       </div>
 
-      {/* ── Outer waveform bars — pure CSS, zero JS re-renders ─ */}
-      <div className="mt-8 flex items-end justify-center gap-[3.5px]">
+      {/* ── Outer waveform bars — pure CSS, zero JS re-renders ─
+            Container has a fixed height so nothing ever shifts.
+            Bars use scaleY (GPU transform) not height (reflow). ─ */}
+      <div className="mt-8 flex items-end justify-center gap-[3.5px]"
+           style={{ height: 52 }}>
         {OUTER.map((cfg, i) => (
           <div
             key={i}
             className="voice-outer-bar rounded-full bg-black/20 dark:bg-[#e8dece]/20"
             style={{
               width: 3,
-              "--vb-min": `${cfg.minH}px`,
-              "--vb-max": `${cfg.maxH}px`,
+              height: cfg.maxH,                        /* fixed DOM height */
+              "--vb-scale-min": cfg.minH / cfg.maxH,  /* 0..1 scale floor */
               animationDuration:  `${cfg.dur}s`,
               animationDelay:     `${cfg.delay}s`,
             } as React.CSSProperties}

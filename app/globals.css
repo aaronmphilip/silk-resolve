@@ -134,12 +134,18 @@ html.dark .react-flow__edge-textbg { fill: #181511; }
 html.dark .react-flow__edge-text   { fill: #e8dece; }
 
 /* ─── Voice orb outer bars (pure CSS — no JS re-renders) ────── */
+/*   Uses scaleY instead of height — transform never causes reflow,
+     so the page can't jump. Each bar's DOM height is fixed (= maxH);
+     only the visual scale changes. transform-origin: bottom keeps
+     bars pinned to the bottom of their container.                   */
 @keyframes voice-bar-pulse {
-  0%, 100% { height: var(--vb-min, 6px); }
-  50%       { height: var(--vb-max, 22px); }
+  0%, 100% { transform: scaleY(var(--vb-scale-min, 0.28)); }
+  50%       { transform: scaleY(1); }
 }
 .voice-outer-bar {
   animation: voice-bar-pulse 1s ease-in-out infinite;
+  transform-origin: bottom center;
+  will-change: transform;
   /* duration + delay are set via inline style on each bar */
 }
 
