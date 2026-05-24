@@ -132,13 +132,12 @@ export async function POST(req: NextRequest) {
             break;
           }
           case "log_complaint": {
-            // Log complaint — in production wire to CRM
-            console.log("[tool] log_complaint:", toolCall.parameters);
+            // TODO: wire to CRM in production
             result = JSON.stringify({ success: true, trackingId: `SR-${Date.now()}` });
             break;
           }
           case "schedule_callback": {
-            console.log("[tool] schedule_callback:", toolCall.parameters);
+            // TODO: wire to scheduling system in production
             result = JSON.stringify({ success: true, message: "Callback scheduled" });
             break;
           }
@@ -188,13 +187,17 @@ export async function POST(req: NextRequest) {
         session as Record<string, unknown>
       );
 
-      // 1. Finalise session
+      const recordingUrl = message.artifact?.recordingUrl ?? null;
+
+      // 1. Finalise session — include recording + summary when available
       await db.from("voice_sessions").update({
-        status:        "ended",
-        resolution:    outcome,
-        empathy_score: empathyScore,
-        ended_at:      session.ended_at ?? now,
-        messages:      transcript.map((m) => ({
+        status:         "ended",
+        resolution:     outcome,
+        empathy_score:  empathyScore,
+        ended_at:       session.ended_at ?? now,
+        recording_url:  recordingUrl,
+        summary:        summary || null,
+        messages:       transcript.map((m) => ({
           role:    ["bot", "assistant", "agent"].includes(m.role) ? "agent" : "customer",
           content: stripVoiceMarkers(m.message ?? m.content ?? ""),
           time:    m.time,

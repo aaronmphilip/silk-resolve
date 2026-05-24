@@ -114,7 +114,7 @@ export default function NewAgentPage() {
               value={name}
               onChange={e => setName(e.target.value)}
               placeholder="e.g. Priya, MedCore Billing, FlightCare"
-              className="w-full border-2 border-black bg-white px-4 py-3 text-sm font-mono placeholder:text-black/30 focus:outline-none focus:shadow-[2px_2px_0px_rgba(0,0,0,0.8)]"
+              className="w-full border-2 border-black bg-[var(--bg)] text-[var(--fg)] px-4 py-3 text-sm font-mono placeholder:text-black/30 dark:placeholder:text-[#e8dece]/25 focus:outline-none focus:shadow-[2px_2px_0px_rgba(0,0,0,0.8)] dark:focus:shadow-[2px_2px_0px_rgba(232,220,206,0.3)]"
               autoFocus
             />
             <p className="text-[10px] text-black/40 mt-1">Give it a name your team will recognise.</p>
@@ -130,7 +130,7 @@ export default function NewAgentPage() {
               onChange={e => setHandles(e.target.value)}
               placeholder="e.g. Billing disputes and refund requests for healthcare customers. Customers are often frustrated. Escalate if tension stays above 8."
               rows={3}
-              className="w-full border-2 border-black bg-white px-4 py-3 text-sm font-mono placeholder:text-black/30 focus:outline-none focus:shadow-[2px_2px_0px_rgba(0,0,0,0.8)] resize-none"
+              className="w-full border-2 border-black bg-[var(--bg)] text-[var(--fg)] px-4 py-3 text-sm font-mono placeholder:text-black/30 dark:placeholder:text-[#e8dece]/25 focus:outline-none focus:shadow-[2px_2px_0px_rgba(0,0,0,0.8)] dark:focus:shadow-[2px_2px_0px_rgba(232,220,206,0.3)] resize-none"
             />
           </div>
 
