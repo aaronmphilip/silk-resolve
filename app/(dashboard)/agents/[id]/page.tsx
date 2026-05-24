@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCalls } from "@/lib/dal";
 import AgentEditor from "./_components/AgentEditor";
-import { getPlatformSettings } from "@/lib/platform";
+import { getVoiceProviderStatus } from "@/lib/platform";
 
 export const dynamic = "force-dynamic";
 
@@ -15,20 +15,18 @@ export default async function AgentDetailPage({ params }: PageProps) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  // Parallel fetch: agent, calls, platform settings
-  const [{ data: agentRaw }, callsFromDb, settings] = await Promise.all([
+  // Parallel fetch: agent + calls (provider status is sync, no await needed)
+  const [{ data: agentRaw }, callsFromDb] = await Promise.all([
     supabase.from("agents").select("*").eq("id", params.id).single(),
     getCalls({ agentId: params.id, limit: 50 }),
-    getPlatformSettings(),
   ]);
 
   if (!agentRaw) notFound();
 
-  // Detect which voice providers are configured
-  const silkConfigured     = !!(settings.silk_api_key);
-  const elevenlabsConfigured = !!(settings.elevenlabs_api_key);
+  // Detect which voice providers are configured (reads env vars — sync)
+  const { silkConfigured, elevenlabsConfigured } = getVoiceProviderStatus();
 
-  // Normalise DB row → AgentEditor shape (handle missing columns from migration)
+  // Normalise DB row → AgentEditor shape
   const initial = {
     id:               agentRaw.id,
     name:             agentRaw.name ?? "",

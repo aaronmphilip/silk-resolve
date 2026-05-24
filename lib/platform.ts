@@ -1,7 +1,7 @@
 /**
- * Platform-level settings — stored in platform_settings table.
- * Always accessed via service role (bypasses RLS).
- * API keys never returned to the client — server-side only.
+ * Platform-level config — all sourced from environment variables.
+ * No DB-based settings storage. Simpler, faster, more secure.
+ * API keys NEVER leave the server.
  */
 import { createClient } from "@supabase/supabase-js";
 import type { AIProvider } from "./ai-providers";
@@ -14,87 +14,63 @@ function svc() {
   );
 }
 
-/** Get all platform settings as a flat key→value map */
-export async function getPlatformSettings(): Promise<Record<string, string>> {
-  try {
-    const { data } = await svc()
-      .from("platform_settings")
-      .select("key, value");
-    return Object.fromEntries((data ?? []).map((r) => [r.key, r.value ?? ""]));
-  } catch {
-    return {};
-  }
-}
-
-/** Upsert a single platform setting */
-export async function setPlatformSetting(key: string, value: string): Promise<void> {
-  await svc()
-    .from("platform_settings")
-    .upsert({ key, value, updated_at: new Date().toISOString() });
-}
-
-/** Upsert multiple settings */
-export async function setPlatformSettings(pairs: Record<string, string>): Promise<void> {
-  if (Object.keys(pairs).length === 0) return;
-  const rows = Object.entries(pairs).map(([key, value]) => ({
-    key,
-    value,
-    updated_at: new Date().toISOString(),
-  }));
-  const { error } = await svc()
-    .from("platform_settings")
-    .upsert(rows, { onConflict: "key" });
-  if (error) throw new Error(`Failed to save platform settings: ${error.message}`);
-}
-
 /**
  * Get the AI config for script generation.
- * Priority: platform_settings DB → env vars → error.
+ * Reads AI_PROVIDER env var, then the matching key env var.
+ * Defaults to xAI / grok-4 if not set.
  */
 export async function getPlatformAIConfig(): Promise<{ provider: AIProvider; apiKey: string }> {
-  const s = await getPlatformSettings();
-  const provider = (s.ai_provider as AIProvider) ?? "anthropic";
+  const provider = (process.env.AI_PROVIDER ?? "xai") as AIProvider;
   const apiKey =
-    s.ai_api_key ??
+    (provider === "xai"       ? process.env.XAI_API_KEY       : null) ??
     (provider === "anthropic" ? process.env.ANTHROPIC_API_KEY : null) ??
     (provider === "openai"    ? process.env.OPENAI_API_KEY    : null) ??
     (provider === "gemini"    ? process.env.GEMINI_API_KEY    : null) ??
-    (provider === "xai"       ? process.env.XAI_API_KEY       : null) ??
+    // Fallbacks in order of likelihood
+    process.env.XAI_API_KEY ??
+    process.env.ANTHROPIC_API_KEY ??
     "";
   return { provider, apiKey };
 }
 
 /**
  * Get voice provider config.
- * Priority for voice synthesis: SILK (Rumik) → ElevenLabs → Vapi built-in.
- * Keys never leave the server.
+ * All keys read directly from env vars.
  */
 export async function getPlatformVoiceConfig() {
-  const s = await getPlatformSettings();
   return {
     vapi: {
-      // Public key → browser SDK only. DO NOT fall back to vapi_api_key
-      // (legacy field is often the public key — using it as private key breaks auth).
-      publicKey:   s.vapi_public_key  ?? process.env.VAPI_PUBLIC_KEY  ?? "",
-      // Private key → server REST API only. Explicit field only, no legacy fallback.
-      privateKey:  s.vapi_private_key ?? process.env.VAPI_PRIVATE_KEY ?? "",
-      phoneNumber: s.vapi_phone_number ?? process.env.VAPI_PHONE_NUMBER ?? "",
+      publicKey:   process.env.VAPI_PUBLIC_KEY   ?? "",
+      privateKey:  process.env.VAPI_PRIVATE_KEY  ?? "",
+      phoneNumber: process.env.VAPI_PHONE_NUMBER ?? "",
     },
-    // Rumik SILK — add key here when available, system auto-switches
     silk: {
-      apiKey:  s.silk_api_key  ?? process.env.SILK_API_KEY  ?? "",
-      voiceId: s.silk_voice_id ?? process.env.SILK_VOICE_ID ?? "",  // optional model/voice ID
-      baseUrl: s.silk_base_url ?? process.env.SILK_BASE_URL ?? "https://api.rumik.ai/v1",
+      apiKey:  process.env.SILK_API_KEY  ?? "",
+      voiceId: process.env.SILK_VOICE_ID ?? "",
+      baseUrl: process.env.SILK_BASE_URL ?? "https://api.rumik.ai/v1",
     },
     elevenlabs: {
-      apiKey:  s.elevenlabs_api_key  ?? process.env.ELEVENLABS_API_KEY  ?? "",
-      voiceId: s.elevenlabs_voice_id ?? process.env.ELEVENLABS_VOICE_ID ?? "EXAVITQu4vr4xnSDxMaL",
+      apiKey:  process.env.ELEVENLABS_API_KEY  ?? "",
+      voiceId: process.env.ELEVENLABS_VOICE_ID ?? "EXAVITQu4vr4xnSDxMaL",
     },
+  };
+}
+
+/**
+ * Quick synchronous check — which voice providers are configured.
+ * Used in server components (AgentEditor page) to pass flags to the client.
+ */
+export function getVoiceProviderStatus() {
+  return {
+    silkConfigured:       !!process.env.SILK_API_KEY,
+    elevenlabsConfigured: !!process.env.ELEVENLABS_API_KEY,
+    vapiConfigured:       !!process.env.VAPI_PRIVATE_KEY,
   };
 }
 
 /** Check if a user is a platform admin (by DB flag OR PLATFORM_ADMIN_EMAILS env) */
 export async function isPlatformAdmin(userId: string, email?: string): Promise<boolean> {
+  // 1. DB flag
   try {
     const { data } = await svc()
       .from("profiles")
@@ -104,7 +80,7 @@ export async function isPlatformAdmin(userId: string, email?: string): Promise<b
     if (data?.is_platform_admin) return true;
   } catch {}
 
-  // Check PLATFORM_ADMIN_EMAILS env var
+  // 2. PLATFORM_ADMIN_EMAILS env var
   const adminEmails = (process.env.PLATFORM_ADMIN_EMAILS ?? "")
     .split(",")
     .map((e) => e.trim())
@@ -113,16 +89,13 @@ export async function isPlatformAdmin(userId: string, email?: string): Promise<b
     return email ? adminEmails.includes(email) : false;
   }
 
-  // Fallback: if NO admins are configured anywhere (fresh install),
-  // allow any authenticated user to access admin settings.
-  // Once you set is_platform_admin=true on your profile or add
-  // PLATFORM_ADMIN_EMAILS, this fallback no longer applies.
+  // 3. Fallback: fresh install — if zero DB admins exist, allow any auth user
   try {
     const { count } = await svc()
       .from("profiles")
       .select("id", { count: "exact", head: true })
       .eq("is_platform_admin", true);
-    if ((count ?? 0) === 0) return true; // no admins configured — open access
+    if ((count ?? 0) === 0) return true;
   } catch {}
 
   return false;
