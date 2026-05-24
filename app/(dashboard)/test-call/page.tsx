@@ -1,27 +1,45 @@
 "use client";
+/**
+ * Test Call page — same Daily.co-direct approach as TalkModal.
+ * No @vapi-ai/web npm package. Daily.co loaded from CDN.
+ */
 import { useState, useEffect, useRef } from "react";
 import { Mic, MicOff, Phone, PhoneOff, Loader2, Volume2, AlertTriangle, ChevronDown } from "lucide-react";
 
-type CallState = "idle" | "connecting" | "active" | "ending" | "ended" | "error";
-
+type CallState = "idle" | "connecting" | "joining" | "active" | "ending" | "ended" | "error";
 interface Agent { id: string; name: string; status: string; }
 interface Transcript { role: "user" | "assistant"; text: string; }
 
+function loadDailySDK(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((window as any).Daily) { resolve(); return; }
+    const existing = document.getElementById("daily-sdk");
+    if (existing) { existing.addEventListener("load", () => resolve()); return; }
+    const script = document.createElement("script");
+    script.id = "daily-sdk";
+    script.src = "https://unpkg.com/@daily-co/daily-js@0.85.0/dist/daily.js";
+    script.crossOrigin = "anonymous";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Failed to load Daily.co SDK"));
+    document.head.appendChild(script);
+  });
+}
+
 export default function TestCallPage() {
-  const [state, setState]     = useState<CallState>("idle");
-  const [error, setError]     = useState("");
-  const [muted, setMuted]     = useState(false);
-  const [duration, setDur]    = useState(0);
-  const [tension, setTension] = useState(0);
+  const [state, setState]         = useState<CallState>("idle");
+  const [error, setError]         = useState("");
+  const [muted, setMuted]         = useState(false);
+  const [duration, setDuration]   = useState(0);
+  const [tension, setTension]     = useState(0);
   const [transcript, setTranscript] = useState<Transcript[]>([]);
-  const [agents, setAgents]   = useState<Agent[]>([]);
-  const [agentId, setAgentId] = useState("");
+  const [agents, setAgents]       = useState<Agent[]>([]);
+  const [agentId, setAgentId]     = useState("");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const vapiRef  = useRef<any>(null);
+  const callRef  = useRef<any>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load agents
   useEffect(() => {
     fetch("/api/agents")
       .then(r => r.json())
@@ -32,7 +50,6 @@ export default function TestCallPage() {
       .catch(() => {});
   }, []);
 
-  // Auto-scroll transcript
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [transcript]);
@@ -43,56 +60,70 @@ export default function TestCallPage() {
     setError("");
     setTranscript([]);
     setTension(0);
-    setDur(0);
+    setDuration(0);
 
     try {
-      const [tokenRes, configRes] = await Promise.all([
-        fetch("/api/voice/vapi-token"),
-        fetch(`/api/agents/${agentId}/vapi-config`),
-      ]);
+      // Step 1: Create Vapi web call server-side
+      const callRes = await fetch("/api/voice/web-call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId }),
+      });
+      if (!callRes.ok) {
+        const d = await callRes.json();
+        throw new Error(d.error ?? "Failed to create call");
+      }
+      const { roomUrl } = await callRes.json() as { callId: string; roomUrl: string };
 
-      if (!tokenRes.ok) throw new Error((await tokenRes.json()).error ?? "Vapi public key not set — go to Admin → Settings");
-      if (!configRes.ok) throw new Error((await configRes.json()).error ?? "Failed to load agent config");
+      // Step 2: Load Daily.co SDK from CDN
+      setState("joining");
+      await loadDailySDK();
 
-      const { apiKey }        = await tokenRes.json();
-      const assistantConfig   = await configRes.json();
-
+      // Step 3: Create call object and join
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const vapiModule = await import("@vapi-ai/web") as any;
-      const VapiClass = vapiModule.default ?? vapiModule;
-      const vapi = new VapiClass(apiKey) as any;
-      vapiRef.current = vapi;
+      const Daily = (window as any).Daily;
+      if (!Daily) throw new Error("Daily.co SDK failed to load");
 
-      const appUrl = window.location.origin;
+      const call = Daily.createCallObject({ audioSource: true, videoSource: false });
+      callRef.current = call;
 
-      // Register events BEFORE start() so call-start isn't missed
-      vapi.on("call-start", () => {
+      // Step 4: Wire events
+      call.on("joined-meeting", () => {
         setState("active");
         const t0 = Date.now();
-        timerRef.current = setInterval(() => setDur(Math.floor((Date.now() - t0) / 1000)), 1000);
+        timerRef.current = setInterval(() => setDuration(Math.floor((Date.now() - t0) / 1000)), 1000);
       });
 
-      vapi.on("call-end", () => {
+      call.on("left-meeting", () => {
         setState("ended");
         if (timerRef.current) clearInterval(timerRef.current);
       });
 
-      vapi.on("transcript", (msg: { role: string; transcript: string; transcriptType: string }) => {
-        if (msg.transcriptType !== "final") return;
-        setTranscript(t => [...t, { role: msg.role as "user" | "assistant", text: msg.transcript }]);
-        if (msg.role === "user") setTension(t => Math.min(10, t + 0.4));
-      });
-
-      vapi.on("error", (err: Error) => {
-        setError(err?.message ?? "Call error");
+      call.on("error", (e: { errorMsg?: string }) => {
+        setError(e?.errorMsg ?? "Call error");
         setState("error");
         if (timerRef.current) clearInterval(timerRef.current);
       });
 
-      await vapi.start({
-        ...assistantConfig,
-        serverUrl: `${appUrl}/api/voice/vapi-incoming`,
+      call.on("app-message", (e: { data: string }) => {
+        if (!e?.data) return;
+        if (e.data === "listening") { setState("active"); return; }
+        try {
+          const msg = JSON.parse(e.data) as Record<string, unknown>;
+          if (msg.type === "transcript" && msg.transcriptType === "final") {
+            setTranscript(t => [...t, {
+              role: msg.role as "user" | "assistant",
+              text: msg.transcript as string,
+            }]);
+            if (msg.role === "user") setTension(t => Math.min(10, t + 0.4));
+          }
+          if (msg.type === "status-update" && msg.status === "ended") call.leave();
+          if (msg.type === "hang") call.leave();
+        } catch {}
       });
+
+      // Step 5: Join
+      await call.join({ url: roomUrl });
 
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to start call");
@@ -100,24 +131,30 @@ export default function TestCallPage() {
     }
   }
 
-  function endCall() {
+  async function endCall() {
     setState("ending");
-    vapiRef.current?.stop();
     if (timerRef.current) clearInterval(timerRef.current);
+    try {
+      await callRef.current?.leave();
+      await callRef.current?.destroy();
+    } catch {}
+    setState("ended");
   }
 
   function toggleMute() {
-    vapiRef.current?.setMuted(!muted);
-    setMuted(m => !m);
+    if (!callRef.current) return;
+    const newMuted = !muted;
+    callRef.current.setLocalAudio(!newMuted);
+    setMuted(newMuted);
   }
 
   function reset() {
     setState("idle");
     setError("");
-    vapiRef.current = null;
+    callRef.current = null;
     setTranscript([]);
     setTension(0);
-    setDur(0);
+    setDuration(0);
   }
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -134,7 +171,7 @@ export default function TestCallPage() {
       <div className="px-5 sm:px-8 py-6 sm:py-8 max-w-4xl">
 
         {/* Agent selector */}
-        {agents.length > 0 && state === "idle" && (
+        {agents.length > 0 && (state === "idle" || state === "ended" || state === "error") && (
           <div className="mb-6">
             <label className="block text-xs font-semibold text-black mb-1.5">Agent to test</label>
             <div className="relative max-w-xs">
@@ -154,7 +191,9 @@ export default function TestCallPage() {
 
         {agents.length === 0 && (
           <div className="mb-6 border-2 border-amber-400 bg-amber-50 px-4 py-3">
-            <p className="text-xs font-mono text-amber-800">No agents found — <a href="/agents/new" className="underline">create one first</a>.</p>
+            <p className="text-xs font-mono text-amber-800">
+              No agents found — <a href="/agents/new" className="underline">create one first</a>.
+            </p>
           </div>
         )}
 
@@ -163,21 +202,25 @@ export default function TestCallPage() {
           {/* Call panel */}
           <div className="sm:col-span-1">
             <div className="border-2 border-black p-6 text-center space-y-5">
+
+              {/* Status dot + label */}
               <div className="space-y-2">
                 <div className={`w-4 h-4 rounded-full mx-auto transition-all ${
-                  state === "active"     ? "bg-emerald-500 shadow-[0_0_12px_rgba(52,211,153,0.5)]" :
-                  state === "connecting" ? "bg-amber-400 animate-pulse" :
-                  state === "error"      ? "bg-red-500" : "bg-black/20"
+                  state === "active"                               ? "bg-emerald-500 shadow-[0_0_12px_rgba(52,211,153,0.5)]" :
+                  state === "connecting" || state === "joining"   ? "bg-amber-400 animate-pulse" :
+                  state === "error"                               ? "bg-red-500" : "bg-black/20"
                 }`} />
                 <p className="text-sm font-bold text-black uppercase tracking-widest">
-                  {state === "idle"       ? (selectedAgent?.name ?? "ready") :
-                   state === "connecting" ? "connecting..." :
-                   state === "active"     ? fmt(duration) :
-                   state === "ending"     ? "ending..." :
-                   state === "ended"      ? "call ended" : "error"}
+                  {state === "idle"                             ? (selectedAgent?.name ?? "ready") :
+                   state === "connecting"                       ? "creating call..." :
+                   state === "joining"                          ? "joining room..." :
+                   state === "active"                           ? fmt(duration) :
+                   state === "ending"                           ? "ending..." :
+                   state === "ended"                            ? "call ended" : "error"}
                 </p>
               </div>
 
+              {/* PEEK tension */}
               {state === "active" && (
                 <div>
                   <p className="text-[10px] font-mono text-black/50 uppercase tracking-widest mb-2 font-semibold">peek tension</p>
@@ -191,6 +234,7 @@ export default function TestCallPage() {
                 </div>
               )}
 
+              {/* Error */}
               {error && (
                 <div className="border-2 border-red-400 bg-red-50 px-3 py-3 text-left">
                   <div className="flex items-start gap-2">
@@ -200,6 +244,7 @@ export default function TestCallPage() {
                 </div>
               )}
 
+              {/* Buttons */}
               <div className="space-y-2">
                 {(state === "idle" || state === "ended" || state === "error") && (
                   <button
@@ -211,22 +256,27 @@ export default function TestCallPage() {
                     {state === "idle" ? "start call" : "start new call"}
                   </button>
                 )}
-                {state === "connecting" && (
+                {(state === "connecting" || state === "joining") && (
                   <button disabled className="w-full flex items-center justify-center gap-2 bg-black/20 py-3.5 text-sm font-mono text-black/50">
-                    <Loader2 size={14} className="animate-spin" /> connecting...
+                    <Loader2 size={14} className="animate-spin" />
+                    {state === "connecting" ? "creating call..." : "joining room..."}
                   </button>
                 )}
                 {state === "active" && (
                   <div className="space-y-2">
-                    <button onClick={toggleMute}
+                    <button
+                      onClick={toggleMute}
                       className={`w-full flex items-center justify-center gap-2 border-2 py-3 text-sm font-bold transition-colors ${
                         muted ? "border-amber-400 text-amber-700 bg-amber-50" : "border-black hover:bg-black/5"
-                      }`}>
+                      }`}
+                    >
                       {muted ? <MicOff size={14} /> : <Mic size={14} />}
                       {muted ? "unmute" : "mute"}
                     </button>
-                    <button onClick={endCall}
-                      className="w-full flex items-center justify-center gap-2 border-2 border-red-500 text-red-600 py-3 text-sm font-bold hover:bg-red-50 transition-colors">
+                    <button
+                      onClick={endCall}
+                      className="w-full flex items-center justify-center gap-2 border-2 border-red-500 text-red-600 py-3 text-sm font-bold hover:bg-red-50 transition-colors"
+                    >
                       <PhoneOff size={14} /> end call
                     </button>
                   </div>
@@ -255,7 +305,9 @@ export default function TestCallPage() {
                   <div className="text-center">
                     <Volume2 size={24} className="text-black/20 mx-auto mb-3" />
                     <p className="text-sm font-mono text-black/30">
-                      {state === "connecting" ? "connecting to agent..." : "transcript appears here during the call"}
+                      {state === "connecting" || state === "joining"
+                        ? "setting up call..."
+                        : "transcript appears here during the call"}
                     </p>
                   </div>
                 </div>
@@ -269,7 +321,9 @@ export default function TestCallPage() {
                         <p className={`text-[10px] font-mono font-semibold mb-1.5 ${msg.role === "assistant" ? "text-black/40" : "text-[#e8dece]/60"}`}>
                           {msg.role === "assistant" ? "agent" : "you"}
                         </p>
-                        <p className={`text-sm leading-relaxed ${msg.role === "user" ? "text-[#e8dece]" : "text-black"}`}>{msg.text}</p>
+                        <p className={`text-sm leading-relaxed ${msg.role === "user" ? "text-[#e8dece]" : "text-black"}`}>
+                          {msg.text}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -287,7 +341,9 @@ export default function TestCallPage() {
                   { label: "Escalation",    desc: "Push hard — agent should offer to escalate" },
                 ].map(item => (
                   <div key={item.label} className="flex items-start gap-3">
-                    <span className="text-[10px] font-mono border-2 border-black/20 px-2 py-0.5 text-black/50 flex-shrink-0 mt-0.5">{item.label}</span>
+                    <span className="text-[10px] font-mono border-2 border-black/20 px-2 py-0.5 text-black/50 flex-shrink-0 mt-0.5">
+                      {item.label}
+                    </span>
                     <p className="text-xs text-black/60">{item.desc}</p>
                   </div>
                 ))}
