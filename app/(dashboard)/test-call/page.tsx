@@ -26,6 +26,15 @@ function loadDailySDK(): Promise<void> {
   });
 }
 
+async function prepareMicrophone(): Promise<void> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Microphone access is not available in this browser.");
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  stream.getTracks().forEach(track => track.stop());
+}
+
 export default function TestCallPage() {
   const [state, setState]         = useState<CallState>("idle");
   const [error, setError]         = useState("");
@@ -63,7 +72,11 @@ export default function TestCallPage() {
     setDuration(0);
 
     try {
-      // Step 1: Create Vapi web call server-side
+      // Step 1: Load Daily and get mic permission before Vapi starts its web-call join timer.
+      await loadDailySDK();
+      await prepareMicrophone();
+
+      // Step 2: Create Vapi web call server-side
       const callRes = await fetch("/api/voice/web-call", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -75,11 +88,8 @@ export default function TestCallPage() {
       }
       const { roomUrl } = await callRes.json() as { callId: string; roomUrl: string };
 
-      // Step 2: Load Daily.co SDK from CDN
-      setState("joining");
-      await loadDailySDK();
-
       // Step 3: Create call object and join
+      setState("joining");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const Daily = (window as any).Daily;
       if (!Daily) throw new Error("Daily.co SDK failed to load");

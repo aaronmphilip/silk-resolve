@@ -44,6 +44,15 @@ function loadDailySDK(): Promise<void> {
   });
 }
 
+async function prepareMicrophone(): Promise<void> {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error("Microphone access is not available in this browser.");
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  stream.getTracks().forEach(track => track.stop());
+}
+
 export default function TalkModal({ agentId, agentName, onClose }: Props) {
   const [state, setState]       = useState<CallState>("connecting");
   const [error, setError]       = useState("");
@@ -66,8 +75,12 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
 
     async function init() {
       try {
-        // ── Step 1: Create Vapi web call on our server ──────────────────────
+        // Step 1: Load Daily and get mic permission before Vapi starts its web-call join timer.
         setState("connecting");
+        await loadDailySDK();
+        await prepareMicrophone();
+
+        // ── Step 2: Create Vapi web call on our server ──────────────────────
         const callRes = await fetch("/api/voice/web-call", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -81,12 +94,8 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
 
         if (!mounted) return;
 
-        // ── Step 2: Load Daily.co SDK from CDN ──────────────────────────────
-        setState("joining");
-        await loadDailySDK();
-        if (!mounted) return;
-
         // ── Step 3: Create Daily call object and join room ──────────────────
+        setState("joining");
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const Daily = (window as any).Daily;
         if (!Daily) throw new Error("Daily.co SDK failed to load");
