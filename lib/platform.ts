@@ -103,9 +103,26 @@ export async function isPlatformAdmin(userId: string, email?: string): Promise<b
     if (data?.is_platform_admin) return true;
   } catch {}
 
+  // Check PLATFORM_ADMIN_EMAILS env var
   const adminEmails = (process.env.PLATFORM_ADMIN_EMAILS ?? "")
     .split(",")
     .map((e) => e.trim())
     .filter(Boolean);
-  return email ? adminEmails.includes(email) : false;
+  if (adminEmails.length > 0) {
+    return email ? adminEmails.includes(email) : false;
+  }
+
+  // Fallback: if NO admins are configured anywhere (fresh install),
+  // allow any authenticated user to access admin settings.
+  // Once you set is_platform_admin=true on your profile or add
+  // PLATFORM_ADMIN_EMAILS, this fallback no longer applies.
+  try {
+    const { count } = await svc()
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .eq("is_platform_admin", true);
+    if ((count ?? 0) === 0) return true; // no admins configured — open access
+  } catch {}
+
+  return false;
 }

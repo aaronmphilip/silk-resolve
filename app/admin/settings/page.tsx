@@ -74,7 +74,11 @@ export default function AdminSettingsPage() {
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/settings");
-    if (res.ok) setSettings(await res.json());
+    if (res.ok) {
+      setSettings(await res.json());
+    } else if (res.status === 403) {
+      setError("Access denied — your account is not a platform admin. Run migration 008 in Supabase SQL Editor to grant yourself access.");
+    }
     setLoading(false);
   }, []);
 
