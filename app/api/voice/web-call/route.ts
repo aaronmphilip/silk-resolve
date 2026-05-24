@@ -60,7 +60,7 @@ export async function POST(req: NextRequest, _ctx?: Ctx) {
     model: {
       provider: "custom-llm",
       url: `${origin}/api/voice/vapi-llm`,
-      model: agent.llm_model || "grok-4",
+      model: agent.llm_model || "gemini-2.5-flash",
       messages: [{ role: "system", content: systemPrompt }],
       temperature: 0.7,
       maxTokens: 250,

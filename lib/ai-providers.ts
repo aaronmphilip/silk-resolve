@@ -14,11 +14,11 @@ export const AI_PROVIDERS: {
   keyHint: string;
 }[] = [
   {
-    id: "xai",
-    label: "xAI Grok",
-    model: "grok-4",
-    note: "Fast, smart, cost-effective. OpenAI-compatible API. Great for voice scripts.",
-    keyHint: "xai-...",
+    id: "gemini",
+    label: "Google Gemini",
+    model: "gemini-2.5-flash",
+    note: "Fast, large context window. Excellent for voice scripts and multilingual support.",
+    keyHint: "AIza...",
   },
   {
     id: "anthropic",
@@ -35,10 +35,10 @@ export const AI_PROVIDERS: {
     keyHint: "sk-...",
   },
   {
-    id: "gemini",
-    label: "Google Gemini",
-    model: "gemini-1.5-pro",
-    note: "Long context window. Good for document-heavy use cases.",
-    keyHint: "AIza...",
+    id: "xai",
+    label: "xAI Grok",
+    model: "grok-4",
+    note: "OpenAI-compatible API. Good for voice scripts.",
+    keyHint: "xai-...",
   },
 ];
