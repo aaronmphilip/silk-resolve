@@ -73,10 +73,11 @@ export async function getPlatformVoiceConfig() {
   const s = await getPlatformSettings();
   return {
     vapi: {
-      // Public key → browser SDK (vapi-token endpoint returns this)
-      publicKey:   s.vapi_public_key   ?? process.env.VAPI_PUBLIC_KEY   ?? s.vapi_api_key ?? process.env.VAPI_API_KEY ?? "",
-      // Private key → server-side API calls only (never sent to browser)
-      privateKey:  s.vapi_private_key  ?? process.env.VAPI_PRIVATE_KEY  ?? s.vapi_api_key ?? process.env.VAPI_API_KEY ?? "",
+      // Public key → browser SDK only. DO NOT fall back to vapi_api_key
+      // (legacy field is often the public key — using it as private key breaks auth).
+      publicKey:   s.vapi_public_key  ?? process.env.VAPI_PUBLIC_KEY  ?? "",
+      // Private key → server REST API only. Explicit field only, no legacy fallback.
+      privateKey:  s.vapi_private_key ?? process.env.VAPI_PRIVATE_KEY ?? "",
       phoneNumber: s.vapi_phone_number ?? process.env.VAPI_PHONE_NUMBER ?? "",
     },
     // Rumik SILK — add key here when available, system auto-switches

@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, Check, Eye, EyeOff, Zap, Cpu, Mic, Shield, AlertCircle } from "lucide-react";
+import { Loader2, Check, Eye, EyeOff, Zap, Cpu, Mic, Shield, AlertCircle, FlaskConical } from "lucide-react";
 import { AI_PROVIDERS, type AIProvider } from "@/lib/ai-providers";
 
 type Settings = Record<string, string>;
@@ -70,6 +70,8 @@ export default function AdminSettingsPage() {
   const [saved, setSaved] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; error?: string } | null>(null);
+  const [vapiTesting, setVapiTesting] = useState<"public" | "private" | null>(null);
+  const [vapiTestResults, setVapiTestResults] = useState<Record<"public" | "private", { ok: boolean; type?: string; message: string } | null>>({ public: null, private: null });
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
@@ -115,6 +117,22 @@ export default function AdminSettingsPage() {
     });
     setTesting(false);
     setTestResult(await res.json());
+  }
+
+  async function testVapiKey(field: "public" | "private") {
+    const key = settings[field === "public" ? "vapi_public_key" : "vapi_private_key"];
+    if (!key || key === "set") { setError(`Enter the Vapi ${field} key first, then test it`); return; }
+    setVapiTesting(field);
+    setVapiTestResults(r => ({ ...r, [field]: null }));
+    setError("");
+    const res = await fetch("/api/admin/vapi-test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key }),
+    });
+    const data = await res.json();
+    setVapiTesting(null);
+    setVapiTestResults(r => ({ ...r, [field]: data }));
   }
 
   if (loading) {
@@ -219,14 +237,45 @@ export default function AdminSettingsPage() {
               secret
               placeholder="vapi public key from dashboard"
             />
+            <div className="flex flex-wrap items-center gap-3 pb-3 -mt-2">
+              <button
+                onClick={() => testVapiKey("public")}
+                disabled={vapiTesting === "public"}
+                className="flex items-center gap-1.5 text-xs font-mono border border-black/30 px-3 py-1.5 hover:border-black hover:bg-black/5 transition-colors disabled:opacity-40"
+              >
+                {vapiTesting === "public" ? <Loader2 size={10} className="animate-spin" /> : <FlaskConical size={10} />}
+                test public key
+              </button>
+              {vapiTestResults.public && (
+                <p className={`text-xs font-mono font-semibold ${vapiTestResults.public.ok ? "text-emerald-700" : "text-red-600"}`}>
+                  {vapiTestResults.public.message}
+                </p>
+              )}
+            </div>
+
             <Field
               label="Private Key (server only)"
-              hint="Used server-side to list calls, pull transcripts, etc. Never sent to browser."
+              hint="Used server-side to create calls via REST API. Never sent to browser."
               value={settings.vapi_private_key ?? ""}
               onChange={set("vapi_private_key")}
               secret
               placeholder="vapi private key from dashboard"
             />
+            <div className="flex flex-wrap items-center gap-3 pb-3 -mt-2">
+              <button
+                onClick={() => testVapiKey("private")}
+                disabled={vapiTesting === "private"}
+                className="flex items-center gap-1.5 text-xs font-mono border border-black/30 px-3 py-1.5 hover:border-black hover:bg-black/5 transition-colors disabled:opacity-40"
+              >
+                {vapiTesting === "private" ? <Loader2 size={10} className="animate-spin" /> : <FlaskConical size={10} />}
+                test private key
+              </button>
+              {vapiTestResults.private && (
+                <p className={`text-xs font-mono font-semibold ${vapiTestResults.private.ok ? "text-emerald-700" : "text-red-600"}`}>
+                  {vapiTestResults.private.message}
+                </p>
+              )}
+            </div>
             <Field
               label="Phone Number (optional)"
               hint="Your Vapi/Twilio inbound number. Leave blank if using browser calls only."
