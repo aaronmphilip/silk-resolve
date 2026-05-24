@@ -81,7 +81,6 @@ export async function POST(req: NextRequest) {
   }
 
   const callId         = message.call?.id ?? "";
-  const callType       = message.call?.type ?? "inboundPhoneCall";
   const toPhone        = message.call?.phoneNumber?.number ?? "";
   const fromPhone      = message.call?.customer?.number ?? "";
   const agentIdMeta    = message.call?.metadata?.agentId ?? "";   // web calls pass this
@@ -155,7 +154,6 @@ export async function POST(req: NextRequest) {
       agent_id:        agentRow.id,
       caller_phone:    fromPhone || "web-call",
       platform_phone:  toPhone || "web",
-      call_type:       callType,
       mesh_profile_id: meshRow?.id ?? null,
       messages:        [{ role: "agent", content: firstMessage, ts: new Date().toISOString() }],
       tension_level:   0,

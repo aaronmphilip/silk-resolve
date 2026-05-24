@@ -6,6 +6,18 @@
 import { createClient } from "@supabase/supabase-js";
 import type { AIProvider } from "./ai-providers";
 
+function env(name: string): string {
+  return process.env[name]?.trim() ?? "";
+}
+
+function firstEnv(...names: string[]): string {
+  for (const name of names) {
+    const value = env(name);
+    if (value) return value;
+  }
+  return "";
+}
+
 function svc() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -22,13 +34,10 @@ function svc() {
 export async function getPlatformAIConfig(): Promise<{ provider: AIProvider; apiKey: string }> {
   const provider = (process.env.AI_PROVIDER ?? "gemini") as AIProvider;
   const apiKey =
-    (provider === "gemini"    ? process.env.GEMINI_API_KEY    : null) ??
-    (provider === "anthropic" ? process.env.ANTHROPIC_API_KEY : null) ??
-    (provider === "openai"    ? process.env.OPENAI_API_KEY    : null) ??
-    // Fallbacks in order
-    process.env.GEMINI_API_KEY ??
-    process.env.ANTHROPIC_API_KEY ??
-    "";
+    provider === "gemini"    ? firstEnv("GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY") :
+    provider === "anthropic" ? firstEnv("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY") :
+    provider === "openai"    ? firstEnv("OPENAI_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY") :
+    firstEnv("GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY");
   return { provider, apiKey };
 }
 
@@ -39,12 +48,12 @@ export async function getPlatformAIConfig(): Promise<{ provider: AIProvider; api
 export async function getPlatformVoiceConfig() {
   return {
     vapi: {
-      publicKey:   process.env.VAPI_PUBLIC_KEY   ?? "",
-      privateKey:  process.env.VAPI_PRIVATE_KEY  ?? "",
-      phoneNumber: process.env.VAPI_PHONE_NUMBER ?? "",
+      publicKey:   firstEnv("VAPI_PUBLIC_KEY", "NEXT_PUBLIC_VAPI_PUBLIC_KEY"),
+      privateKey:  firstEnv("VAPI_PRIVATE_KEY", "VAPI_API_KEY"),
+      phoneNumber: env("VAPI_PHONE_NUMBER"),
     },
     silk: {
-      apiKey: process.env.SILK_API_KEY ?? "",
+      apiKey: env("SILK_API_KEY"),
     },
   };
 }
@@ -55,8 +64,9 @@ export async function getPlatformVoiceConfig() {
  */
 export function getVoiceProviderStatus() {
   return {
-    silkConfigured:  !!process.env.SILK_API_KEY,
-    vapiConfigured:  !!process.env.VAPI_PRIVATE_KEY,
+    silkConfigured:      !!env("SILK_API_KEY"),
+    vapiWebConfigured:   !!firstEnv("VAPI_PUBLIC_KEY", "NEXT_PUBLIC_VAPI_PUBLIC_KEY"),
+    vapiServerConfigured: !!firstEnv("VAPI_PRIVATE_KEY", "VAPI_API_KEY"),
   };
 }
 

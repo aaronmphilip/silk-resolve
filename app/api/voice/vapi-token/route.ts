@@ -14,7 +14,12 @@ export async function GET() {
   const { vapi } = await getPlatformVoiceConfig();
   const publicKey = vapi.publicKey;
 
-  if (!publicKey) return NextResponse.json({ error: "Vapi public key not configured. Add it in Admin → Settings." }, { status: 400 });
+  if (!publicKey) {
+    return NextResponse.json(
+      { error: "Vapi public key not configured. Add VAPI_PUBLIC_KEY to the server environment." },
+      { status: 400 }
+    );
+  }
 
   // Only the PUBLIC key goes to the browser — never the private key
   return NextResponse.json({ apiKey: publicKey });

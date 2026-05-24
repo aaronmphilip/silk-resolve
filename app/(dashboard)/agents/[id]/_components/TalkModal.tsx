@@ -3,7 +3,7 @@
  * TalkModal — browser voice call with a Silk Resolve agent.
  *
  * Architecture (no @vapi-ai/web npm package — avoids all bundling issues):
- *   1. POST /api/voice/web-call  →  server creates Vapi call with private key
+ *   1. POST /api/voice/web-call  →  server creates Vapi web call with public web key
  *                                    returns Daily.co roomUrl
  *   2. Load @daily-co/daily-js from CDN via <script> injection
  *   3. Join the Daily.co room directly
