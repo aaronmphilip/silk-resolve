@@ -1,9 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
-type Ctx = { params: { id: string } };
+type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(_req: Request, { params }: Ctx) {
+  const { id } = await params;
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -11,7 +12,7 @@ export async function GET(_req: Request, { params }: Ctx) {
   const { data, error } = await supabase
     .from("scripts")
     .select("*")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (error || !data) return NextResponse.json({ error: "not found" }, { status: 404 });
@@ -19,6 +20,7 @@ export async function GET(_req: Request, { params }: Ctx) {
 }
 
 export async function PUT(req: Request, { params }: Ctx) {
+  const { id } = await params;
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -40,7 +42,7 @@ export async function PUT(req: Request, { params }: Ctx) {
       escalation_rules: body.escalationRules,
       no_go_topics: body.noGoTopics,
     })
-    .eq("id", params.id)
+    .eq("id", id)
     .select()
     .single();
 
@@ -49,11 +51,12 @@ export async function PUT(req: Request, { params }: Ctx) {
 }
 
 export async function DELETE(_req: Request, { params }: Ctx) {
+  const { id } = await params;
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const { error } = await supabase.from("scripts").delete().eq("id", params.id);
+  const { error } = await supabase.from("scripts").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }

@@ -5,7 +5,7 @@ import { USER_MESH_PROFILES } from "@/lib/mock-data";
 import type { EmotionalDebtLevel, CompanionVibe, ContextualAnchor } from "@/lib/types";
 
 interface PageProps {
-  params: { userId: string };
+  params: Promise<{ userId: string }>;
 }
 
 export function generateStaticParams() {
@@ -76,8 +76,9 @@ function AnchorCard({ anchor }: { anchor: ContextualAnchor }) {
   );
 }
 
-export default function MeshProfilePage({ params }: PageProps) {
-  const profile = USER_MESH_PROFILES.find((p) => p.id === params.userId);
+export default async function MeshProfilePage({ params }: PageProps) {
+  const { userId } = await params;
+  const profile = USER_MESH_PROFILES.find((p) => p.id === userId);
   if (!profile) notFound();
 
   const initials = profile.name.split(" ").map((n) => n[0]).join("").slice(0, 2);

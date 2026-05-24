@@ -11,11 +11,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
 
-type Ctx = { params?: Record<string, string> };
-
 export const runtime = "nodejs";
 
-export async function POST(req: NextRequest, _ctx?: Ctx) {
+export async function POST(req: NextRequest) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });

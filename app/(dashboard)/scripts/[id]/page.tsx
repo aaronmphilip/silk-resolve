@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { use, useState, useEffect, useCallback } from "react";
 import { ArrowLeft, Save, Zap, Plus, Trash2, Sparkles, Loader2, Phone, Copy, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import type { AgentScript, ScriptTool, EscalationRule, Integration } from "@/lib/types";
@@ -36,7 +36,8 @@ function mapDbScript(r: Record<string, unknown>): AgentScript {
   };
 }
 
-export default function ScriptEditorPage({ params }: { params: { id: string } }) {
+export default function ScriptEditorPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
   const [script, setScript] = useState<AgentScript | null>(null);
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,7 +54,7 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
   const loadScript = useCallback(async () => {
     try {
       const [scriptRes, intgRes] = await Promise.all([
-        fetch(`/api/scripts/${params.id}`),
+        fetch(`/api/scripts/${id}`),
         fetch("/api/integrations"),
       ]);
       if (scriptRes.ok) {
@@ -75,7 +76,7 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
     } finally {
       setLoading(false);
     }
-  }, [params.id]);
+  }, [id]);
 
   useEffect(() => { loadScript(); }, [loadScript]);
 

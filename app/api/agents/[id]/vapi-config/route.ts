@@ -7,9 +7,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getPlatformVoiceConfig } from "@/lib/platform";
 
-type Ctx = { params: { id: string } };
+type Ctx = { params: Promise<{ id: string }> };
 
 export async function GET(req: NextRequest, { params }: Ctx) {
+  const { id } = await params;
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -17,7 +18,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const { data: agent, error } = await supabase
     .from("agents")
     .select("id, name, system_prompt, first_message, language, llm_provider, llm_model, silk_voice_id, companion_vibe")
-    .eq("id", params.id)
+    .eq("id", id)
     .single();
 
   if (error || !agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });

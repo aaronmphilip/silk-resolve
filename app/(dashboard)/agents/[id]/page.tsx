@@ -7,18 +7,19 @@ import { getVoiceProviderStatus } from "@/lib/platform";
 export const dynamic = "force-dynamic";
 
 interface PageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default async function AgentDetailPage({ params }: PageProps) {
+  const { id } = await params;
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) notFound();
 
   // Parallel fetch: agent + calls (provider status is sync, no await needed)
   const [{ data: agentRaw }, callsFromDb] = await Promise.all([
-    supabase.from("agents").select("*").eq("id", params.id).single(),
-    getCalls({ agentId: params.id, limit: 50 }),
+    supabase.from("agents").select("*").eq("id", id).single(),
+    getCalls({ agentId: id, limit: 50 }),
   ]);
 
   if (!agentRaw) notFound();

@@ -1,20 +1,6 @@
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-
-const ObserverClient = dynamic(
-  () => import("@/components/observer/ObserverClient"),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="font-mono text-xs opacity-30 animate-pulse">
-          initialising observer...
-        </p>
-      </div>
-    ),
-  }
-);
+import ObserverClientLoader from "./ObserverClientLoader";
 
 export default function ObserverPage() {
   return (
@@ -75,7 +61,7 @@ export default function ObserverPage() {
 
       {/* Observer client */}
       <div className="flex-1 flex overflow-hidden relative z-10">
-        <ObserverClient />
+        <ObserverClientLoader />
       </div>
     </div>
   );

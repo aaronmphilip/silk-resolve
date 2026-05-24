@@ -1,18 +1,6 @@
-import dynamic from "next/dynamic";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-
-const CanvasClient = dynamic(
-  () => import("@/components/canvas/CanvasClient"),
-  {
-    ssr: false,
-    loading: () => (
-      <div className="flex-1 flex items-center justify-center">
-        <p className="font-mono text-xs opacity-30">loading canvas...</p>
-      </div>
-    ),
-  }
-);
+import CanvasClientLoader from "./CanvasClientLoader";
 
 const nodePalette = [
   {
@@ -126,7 +114,7 @@ export default function CanvasPage() {
 
         {/* Canvas */}
         <div className="flex-1 overflow-hidden">
-          <CanvasClient />
+          <CanvasClientLoader />
         </div>
       </div>
     </div>

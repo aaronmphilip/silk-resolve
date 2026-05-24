@@ -6,7 +6,7 @@ import { outcomeBorder } from "@/lib/utils";
 import CallHeatmap from "@/components/analytics/CallHeatmap";
 
 interface PageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export function generateStaticParams() {
@@ -21,8 +21,9 @@ const ENV_LABELS: Record<string, string> = {
   office: "Office",
 };
 
-export default function CallDetailPage({ params }: PageProps) {
-  const call = CALLS.find((c) => c.id === params.id);
+export default async function CallDetailPage({ params }: PageProps) {
+  const { id } = await params;
+  const call = CALLS.find((c) => c.id === id);
   if (!call) notFound();
 
   const analysis = CALL_ANALYSES[call.id] ?? null;

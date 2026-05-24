@@ -1,9 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
-import { cookies } from "next/headers";
+import { cookies, type UnsafeUnwrappedCookies } from "next/headers";
 
 export function createClient() {
-  const cookieStore = cookies();
+  // Keep this wrapper synchronous for existing route handlers/components during
+  // the Next 15 migration. Next still supports this cast as a migration bridge.
+  const cookieStore = cookies() as unknown as UnsafeUnwrappedCookies;
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
