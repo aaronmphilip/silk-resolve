@@ -4,11 +4,11 @@
 
 /* ─── Theme tokens ──────────────────────────────────────────── */
 :root {
-  --bg:          #F6F1E9;
-  --bg-panel:    #EDE8DF;
+  --bg:          #ECE7D3;   /* warm parchment — Rumik-matched        */
+  --bg-panel:    #E3DDCA;   /* slightly deeper parchment for panels  */
   --fg:          #0A0908;
   --fg-muted:    #3a3530;
-  --dot-color:   rgba(0, 0, 0, 0.07);
+  --dot-color:   rgba(0, 0, 0, 0.055);
 }
 
 html.dark {
@@ -31,9 +31,9 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Dashboard pages get a subtle dot grid (light only) */
+/* Subtle dot grid — matches Rumik's linen-dot texture */
 body {
-  background-image: radial-gradient(rgba(0,0,0,0.05) 1px, transparent 1px);
+  background-image: radial-gradient(rgba(0,0,0,0.045) 1px, transparent 1px);
   background-size: 24px 24px;
 }
 html.dark body {
@@ -78,7 +78,8 @@ html.dark .shadow-hard-sm { box-shadow: 1px 1px 0px rgba(232, 220, 206, 0.35); }
 
 /* Panels / cards that use hardcoded bg */
 html.dark .bg-\[#e8dece\],
-html.dark .bg-\[#f0ebe0\] { background-color: var(--bg-panel); }
+html.dark .bg-\[#f0ebe0\],
+html.dark .bg-\[#E3DDCA\]  { background-color: var(--bg-panel); }
 
 /* ─── React Flow — light mode ───────────────────────────────── */
 .react-flow__attribution { display: none; }
@@ -133,20 +134,9 @@ html.dark .react-flow__controls-button:hover { background: #1f1c18; }
 html.dark .react-flow__edge-textbg { fill: #181511; }
 html.dark .react-flow__edge-text   { fill: #e8dece; }
 
-/* ─── Voice orb outer bars (pure CSS — no JS re-renders) ────── */
-/*   Uses scaleY instead of height — transform never causes reflow,
-     so the page can't jump. Each bar's DOM height is fixed (= maxH);
-     only the visual scale changes. transform-origin: bottom keeps
-     bars pinned to the bottom of their container.                   */
-@keyframes voice-bar-pulse {
-  0%, 100% { transform: scaleY(var(--vb-scale-min, 0.28)); }
-  50%       { transform: scaleY(1); }
-}
+/* ─── Voice orb outer bars — fully static, no animation ──────── */
 .voice-outer-bar {
-  animation: voice-bar-pulse 1s ease-in-out infinite;
-  transform-origin: bottom center;
-  will-change: transform;
-  /* duration + delay are set via inline style on each bar */
+  /* intentionally no animation — bars are static height only */
 }
 
 /* ─── Animation ─────────────────────────────────────────────── */

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -9,16 +9,16 @@ import { MarketingNav } from "@/components/marketing/MarketingNav";
 import { MarketingFooter } from "@/components/marketing/MarketingFooter";
 import { Reveal, Stagger, StaggerItem } from "@/components/marketing/Reveal";
 
-/* ────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    DATA
-──────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const FEATURES = [
   {
     icon: Mic,
     tag: "voice intelligence",
     title: "Prosody & Emotion Analysis",
     body:
-      "Detect tone, stress, hesitation, and emotional state in real time — not from transcripts, but from the actual audio signal. Know when a caller is frustrated before they say the word.",
+      "Detect tone, stress, hesitation, and emotional state in real time â€” not from transcripts, but from the actual audio signal. Know when a caller is frustrated before they say the word.",
     stat: "< 180 ms",
     statLabel: "latency",
   },
@@ -28,7 +28,7 @@ const FEATURES = [
     title: "Memory Mesh",
     body:
       "Agents that remember. Every interaction, preference, and complaint is encoded into a persistent memory graph. Callers never repeat themselves. Context is instant.",
-    stat: "∞",
+    stat: "âˆž",
     statLabel: "call history",
   },
   {
@@ -36,7 +36,7 @@ const FEATURES = [
     tag: "intent detection",
     title: "Intent Peek",
     body:
-      "Surface what a caller needs before they finish the sentence. Trained on 600M+ enterprise call transcripts across industries — the model predicts, routes, and prepares before the human speaks.",
+      "Surface what a caller needs before they finish the sentence. Trained on 600M+ enterprise call transcripts across industries â€” the model predicts, routes, and prepares before the human speaks.",
     stat: "94 %",
     statLabel: "intent accuracy",
   },
@@ -45,7 +45,7 @@ const FEATURES = [
     tag: "multilingual",
     title: "40+ Languages",
     body:
-      "Not just translation. Cultural prosody calibration means the model understands that silence means different things in Tokyo vs. São Paulo. Nuance travels with the voice.",
+      "Not just translation. Cultural prosody calibration means the model understands that silence means different things in Tokyo vs. SÃ£o Paulo. Nuance travels with the voice.",
     stat: "40 +",
     statLabel: "languages",
   },
@@ -54,7 +54,7 @@ const FEATURES = [
     tag: "analytics",
     title: "Live Call Intelligence",
     body:
-      "Real-time dashboards tracking sentiment drift, silence ratios, call resolution probability, and agent assist triggers — all piped back to your existing BI stack via webhook or query API.",
+      "Real-time dashboards tracking sentiment drift, silence ratios, call resolution probability, and agent assist triggers â€” all piped back to your existing BI stack via webhook or query API.",
     stat: "< 2 s",
     statLabel: "dashboard lag",
   },
@@ -63,8 +63,8 @@ const FEATURES = [
     tag: "experimentation",
     title: "Script A/B Testing",
     body:
-      "Run controlled experiments on call scripts at scale. Track resolution rate, handle time, and CSAT delta across cohorts — then ship the winning variant with a single toggle.",
-    stat: "∞",
+      "Run controlled experiments on call scripts at scale. Track resolution rate, handle time, and CSAT delta across cohorts â€” then ship the winning variant with a single toggle.",
+    stat: "âˆž",
     statLabel: "variants",
   },
   {
@@ -94,9 +94,9 @@ const DEMO_METRICS = [
   { value: "99.99 %", label: "uptime SLA" },
 ];
 
-/* ────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    FEATURE CARD
-──────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function FeatureCard({ feature }: { feature: typeof FEATURES[0] }) {
   const Icon = feature.icon;
   return (
@@ -139,12 +139,12 @@ function FeatureCard({ feature }: { feature: typeof FEATURES[0] }) {
   );
 }
 
-/* ────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    PAGE
-──────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 export default function FeaturesPage() {
   return (
-    <div className="min-h-screen bg-[#F6F1E9] dark:bg-[#09090A] dot-pattern">
+    <div className="min-h-screen bg-[#ECE7D3] dark:bg-[#09090A] dot-pattern">
       <MarketingNav />
 
       {/* Hero */}
@@ -163,7 +163,7 @@ export default function FeaturesPage() {
         <Reveal delay={0.16}>
           <p className="text-base text-black/45 dark:text-[#e8dece]/45 max-w-lg leading-relaxed">
             Every feature ships as a single API surface. Mix, match, and integrate
-            with the stack you already run — no rip-and-replace required.
+            with the stack you already run â€” no rip-and-replace required.
           </p>
         </Reveal>
 
@@ -276,3 +276,5 @@ export default function FeaturesPage() {
     </div>
   );
 }
+
+

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight, BookOpen, Code2, Plug, ShieldCheck, Zap } from "lucide-react";
@@ -62,11 +62,11 @@ const stream = await sr.streams.create({
 
 // Pull caller memory
 const memory = await sr.memory.get(callerId);
-// → { history: [...], preferences: {...}, lastIssue: "..." }`;
+// â†’ { history: [...], preferences: {...}, lastIssue: "..." }`;
 
 export default function DocsPage() {
   return (
-    <div className="min-h-screen bg-[#F6F1E9] dark:bg-[#09090A] dot-pattern">
+    <div className="min-h-screen bg-[#ECE7D3] dark:bg-[#09090A] dot-pattern">
       <MarketingNav />
 
       {/* Hero */}
@@ -85,15 +85,15 @@ export default function DocsPage() {
         <Reveal delay={0.16}>
           <p className="text-base text-black/45 dark:text-[#e8dece]/45 max-w-lg leading-relaxed mb-10">
             The Silk Resolve SDK ships in Python, Node, and Go.
-            Full API reference, integration guides, and compliance docs — all in one place.
+            Full API reference, integration guides, and compliance docs â€” all in one place.
           </p>
         </Reveal>
 
-        {/* Search bar (decorative — full search coming soon) */}
+        {/* Search bar (decorative â€” full search coming soon) */}
         <Reveal delay={0.22}>
           <div className="max-w-xl border border-black/[0.1] dark:border-[#e8dece]/[0.1]
             bg-white/50 dark:bg-[#e8dece]/[0.03] flex items-center gap-3 px-4 py-3">
-            <span className="text-black/25 dark:text-[#e8dece]/25 font-mono text-sm">⌘</span>
+            <span className="text-black/25 dark:text-[#e8dece]/25 font-mono text-sm">âŒ˜</span>
             <span className="text-sm text-black/25 dark:text-[#e8dece]/25 font-mono">
               search docs...
             </span>
@@ -114,7 +114,7 @@ export default function DocsPage() {
               border-b border-black/[0.07] dark:border-[#e8dece]/[0.07]
               bg-black/[0.02] dark:bg-[#e8dece]/[0.02]">
               <p className="text-[10px] font-mono text-black/40 dark:text-[#e8dece]/40 uppercase tracking-widest">
-                quickstart · node.js
+                quickstart Â· node.js
               </p>
               <div className="flex gap-1.5">
                 {["","",""].map((_, i) => (
@@ -210,3 +210,5 @@ export default function DocsPage() {
     </div>
   );
 }
+
+

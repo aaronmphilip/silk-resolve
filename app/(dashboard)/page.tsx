@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, ArrowRight } from "lucide-react";
@@ -7,9 +7,9 @@ import { VoiceOrb } from "@/components/marketing/VoiceOrb";
 import { Reveal, Stagger, StaggerItem } from "@/components/marketing/Reveal";
 import SilkTerminal from "@/components/marketing/SilkTerminal";
 
-/* ─────────────────────────────────────────────────────────────
-   CYCLING TAGLINE  — fixed-height container prevents layout shift
-───────────────────────────────────────────────────────────── */
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   CYCLING TAGLINE  â€” fixed-height container prevents layout shift
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const TAGLINES = [
   "empathy at enterprise scale.",
   "every call, forever felt.",
@@ -43,9 +43,9 @@ function CyclingTagline() {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
-   ANIMATED HEADLINE — plain Y + opacity, no rotateX (no jitter)
-───────────────────────────────────────────────────────────── */
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   ANIMATED HEADLINE â€” plain Y + opacity, no rotateX (no jitter)
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function AnimatedHeadline({ text, className }: { text: string; className?: string }) {
   return (
     <h1 className={className}>
@@ -64,9 +64,9 @@ function AnimatedHeadline({ text, className }: { text: string; className?: strin
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    MAGNETIC BUTTON
-───────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function MagneticButton({ children, className }: { children: React.ReactNode; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   return (
@@ -87,9 +87,9 @@ function MagneticButton({ children, className }: { children: React.ReactNode; cl
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    SCROLL-AWARE NAV
-───────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const NAV_LINKS = [
   { label: "features",   href: "/features"   },
   { label: "use cases",  href: "/use-cases"  },
@@ -109,7 +109,7 @@ function Nav() {
     <motion.nav
       className={`fixed top-0 left-0 right-0 z-50 px-6 md:px-10 flex items-center justify-between h-16 transition-all duration-500 ${
         scrolled
-          ? "bg-[#F6F1E9]/85 dark:bg-[#09090A]/85 backdrop-blur-xl border-b border-black/[0.07] dark:border-[#e8dece]/[0.07] shadow-sm"
+          ? "bg-[#ECE7D3]/85 dark:bg-[#09090A]/85 backdrop-blur-xl border-b border-black/[0.07] dark:border-[#e8dece]/[0.07] shadow-sm"
           : "bg-transparent"
       }`}
       initial={{ opacity: 0, y: -12 }}
@@ -118,7 +118,7 @@ function Nav() {
     >
       {/* Logo */}
       <Link href="/" className="flex items-center gap-2 group">
-        <span className="text-xl leading-none group-hover:opacity-70 transition-opacity">✳</span>
+        <span className="text-xl leading-none group-hover:opacity-70 transition-opacity">âœ³</span>
         <span className="font-bold text-[15px] tracking-tight">silk resolve</span>
       </Link>
 
@@ -160,9 +160,9 @@ function Nav() {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    PILL BADGE
-───────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function Badge({ children }: { children: React.ReactNode }) {
   return (
     <motion.div
@@ -183,9 +183,9 @@ function Badge({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    PILLAR CARD
-───────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function PillarCard({
   num, name, codename, desc, children, delay = 0,
 }: {
@@ -219,9 +219,9 @@ function PillarCard({
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    WAVEFORM VISUAL (div-based, framer animates height fine)
-───────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function Waveform() {
   const bars = [3,6,10,16,24,32,38,42,40,34,27,20,15,11,7,5,9,17,27,38,44,40,34,26,17,11,7,5,8,14,22,32,38,42,36,28,17,9,5,3];
   return (
@@ -238,15 +238,15 @@ function Waveform() {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    MEMORY PREVIEW
-───────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function MemoryPreview() {
   const rows = [
-    { label: "emotional debt", val: "−42", note: "negative" },
+    { label: "emotional debt", val: "âˆ’42", note: "negative" },
     { label: "anchors",        val: "3",   note: "active" },
     { label: "interactions",   val: "18",  note: "retrieved" },
-    { label: "last outcome",   val: "↑",   note: "resolved" },
+    { label: "last outcome",   val: "â†‘",   note: "resolved" },
   ];
   return (
     <div className="w-full space-y-2.5 font-mono text-xs">
@@ -261,7 +261,7 @@ function MemoryPreview() {
       ))}
       <Reveal delay={0.38}>
         <div className="mt-3 border border-black/10 dark:border-[#e8dece]/10 px-3 py-2 text-[10px] text-black/38 dark:text-[#e8dece]/38 leading-relaxed">
-          <span className="text-black/65 dark:text-[#e8dece]/65">mesh pre-load →</span>&nbsp;
+          <span className="text-black/65 dark:text-[#e8dece]/65">mesh pre-load â†’</span>&nbsp;
           "Sir, main personally sorry hoon..."
         </div>
       </Reveal>
@@ -269,14 +269,14 @@ function MemoryPreview() {
   );
 }
 
-/* ─────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    CONTEXT PREVIEW
-───────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function ContextPreview() {
   const signals = [
     { signal: '"theek hai"',  intent: "frustrated",          score: "8.2" },
     { signal: '"haan haan"',  intent: "suppressed_sarcasm",  score: "7.4" },
-    { signal: "340ms pause",  intent: "hesitation_spike",    score: "—"  },
+    { signal: "340ms pause",  intent: "hesitation_spike",    score: "â€”"  },
     { signal: '"chhodiye"',   intent: "disengagement_risk",  score: "9.1" },
   ];
   return (
@@ -285,9 +285,9 @@ function ContextPreview() {
         <Reveal key={s.signal} delay={0.1 * i}>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="border border-black/12 dark:border-[#e8dece]/12 px-2 py-0.5 text-black/55 dark:text-[#e8dece]/55">{s.signal}</span>
-            <span className="text-black/22 dark:text-[#e8dece]/22">→</span>
+            <span className="text-black/22 dark:text-[#e8dece]/22">â†’</span>
             <span className="text-black/68 dark:text-[#e8dece]/68">{s.intent}</span>
-            {s.score !== "—" && <span className="ml-auto text-black/28 dark:text-[#e8dece]/28">{s.score}/10</span>}
+            {s.score !== "â€”" && <span className="ml-auto text-black/28 dark:text-[#e8dece]/28">{s.score}/10</span>}
           </div>
         </Reveal>
       ))}
@@ -295,9 +295,9 @@ function ContextPreview() {
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
    LANDING PAGE
-═══════════════════════════════════════════════════════════════ */
+â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
 export default function LandingPage() {
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
@@ -310,9 +310,9 @@ export default function LandingPage() {
   return (
     <div
       ref={containerRef}
-      className="min-h-screen bg-[#F6F1E9] dark:bg-[#09090A] text-[#0A0908] dark:text-[#F0EBE0]"
+      className="min-h-screen bg-[#ECE7D3] dark:bg-[#09090A] text-[#0A0908] dark:text-[#F0EBE0]"
     >
-      {/* Dot grid — light mode only */}
+      {/* Dot grid â€” light mode only */}
       <div
         className="fixed inset-0 pointer-events-none dark:opacity-0 transition-opacity duration-500"
         style={{ backgroundImage: "radial-gradient(rgba(0,0,0,0.065) 1px, transparent 1px)", backgroundSize: "24px 24px" }}
@@ -320,7 +320,7 @@ export default function LandingPage() {
 
       <Nav />
 
-      {/* ══════════════ HERO ══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â• HERO â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <motion.section
         className="relative min-h-screen flex flex-col items-center justify-center px-6 pt-16 pb-16 overflow-hidden"
         style={{ opacity: heroOpacity, y: heroY }}
@@ -331,7 +331,7 @@ export default function LandingPage() {
           style={{ background: "radial-gradient(ellipse 70% 55% at 50% 35%, rgba(232,220,206,0.035) 0%, transparent 70%)" }}
         />
 
-        <Badge>Enterprise Voice AI · Now in Early Access</Badge>
+        <Badge>Enterprise Voice AI Â· Now in Early Access</Badge>
 
         {/* Voice Orb */}
         <motion.div
@@ -349,7 +349,7 @@ export default function LandingPage() {
           className="text-[clamp(38px,7vw,92px)] font-bold tracking-tight leading-[1.03] text-center mb-5"
         />
 
-        {/* Cycling sub-tagline — fixed height, no layout shift */}
+        {/* Cycling sub-tagline â€” fixed height, no layout shift */}
         <motion.div
           className="mb-8 w-full"
           initial={{ opacity: 0 }}
@@ -366,7 +366,7 @@ export default function LandingPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.65, delay: 1.05 }}
         >
-          Not just what happened — how it made them feel. Silk carries emotional
+          Not just what happened â€” how it made them feel. Silk carries emotional
           memory into every call, detects hidden intent before the complaint, and
           speaks with prosody that actually lands.
         </motion.p>
@@ -393,7 +393,7 @@ export default function LandingPage() {
                 text-black/48 dark:text-[#e8dece]/48
                 hover:border-black/36 dark:hover:border-[#e8dece]/36
                 hover:text-black dark:hover:text-[#e8dece] transition-all">
-              sign in to dashboard →
+              sign in to dashboard â†’
             </Link>
           </MagneticButton>
         </motion.div>
@@ -412,7 +412,7 @@ export default function LandingPage() {
         </motion.div>
       </motion.section>
 
-      {/* ══════════════ STATS STRIP ══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â• STATS STRIP â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <section className="border-y border-black/[0.07] dark:border-[#e8dece]/[0.07]
         bg-black/[0.012] dark:bg-[#e8dece]/[0.012]">
         <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4
@@ -433,7 +433,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══════════════ 3 PILLARS ══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â• 3 PILLARS â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <section className="px-6 md:px-10 py-24 max-w-6xl mx-auto">
         <Reveal>
           <p className="text-[10px] font-mono text-black/28 dark:text-[#e8dece]/28 uppercase tracking-widest mb-4">
@@ -448,7 +448,7 @@ export default function LandingPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <PillarCard num="1." name="voice" codename="/ silk /"
-            desc="Injects mid-sentence prosody — <whisper>, <warm>, <apologetic> — matched to user tension in real-time."
+            desc="Injects mid-sentence prosody â€” <whisper>, <warm>, <apologetic> â€” matched to user tension in real-time."
             delay={0}>
             <div className="w-full text-black/55 dark:text-[#e8dece]/55"><Waveform /></div>
           </PillarCard>
@@ -467,7 +467,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══════════════ LIVE TERMINAL ══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â• LIVE TERMINAL â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <section className="px-6 md:px-10 py-24 max-w-5xl mx-auto">
         <Reveal>
           <p className="text-[10px] font-mono text-black/28 dark:text-[#e8dece]/28 uppercase tracking-widest mb-4">
@@ -490,12 +490,12 @@ export default function LandingPage() {
             <SilkTerminal />
           </div>
           <p className="text-[9px] font-mono text-black/18 dark:text-[#e8dece]/18 mt-3">
-            ↑ simulated call · peek → mesh → silk → action → resolution
+            â†‘ simulated call Â· peek â†’ mesh â†’ silk â†’ action â†’ resolution
           </p>
         </Reveal>
       </section>
 
-      {/* ══════════════ ENTERPRISE ══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â• ENTERPRISE â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <section className="px-6 md:px-10 py-24 border-t border-black/[0.06] dark:border-[#e8dece]/[0.06]">
         <div className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-16 items-center">
           <div>
@@ -528,18 +528,18 @@ export default function LandingPage() {
 
           <Stagger className="space-y-0" stagger={0.07} delay={0.2}>
             {[
-              "multi-tenant · rls-isolated per client",
+              "multi-tenant Â· rls-isolated per client",
               "hinglish, hindi, tamil, telugu + 8 more",
               "connects to your crm, database, or rest api",
-              "deploy in 48 hours · no infrastructure overhead",
-              "full call analysis · empathy heatmaps · a/b testing",
-              "soc 2 ready · data never leaves your region",
+              "deploy in 48 hours Â· no infrastructure overhead",
+              "full call analysis Â· empathy heatmaps Â· a/b testing",
+              "soc 2 ready Â· data never leaves your region",
             ].map((item, i) => (
               <StaggerItem key={i}>
                 <div className="flex items-center gap-4 px-5 py-4
                   border-b border-black/[0.055] dark:border-[#e8dece]/[0.055]
                   hover:bg-black/[0.018] dark:hover:bg-[#e8dece]/[0.018] transition-colors">
-                  <span className="text-black/18 dark:text-[#e8dece]/18 text-sm flex-shrink-0">✓</span>
+                  <span className="text-black/18 dark:text-[#e8dece]/18 text-sm flex-shrink-0">âœ“</span>
                   <p className="text-[13px] text-black/52 dark:text-[#e8dece]/52 font-mono">{item}</p>
                 </div>
               </StaggerItem>
@@ -548,7 +548,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══════════════ FINAL CTA ══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â• FINAL CTA â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <section className="relative px-6 py-32 overflow-hidden">
         <div className="max-w-2xl mx-auto text-center">
           <Reveal>
@@ -591,11 +591,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ══════════════ FOOTER ══════════════ */}
+      {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â• FOOTER â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <footer className="border-t border-black/[0.055] dark:border-[#e8dece]/[0.055] px-6 md:px-10 py-8">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex items-center gap-2">
-            <span className="text-base leading-none">✳</span>
+            <span className="text-base leading-none">âœ³</span>
             <span className="font-bold text-sm tracking-tight">silk resolve</span>
             <span className="text-[10px] font-mono text-black/18 dark:text-[#e8dece]/18 ml-1">/ enterprise voice infrastructure /</span>
           </div>
@@ -608,9 +608,10 @@ export default function LandingPage() {
               </a>
             ))}
           </div>
-          <p className="text-[10px] font-mono text-black/18 dark:text-[#e8dece]/18">© 2026 silk resolve</p>
+          <p className="text-[10px] font-mono text-black/18 dark:text-[#e8dece]/18">Â© 2026 silk resolve</p>
         </div>
       </footer>
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import Link from "next/link";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -7,9 +7,9 @@ import { MarketingNav } from "@/components/marketing/MarketingNav";
 import { MarketingFooter } from "@/components/marketing/MarketingFooter";
 import { Reveal, Stagger, StaggerItem } from "@/components/marketing/Reveal";
 
-/* ────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    DATA
-──────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const PLANS = [
   {
     name: "Starter",
@@ -109,9 +109,9 @@ const FAQS = [
   },
 ];
 
-/* ────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    COMPONENTS
-──────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function PricingCard({ plan, annual }: { plan: typeof PLANS[0]; annual: boolean }) {
   return (
     <motion.div
@@ -186,7 +186,7 @@ function PricingCard({ plan, annual }: { plan: typeof PLANS[0]; annual: boolean 
           <p className={`text-[11px] font-mono mt-1 ${
             plan.highlight ? "text-[#e8dece]/40 dark:text-[#0a0908]/40" : "text-black/30 dark:text-[#e8dece]/30"
           }`}>
-            billed annually · save ${(plan.price.monthly - plan.price.annual) * 12}/yr
+            billed annually Â· save ${(plan.price.monthly - plan.price.annual) * 12}/yr
           </p>
         )}
       </div>
@@ -275,14 +275,14 @@ function FAQItem({ faq }: { faq: typeof FAQS[0] }) {
   );
 }
 
-/* ────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    PAGE
-──────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 export default function PricingPage() {
   const [annual, setAnnual] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#F6F1E9] dark:bg-[#09090A] dot-pattern">
+    <div className="min-h-screen bg-[#ECE7D3] dark:bg-[#09090A] dot-pattern">
       <MarketingNav />
 
       {/* Hero */}
@@ -351,13 +351,13 @@ export default function PricingPage() {
         {/* Enterprise note */}
         <Reveal delay={0.1} className="mt-6">
           <p className="text-center text-xs text-black/30 dark:text-[#e8dece]/30 font-mono">
-            all plans include a 14-day free trial · no credit card required ·
+            all plans include a 14-day free trial Â· no credit card required Â·
             SOC 2 Type II compliant
           </p>
         </Reveal>
       </section>
 
-      {/* Comparison table — desktop only */}
+      {/* Comparison table â€” desktop only */}
       <section className="px-6 md:px-10 max-w-6xl mx-auto pb-24 hidden md:block">
         <Reveal>
           <p className="text-[9px] font-mono uppercase tracking-widest text-black/30 dark:text-[#e8dece]/30 mb-6">
@@ -425,13 +425,12 @@ export default function PricingPage() {
               Still deciding?
             </h2>
             <p className="text-sm text-black/45 dark:text-[#e8dece]/45 max-w-md mx-auto leading-relaxed mb-8">
-              We&apos;ll run a call from your own call centre data — live, in 30 minutes —
+              We&apos;ll run a call from your own call centre data â€” live, in 30 minutes â€”
               and show you exactly what Silk catches that you&apos;re currently missing.
             </p>
             <Link
               href="/register"
-              className="inline-flex items-center gap-2 px-7 py-3 text-sm font-semibold
-                bg-black dark:bg-[#e8dece]
+              className="inline-flex items-center gap-2 px-7 py-3 rounded-full text-sm font-semibold bg-black dark:bg-[#e8dece]
                 text-[#F0EBE0] dark:text-[#09090A]
                 hover:opacity-80 transition-opacity group"
             >
@@ -446,3 +445,5 @@ export default function PricingPage() {
     </div>
   );
 }
+
+

@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
@@ -72,7 +72,7 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-10
-      bg-[#F6F1E9] dark:bg-[#09090A] dot-pattern">
+      bg-[#ECE7D3] dark:bg-[#09090A] dot-pattern">
 
       <div className="fixed inset-0 pointer-events-none hidden dark:block"
         style={{ background: "radial-gradient(ellipse 70% 60% at 50% 40%, rgba(232,220,206,0.03) 0%, transparent 70%)" }}
@@ -87,7 +87,7 @@ export default function RegisterPage() {
               animate={{ rotate: [0, 15, -15, 0] }}
               transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
             >
-              ✳
+              âœ³
             </motion.span>
             <span className="font-bold text-base tracking-tight group-hover:opacity-70 transition-opacity">
               silk resolve
@@ -160,7 +160,7 @@ export default function RegisterPage() {
               <select
                 value={form.industry} onChange={set("industry")}
                 className={`${inputCls} appearance-none cursor-pointer
-                  bg-[#F6F1E9] dark:bg-[#09090A]`}
+                  bg-[#ECE7D3] dark:bg-[#09090A]`}
               >
                 <option value="">select industry</option>
                 {INDUSTRIES.map(i => <option key={i}>{i}</option>)}
@@ -217,7 +217,7 @@ export default function RegisterPage() {
               already have an account?{" "}
               <Link href="/login"
                 className="underline underline-offset-2 hover:text-black dark:hover:text-[#e8dece] transition-colors">
-                sign in →
+                sign in â†’
               </Link>
             </p>
           </div>
@@ -226,3 +226,4 @@ export default function RegisterPage() {
     </div>
   );
 }
+

@@ -55,28 +55,28 @@ export function VoiceOrb({ size = 300 }: { size?: number }) {
       {/* ── Central orb ─────────────────────────────────────── */}
       <div
         className="relative flex items-center justify-center rounded-full z-10
-          bg-[#0A0908] dark:bg-[#F0EBE0]
-          shadow-[0_0_50px_rgba(0,0,0,0.16),0_0_18px_rgba(0,0,0,0.10)]
-          dark:shadow-[0_0_50px_rgba(240,235,224,0.20),0_0_20px_rgba(240,235,224,0.10)]"
+          bg-[#0A0908] dark:bg-[#ECE7D3]
+          shadow-[0_0_60px_rgba(0,0,0,0.18),0_0_22px_rgba(0,0,0,0.12)]
+          dark:shadow-[0_0_60px_rgba(236,231,211,0.18),0_0_22px_rgba(236,231,211,0.10)]"
         style={{ width: size * 0.34, height: size * 0.34 }}
       >
         {/* Breathing scale overlay */}
         <motion.div
           className="absolute inset-0 rounded-full"
-          animate={{ scale: [1, 1.06, 1] }}
-          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          animate={{ scale: [1, 1.05, 1] }}
+          transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
         />
-        {/* Inner waveform bars */}
+        {/* Inner waveform bars — contained inside fixed-size orb, safe to animate */}
         <div className="flex items-center gap-[2.5px] z-10">
           {INNER_BARS.map((h, i) => (
             <motion.div key={i}
-              className="rounded-full bg-[#F0EBE0] dark:bg-[#0A0908] opacity-80"
+              className="rounded-full bg-[#ECE7D3] dark:bg-[#0A0908] opacity-85"
               style={{ width: 2.5 }}
-              animate={{ height: [`${h}px`, `${h * 2.3}px`, `${h}px`] }}
+              animate={{ height: [`${h}px`, `${h * 2.2}px`, `${h}px`] }}
               transition={{
-                duration: 0.75 + i * 0.07,
+                duration: 0.8 + i * 0.07,
                 repeat: Infinity,
-                delay: i * 0.05,
+                delay: i * 0.055,
                 ease: "easeInOut",
               }}
             />
@@ -84,22 +84,14 @@ export function VoiceOrb({ size = 300 }: { size?: number }) {
         </div>
       </div>
 
-      {/* ── Outer waveform bars — pure CSS, zero JS re-renders ─
-            Container has a fixed height so nothing ever shifts.
-            Bars use scaleY (GPU transform) not height (reflow). ─ */}
+      {/* ── Outer waveform bars — fully static, no animation ─── */}
       <div className="mt-8 flex items-end justify-center gap-[3.5px]"
            style={{ height: 52 }}>
         {OUTER.map((cfg, i) => (
           <div
             key={i}
-            className="voice-outer-bar rounded-full bg-black/20 dark:bg-[#e8dece]/20"
-            style={{
-              width: 3,
-              height: cfg.maxH,                        /* fixed DOM height */
-              "--vb-scale-min": cfg.minH / cfg.maxH,  /* 0..1 scale floor */
-              animationDuration:  `${cfg.dur}s`,
-              animationDelay:     `${cfg.delay}s`,
-            } as React.CSSProperties}
+            className="voice-outer-bar rounded-full bg-black/25 dark:bg-[#e8dece]/25"
+            style={{ width: 3, height: cfg.maxH }}
           />
         ))}
       </div>

@@ -26,21 +26,21 @@ export function MarketingNav() {
     <motion.nav
       className={`fixed top-0 left-0 right-0 z-50 px-6 md:px-10 flex items-center justify-between h-16 transition-all duration-500 ${
         scrolled
-          ? "bg-[#F6F1E9]/85 dark:bg-[#09090A]/85 backdrop-blur-xl border-b border-black/[0.07] dark:border-[#e8dece]/[0.07] shadow-sm"
+          ? "bg-[#ECE7D3]/88 dark:bg-[#09090A]/88 backdrop-blur-xl border-b border-black/[0.06] dark:border-[#e8dece]/[0.06]"
           : "bg-transparent"
       }`}
       initial={{ opacity: 0, y: -12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.1 }}
     >
-      {/* Logo */}
+      {/* Logo — matches Rumik pill-logo style */}
       <Link href="/" className="flex items-center gap-2 group">
         <span className="text-xl leading-none group-hover:opacity-70 transition-opacity">✳</span>
         <span className="font-bold text-[15px] tracking-tight">silk resolve</span>
       </Link>
 
       {/* Links */}
-      <div className="hidden md:flex items-center gap-7">
+      <div className="hidden md:flex items-center gap-8">
         {NAV_LINKS.map(({ label, href }, i) => {
           const active = pathname === href;
           return (
@@ -54,7 +54,7 @@ export function MarketingNav() {
                 className={`text-[13.5px] transition-colors ${
                   active
                     ? "text-black dark:text-[#e8dece] font-medium"
-                    : "text-black/45 dark:text-[#e8dece]/45 hover:text-black dark:hover:text-[#e8dece]"
+                    : "text-black/50 dark:text-[#e8dece]/45 hover:text-black dark:hover:text-[#e8dece]"
                 }`}
               >
                 {label}
@@ -64,7 +64,7 @@ export function MarketingNav() {
         })}
       </div>
 
-      {/* Right */}
+      {/* Right — Rumik-style: plain sign in + black pill CTA */}
       <motion.div
         className="flex items-center gap-4"
         initial={{ opacity: 0 }}
@@ -74,16 +74,17 @@ export function MarketingNav() {
         <ThemeToggle />
         <Link
           href="/login"
-          className="hidden md:block text-[13px] font-mono text-black/50 dark:text-[#e8dece]/50
+          className="hidden md:block text-[13px] text-black/50 dark:text-[#e8dece]/50
             hover:text-black dark:hover:text-[#e8dece] transition-colors"
         >
           sign in
         </Link>
+        {/* Black rounded-full pill — exactly like Rumik's "talk to ira" */}
         <Link
           href="/register"
-          className="text-[13px] font-semibold px-4 py-2
-            bg-black dark:bg-[#e8dece]
-            text-[#F0EBE0] dark:text-[#09090A]
+          className="flex items-center gap-1.5 text-[13px] font-semibold px-5 py-2.5 rounded-full
+            bg-[#0A0908] dark:bg-[#e8dece]
+            text-[#ECE7D3] dark:text-[#0A0908]
             hover:opacity-80 transition-opacity"
         >
           get started

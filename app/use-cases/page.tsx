@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
@@ -6,9 +6,9 @@ import { MarketingNav } from "@/components/marketing/MarketingNav";
 import { MarketingFooter } from "@/components/marketing/MarketingFooter";
 import { Reveal, Stagger, StaggerItem } from "@/components/marketing/Reveal";
 
-/* ────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    DATA
-──────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const INDUSTRIES = [
   {
     tag: "healthcare",
@@ -17,7 +17,7 @@ const INDUSTRIES = [
     body: "Route appointment calls with clinical intent detection. Flag anxiety or pain indicators in patient voices before the agent responds. Auto-populate EHR fields from call context. HIPAA BAA included on all plans.",
     outcomes: [
       { metric: "38 %", detail: "drop in missed appointments" },
-      { metric: "2.1×", detail: "faster triage routing" },
+      { metric: "2.1Ã—", detail: "faster triage routing" },
       { metric: "HIPAA", detail: "BAA on every plan" },
     ],
     quote: "Silk caught that a patient was in distress three exchanges before our agent did. That gap used to cost us escalations.",
@@ -56,7 +56,7 @@ const INDUSTRIES = [
     body: "Detect escalation before it happens. Route technical calls based on issue-type prediction from the first sentence. Surface troubleshooting steps contextually while the caller is still talking. Proactive outbound powered by propensity scoring.",
     outcomes: [
       { metric: "47 %", detail: "escalation reduction" },
-      { metric: "1.8×", detail: "first call resolution rate" },
+      { metric: "1.8Ã—", detail: "first call resolution rate" },
       { metric: "29 %", detail: "NPS lift" },
     ],
     quote: "We stopped measuring deflection rate. We started measuring resolution rate. That shift came the week Silk went live.",
@@ -66,11 +66,11 @@ const INDUSTRIES = [
     tag: "insurance",
     title: "Claims, Policy & Renewals",
     headline: "A claim call is a relationship stress test.",
-    body: "Auto-extract claim details from natural conversation — no IVR menus, no scripted questions. Voice-verify policyholder identity. Surface coverage context mid-call. Flag potential fraud indicators from vocal pattern deviations.",
+    body: "Auto-extract claim details from natural conversation â€” no IVR menus, no scripted questions. Voice-verify policyholder identity. Surface coverage context mid-call. Flag potential fraud indicators from vocal pattern deviations.",
     outcomes: [
-      { metric: "3.2×", detail: "claim intake speed" },
+      { metric: "3.2Ã—", detail: "claim intake speed" },
       { metric: "55 %", detail: "fewer identity failures" },
-      { metric: "∅ IVR", detail: "on claims calls" },
+      { metric: "âˆ… IVR", detail: "on claims calls" },
     ],
     quote: "Claims calls went from a pain point to a differentiator. Policyholders now notice. They comment on it unprompted.",
     quoteBy: "VP Operations, Shield Direct",
@@ -79,7 +79,7 @@ const INDUSTRIES = [
     tag: "government",
     title: "Citizen Services & Helplines",
     headline: "Every citizen call deserves respect.",
-    body: "Multi-language routing without language-selection menus — the system detects and routes automatically. Accessibility-aware prosody interpretation. ADA compliance tooling. Anonymised analytics for public service dashboards.",
+    body: "Multi-language routing without language-selection menus â€” the system detects and routes automatically. Accessibility-aware prosody interpretation. ADA compliance tooling. Anonymised analytics for public service dashboards.",
     outcomes: [
       { metric: "40 +", detail: "languages auto-detected" },
       { metric: "ADA", detail: "compliant by default" },
@@ -90,9 +90,9 @@ const INDUSTRIES = [
   },
 ];
 
-/* ────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    INDUSTRY CARD
-──────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function IndustryCard({ industry, idx }: { industry: typeof INDUSTRIES[0]; idx: number }) {
   const isEven = idx % 2 === 0;
   return (
@@ -122,7 +122,7 @@ function IndustryCard({ industry, idx }: { industry: typeof INDUSTRIES[0]; idx: 
               &ldquo;{industry.quote}&rdquo;
             </p>
             <footer className="text-[10px] font-mono text-black/30 dark:text-[#e8dece]/30">
-              — {industry.quoteBy}
+              â€” {industry.quoteBy}
             </footer>
           </blockquote>
 
@@ -159,12 +159,12 @@ function IndustryCard({ industry, idx }: { industry: typeof INDUSTRIES[0]; idx: 
   );
 }
 
-/* ────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    PAGE
-──────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 export default function UseCasesPage() {
   return (
-    <div className="min-h-screen bg-[#F6F1E9] dark:bg-[#09090A] dot-pattern">
+    <div className="min-h-screen bg-[#ECE7D3] dark:bg-[#09090A] dot-pattern">
       <MarketingNav />
 
       {/* Hero */}
@@ -183,7 +183,7 @@ export default function UseCasesPage() {
         <Reveal delay={0.16}>
           <p className="text-base text-black/45 dark:text-[#e8dece]/45 max-w-lg leading-relaxed">
             Six verticals. One infrastructure. Silk Resolve ships with pre-trained
-            domain models — no fine-tuning required to get day-one accuracy.
+            domain models â€” no fine-tuning required to get day-one accuracy.
           </p>
         </Reveal>
 
@@ -227,8 +227,7 @@ export default function UseCasesPage() {
             </p>
             <Link
               href="/register"
-              className="inline-flex items-center gap-2 px-7 py-3 text-sm font-semibold
-                bg-black dark:bg-[#e8dece]
+              className="inline-flex items-center gap-2 px-7 py-3 rounded-full text-sm font-semibold bg-black dark:bg-[#e8dece]
                 text-[#F0EBE0] dark:text-[#09090A]
                 hover:opacity-80 transition-opacity group"
             >
@@ -243,3 +242,5 @@ export default function UseCasesPage() {
     </div>
   );
 }
+
+

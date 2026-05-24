@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Eye, EyeOff } from "lucide-react";
@@ -34,9 +34,9 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4
-      bg-[#F6F1E9] dark:bg-[#09090A] dot-pattern">
+      bg-[#ECE7D3] dark:bg-[#09090A] dot-pattern">
 
-      {/* Background glow — dark mode only */}
+      {/* Background glow â€” dark mode only */}
       <div className="fixed inset-0 pointer-events-none hidden dark:block"
         style={{ background: "radial-gradient(ellipse 70% 60% at 50% 40%, rgba(232,220,206,0.03) 0%, transparent 70%)" }}
       />
@@ -55,7 +55,7 @@ export default function LoginPage() {
               animate={{ rotate: [0, 15, -15, 0] }}
               transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
             >
-              ✳
+              âœ³
             </motion.span>
             <span className="font-bold text-base tracking-tight group-hover:opacity-70 transition-opacity">
               silk resolve
@@ -107,7 +107,7 @@ export default function LoginPage() {
                 <input
                   type={showPass ? "text" : "password"} value={password}
                   onChange={e => setPassword(e.target.value)}
-                  placeholder="••••••••" autoComplete="current-password"
+                  placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" autoComplete="current-password"
                   className="w-full border border-black/10 dark:border-[#e8dece]/10
                     bg-transparent px-3 py-2.5 pr-10 text-sm font-mono
                     text-black dark:text-[#e8dece]
@@ -165,7 +165,7 @@ export default function LoginPage() {
               no account?{" "}
               <Link href="/register"
                 className="underline underline-offset-2 hover:text-black dark:hover:text-[#e8dece] transition-colors">
-                create one →
+                create one â†’
               </Link>
             </p>
             <button className="text-xs text-black/25 dark:text-[#e8dece]/25 font-mono hover:text-black/50 dark:hover:text-[#e8dece]/50 transition-colors">
@@ -178,9 +178,10 @@ export default function LoginPage() {
           className="text-center text-[10px] font-mono text-black/18 dark:text-[#e8dece]/18 mt-8"
           {...fadeUp(0.5)}
         >
-          silk resolve · enterprise voice infrastructure
+          silk resolve Â· enterprise voice infrastructure
         </motion.p>
       </div>
     </div>
   );
 }
+
