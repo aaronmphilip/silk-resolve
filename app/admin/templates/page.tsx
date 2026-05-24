@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { Loader2, Plus, Pencil, Trash2, Check, X, ChevronDown, ToggleLeft, ToggleRight } from "lucide-react";
 
 const VIBES    = ["professional", "friendly", "empathetic", "firm", "casual"];
-const MODELS   = ["grok-4", "grok-3", "claude-opus-4-5", "claude-sonnet-4-5", "gpt-4o"];
+const MODELS   = ["gemini-2.5-flash", "gemini-2.5-pro", "claude-sonnet-4-5", "gpt-4o"];
 const INDUSTRIES = ["general", "retail", "finance", "hr", "healthcare", "telecom", "logistics", "real-estate"];
 
 interface Template {
@@ -15,7 +15,7 @@ interface Template {
 const BLANK: Omit<Template, "id" | "created_at"> = {
   name: "", description: "", industry: "general",
   system_prompt: "", first_message: "",
-  llm_model: "grok-4", companion_vibe: "professional",
+  llm_model: "gemini-2.5-flash", companion_vibe: "professional",
   tags: [], is_active: true,
 };
 

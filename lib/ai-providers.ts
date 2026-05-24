@@ -4,7 +4,7 @@
  * The actual callAI() logic lives in lib/ai.ts (server-only).
  */
 
-export type AIProvider = "anthropic" | "openai" | "gemini" | "xai";
+export type AIProvider = "anthropic" | "openai" | "gemini";
 
 export const AI_PROVIDERS: {
   id: AIProvider;
@@ -33,12 +33,5 @@ export const AI_PROVIDERS: {
     model: "gpt-4o",
     note: "Reliable, fast. Strong multilingual support.",
     keyHint: "sk-...",
-  },
-  {
-    id: "xai",
-    label: "xAI Grok",
-    model: "grok-4",
-    note: "OpenAI-compatible API. Good for voice scripts.",
-    keyHint: "xai-...",
   },
 ];

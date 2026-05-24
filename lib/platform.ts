@@ -25,8 +25,7 @@ export async function getPlatformAIConfig(): Promise<{ provider: AIProvider; api
     (provider === "gemini"    ? process.env.GEMINI_API_KEY    : null) ??
     (provider === "anthropic" ? process.env.ANTHROPIC_API_KEY : null) ??
     (provider === "openai"    ? process.env.OPENAI_API_KEY    : null) ??
-    (provider === "xai"       ? process.env.XAI_API_KEY       : null) ??
-    // Fallbacks in order of likelihood
+    // Fallbacks in order
     process.env.GEMINI_API_KEY ??
     process.env.ANTHROPIC_API_KEY ??
     "";

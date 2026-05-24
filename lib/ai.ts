@@ -67,19 +67,6 @@ export async function callAI(opts: {
 }): Promise<string> {
   const { provider, apiKey, system, user, maxTokens = 3000, jsonMode = true } = opts;
 
-  // ── xAI Grok (OpenAI-compatible) ──────────────────────────────────────────
-  if (provider === "xai") {
-    return callOpenAICompat({
-      baseUrl: "https://api.x.ai/v1",
-      apiKey,
-      model: "grok-4",
-      system,
-      user,
-      maxTokens,
-      jsonMode,
-    });
-  }
-
   // ── Anthropic Claude ──────────────────────────────────────────────────────
   if (provider === "anthropic") {
     const { default: Anthropic } = await import("@anthropic-ai/sdk");

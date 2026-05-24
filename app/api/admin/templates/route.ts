@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
       industry: industry ?? "general",
       system_prompt: system_prompt ?? "",
       first_message: first_message ?? "",
-      llm_model: llm_model ?? "grok-4",
+      llm_model: llm_model ?? "gemini-2.5-flash",
       companion_vibe: companion_vibe ?? "professional",
       tags: tags ?? [],
     })

@@ -290,7 +290,7 @@ export default function TestCallPage() {
 
               <div className="border-t border-black/10 pt-4 text-left">
                 <p className="text-[10px] font-mono text-black/40 leading-relaxed">
-                  mic → Vapi STT → grok-4 → SILK / PlayHT → speaker
+                  mic → Vapi STT → Gemini 2.5 Flash → SILK / PlayHT → speaker
                 </p>
               </div>
             </div>

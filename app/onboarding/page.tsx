@@ -184,7 +184,7 @@ export default function OnboardingPage() {
                 {[
                   { done: true,  label: "Company profile",         hint: company.name },
                   { done: false, label: "Create your first agent", hint: "2 min → AI writes the prompt" },
-                  { done: false, label: "Add API keys",            hint: "VAPI_PRIVATE_KEY + XAI_API_KEY in Vercel env vars" },
+                  { done: false, label: "Add API keys",            hint: "VAPI_PRIVATE_KEY + GEMINI_API_KEY in Vercel env vars" },
                   { done: false, label: "Test with Talk button",   hint: "Browser call, no phone needed" },
                 ].map(item => (
                   <div key={item.label} className="flex items-center gap-4 px-5 py-4">
