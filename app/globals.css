@@ -4,18 +4,18 @@
 
 /* ─── Theme tokens ──────────────────────────────────────────── */
 :root {
-  --bg:          #f0ebe0;
-  --bg-panel:    #e8dece;
-  --fg:          #0a0a0a;
+  --bg:          #F6F1E9;
+  --bg-panel:    #EDE8DF;
+  --fg:          #0A0908;
   --fg-muted:    #3a3530;
-  --dot-color:   rgba(0, 0, 0, 0.10);
+  --dot-color:   rgba(0, 0, 0, 0.07);
 }
 
 html.dark {
-  --bg:          #0f0d0b;
-  --bg-panel:    #181511;
-  --fg:          #e8dece;
-  --fg-muted:    #9a9080;
+  --bg:          #09090A;
+  --bg-panel:    #111110;
+  --fg:          #F0EBE0;
+  --fg-muted:    #857D72;
   --dot-color:   rgba(255, 255, 255, 0.04);
 }
 
@@ -23,18 +23,27 @@ html.dark {
 html,
 body {
   background-color: var(--bg);
-  background-image: radial-gradient(var(--dot-color) 1px, transparent 1px);
-  background-size: 22px 22px;
   color: var(--fg);
   font-family: "Space Grotesk", system-ui, sans-serif;
   min-height: 100vh;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: background-color 0.25s ease, color 0.25s ease;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Dot-pattern utility (for pages that override body bg) ── */
+/* Dashboard pages get a subtle dot grid (light only) */
+body {
+  background-image: radial-gradient(rgba(0,0,0,0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+html.dark body {
+  background-image: none;
+}
+
+/* ─── Dot-pattern utility class ─────────────────────────────── */
 .dot-pattern {
   background-image: radial-gradient(var(--dot-color) 1px, transparent 1px);
-  background-size: 22px 22px;
+  background-size: 24px 24px;
 }
 
 /* ─── Dark-mode overrides for hardcoded Tailwind classes ─────

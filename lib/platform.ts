@@ -17,17 +17,17 @@ function svc() {
 /**
  * Get the AI config for script generation.
  * Reads AI_PROVIDER env var, then the matching key env var.
- * Defaults to xAI / grok-4 if not set.
+ * Defaults to Gemini if not set.
  */
 export async function getPlatformAIConfig(): Promise<{ provider: AIProvider; apiKey: string }> {
-  const provider = (process.env.AI_PROVIDER ?? "xai") as AIProvider;
+  const provider = (process.env.AI_PROVIDER ?? "gemini") as AIProvider;
   const apiKey =
-    (provider === "xai"       ? process.env.XAI_API_KEY       : null) ??
+    (provider === "gemini"    ? process.env.GEMINI_API_KEY    : null) ??
     (provider === "anthropic" ? process.env.ANTHROPIC_API_KEY : null) ??
     (provider === "openai"    ? process.env.OPENAI_API_KEY    : null) ??
-    (provider === "gemini"    ? process.env.GEMINI_API_KEY    : null) ??
+    (provider === "xai"       ? process.env.XAI_API_KEY       : null) ??
     // Fallbacks in order of likelihood
-    process.env.XAI_API_KEY ??
+    process.env.GEMINI_API_KEY ??
     process.env.ANTHROPIC_API_KEY ??
     "";
   return { provider, apiKey };

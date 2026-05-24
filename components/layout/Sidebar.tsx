@@ -237,7 +237,7 @@ export default function Sidebar() {
   ) : null;
 
   /* ── Sidebar panel background class ─────────────────────── */
-  const panelCls = "bg-[#e8dece] dark:bg-[#181511]";
+  const panelCls = "bg-[#EDE8DF] dark:bg-[#111110]";
 
   return (
     <>
