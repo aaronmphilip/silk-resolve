@@ -213,7 +213,7 @@ export default function SettingsPage() {
                   <p className="text-sm font-mono opacity-50">{user.email} <span className="text-[9px] border border-black/20 px-1.5 py-0.5 ml-2">read-only</span></p>
                 </div>
               </div>
-              {profileError && <p className="mt-2 text-xs font-mono text-red-700">{profileError}</p>}
+              {profileError && <p className="mt-2 text-xs font-mono text-red-600 dark:text-red-400">{profileError}</p>}
               <div className="mt-3">
                 <SaveBtn onClick={saveProfile} loading={profileSaving} saved={profileSaved} />
               </div>
@@ -283,7 +283,7 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </div>
-              {wsError && <p className="mt-2 text-xs font-mono text-red-700">{wsError}</p>}
+              {wsError && <p className="mt-2 text-xs font-mono text-red-600 dark:text-red-400">{wsError}</p>}
               <div className="mt-3">
                 <SaveBtn onClick={saveWorkspace} loading={wsSaving} saved={wsSaved} />
               </div>

@@ -170,8 +170,8 @@ export default function NewAgentPage() {
 
           {/* Error */}
           {error && (
-            <div className="border-2 border-red-400 bg-red-50 px-4 py-3">
-              <p className="text-xs font-mono text-red-700">{error}</p>
+            <div className="border-2 border-red-500/50 bg-red-500/10 px-4 py-3">
+              <p className="text-xs font-mono text-red-600 dark:text-red-400">{error}</p>
             </div>
           )}
 

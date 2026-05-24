@@ -275,7 +275,7 @@ export default function ScriptEditorPage({ params }: { params: Promise<{ id: str
             </button>
           </div>
         </div>
-        {error && <p className="mt-3 text-[11px] font-mono text-red-700 border border-red-300 px-3 py-1.5 bg-red-50">{error}</p>}
+        {error && <p className="mt-3 text-[11px] font-mono text-red-600 dark:text-red-400 border border-red-500/30 px-3 py-1.5 bg-red-500/10">{error}</p>}
       </div>
 
       {/* Tabs */}
