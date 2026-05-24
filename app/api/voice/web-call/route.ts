@@ -96,7 +96,7 @@ VOICE EMOTION VARIABLES:
   const voice = silk.apiKey
     ? {
         provider: "custom-voice",
-        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 10 },
+        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 20 },
         fallbackPlan: {
           voices: [{ provider: "playht", voiceId: "jennifer" }],
         },

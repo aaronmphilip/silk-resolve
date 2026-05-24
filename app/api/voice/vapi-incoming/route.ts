@@ -220,7 +220,7 @@ export async function POST(req: NextRequest) {
     if (silk.apiKey) {
       vapiAssistant.voice = {
         provider: "custom-voice",
-        server:   { url: `${appUrl}/api/voice/silk-tts`, timeoutSeconds: 10 },
+        server:   { url: `${appUrl}/api/voice/silk-tts`, timeoutSeconds: 20 },
       };
     } else {
       vapiAssistant.voice = { provider: "playht", voiceId: "jennifer" };

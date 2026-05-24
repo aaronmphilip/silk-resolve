@@ -171,6 +171,10 @@ function inferRefundReason(text: string): string | null {
   return null;
 }
 
+function shortPaymentMethod(paymentMethod: string): string {
+  return paymentMethod.replace(/\s+ending\s+/i, " ");
+}
+
 function isRefundIntent(text: string): boolean {
   return hasAny(text, [
     /\brefund\b/i,
@@ -195,16 +199,16 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
   const refundIntent = isRefundIntent(userText);
   const order = findDemoRefundOrder(userText);
   const reason = inferRefundReason(userText);
-  const askedToConfirm = /is that the right order|please confirm|confirm this order/i.test(assistantText);
+  const askedToConfirm = /is that the right order|is that right|please confirm|confirm this order/i.test(assistantText);
   const askedForReason = /reason for the refund|what went wrong|why do you want/i.test(assistantText);
-  const alreadyCompleted = /refund has been initiated|already initiated under reference/i.test(assistantText);
+  const alreadyCompleted = /refund has been initiated|already initiated under reference|refund approved|already started/i.test(assistantText);
   const confirmed = askedToConfirm && isAffirmative(lastUser);
   const denied = askedToConfirm && isNegative(lastUser);
   const tensionLevel = Math.min(10, Math.max(currentTension, refundIntent ? 3 : 1));
 
   if (!lastUser || shortIssueOnly(lastUser)) {
     return {
-      text: "Tell me what happened. If this is about a refund, I can check the order database during this call and process it if the order is eligible.",
+      text: "Tell me the issue. If it is a refund, I can check the order now.",
       intent: "query",
       tensionLevel,
       status: "active",
@@ -214,7 +218,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (refundIntent && !order) {
     return {
-      text: "I can help with that. Please share the order ID, or the last four digits of the registered phone number, and I will check the refund record now.",
+      text: "I can help. Say the order ID or phone last four, and I will check it now.",
       intent: "refund",
       tensionLevel,
       status: "active",
@@ -224,7 +228,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (!refundIntent && !order) {
     return {
-      text: "I understand. Tell me whether this is about an order status, a refund, a delivery issue, or a damaged item, and I will handle it from there.",
+      text: "I understand. Is this about order status, refund, delivery, or damage?",
       intent: "query",
       tensionLevel,
       status: "active",
@@ -234,7 +238,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (!order) {
     return {
-      text: "I need one lookup detail before I can act on it. Please say the order ID or the registered phone number's last four digits.",
+      text: "I need one lookup detail. Say the order ID or phone last four.",
       intent: "refund",
       tensionLevel,
       status: "active",
@@ -244,7 +248,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (denied) {
     return {
-      text: "Got it. Please give me the correct order ID or the registered phone number's last four digits, and I will pull up the right record.",
+      text: "Got it. Say the correct order ID or phone last four.",
       intent: "refund",
       tensionLevel,
       status: "active",
@@ -254,7 +258,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (order.state === "already_refunded") {
     return {
-      text: `I checked the order database. ${order.orderId} for ${order.item} was already refunded under reference ${order.refundReference}. It was sent back to ${order.paymentMethod}.`,
+      text: `${order.orderId} was already refunded. Reference ${order.refundReference}, sent to ${shortPaymentMethod(order.paymentMethod)}.`,
       intent: "refund_status",
       tensionLevel,
       status: "resolved",
@@ -266,7 +270,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (order.state === "manual_review") {
     return {
-      text: `I found ${order.orderId}: ${order.item}, purchased on ${order.purchasedAt} for ${order.amount}. This is outside the ${order.refundWindowDays}-day automatic refund window, so I have opened senior review ${order.refundReference} instead of promising an instant refund.`,
+      text: `${order.orderId} is outside the ${order.refundWindowDays}-day auto-refund window. I opened senior review ${order.refundReference}.`,
       intent: "refund",
       tensionLevel: Math.max(tensionLevel, 5),
       status: "escalated",
@@ -278,7 +282,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (!askedToConfirm && !confirmed) {
     return {
-      text: `I found ${order.orderId} in the order database: ${order.item}, bought on ${order.purchasedAt}, delivered on ${order.deliveredAt}, for ${order.amount} paid by ${order.paymentMethod}. Is that the right order?`,
+      text: `I found ${order.orderId}: ${order.item}, paid by ${shortPaymentMethod(order.paymentMethod)}. Is that right?`,
       intent: "refund",
       tensionLevel,
       status: "active",
@@ -289,7 +293,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (!confirmed && !reason) {
     return {
-      text: "Please confirm if that is the right order. Once you confirm, I can check the policy and process the refund if it qualifies.",
+      text: "Please confirm the order. Then I can check refund eligibility.",
       intent: "refund",
       tensionLevel,
       status: "active",
@@ -300,7 +304,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (!reason && !askedForReason) {
     return {
-      text: "Thanks, I have the order. What was the reason for the refund, for example duplicate charge, damaged item, wrong item, or cancellation?",
+      text: "Thanks. What is the reason: duplicate charge, damage, wrong item, or cancellation?",
       intent: "refund",
       tensionLevel,
       status: "active",
@@ -311,7 +315,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (!reason) {
     return {
-      text: "I still need the refund reason before I can submit it. Was it a duplicate charge, damaged item, wrong item, delivery issue, or cancellation?",
+      text: "I still need the reason: duplicate charge, damage, wrong item, delivery issue, or cancellation?",
       intent: "refund",
       tensionLevel,
       status: "active",
@@ -322,7 +326,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (alreadyCompleted) {
     return {
-      text: `The refund is already initiated under reference ${order.refundReference}. You will receive it on ${order.paymentMethod} within 3 to 5 business days.`,
+      text: `Refund ${order.refundReference} is already started. It should reach ${shortPaymentMethod(order.paymentMethod)} in 3 to 5 days.`,
       intent: "refund_status",
       tensionLevel,
       status: "resolved",
@@ -333,7 +337,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
   }
 
   return {
-    text: `I checked the policy and the order qualifies. I have initiated a ${order.amount} refund for ${order.orderId} because of ${reason}. The reference is ${order.refundReference}, and it should reach ${order.paymentMethod} within 3 to 5 business days.`,
+    text: `Refund approved. Ref ${order.refundReference}. It should reach ${shortPaymentMethod(order.paymentMethod)} in 3 to 5 days.`,
     intent: "refund",
     tensionLevel,
     status: "resolved",
