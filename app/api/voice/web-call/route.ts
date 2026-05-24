@@ -75,6 +75,10 @@ export async function POST(req: NextRequest, _ctx?: Ctx) {
     metadata: { agentId: agent.id },
   };
 
+  // Log key fingerprint to Vercel logs so you can verify the right key is set
+  const keyHint = `${vapi.privateKey.slice(0, 6)}...${vapi.privateKey.slice(-4)}`;
+  console.log(`[web-call] using VAPI_PRIVATE_KEY: ${keyHint} (length: ${vapi.privateKey.length})`);
+
   // Create the web call via Vapi REST API using the PRIVATE key
   const vapiRes = await fetch("https://api.vapi.ai/call/web", {
     method: "POST",
@@ -86,11 +90,10 @@ export async function POST(req: NextRequest, _ctx?: Ctx) {
   });
 
   if (!vapiRes.ok) {
-    const err = await vapiRes.json().catch(() => ({})) as { message?: string };
-    return NextResponse.json(
-      { error: err.message ?? `Vapi API error ${vapiRes.status}` },
-      { status: vapiRes.status }
-    );
+    const err = await vapiRes.json().catch(() => ({})) as { message?: string; error?: string };
+    const msg = err.message ?? err.error ?? `Vapi API error ${vapiRes.status}`;
+    console.error(`[web-call] Vapi rejected key ${keyHint} — ${vapiRes.status}: ${msg}`);
+    return NextResponse.json({ error: msg }, { status: vapiRes.status });
   }
 
   const call = await vapiRes.json() as { id: string; webCallUrl: string };
