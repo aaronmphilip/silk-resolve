@@ -24,19 +24,30 @@ function cleanSpokenText(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const auth = createClient();
+  const { data: { user } } = await auth.auth.getUser();
 
-  const { agentId } = await req.json() as { agentId: string };
+  const { agentId, visitorId } = await req.json() as { agentId: string; visitorId?: string };
   if (!agentId) return NextResponse.json({ error: "agentId required" }, { status: 400 });
 
   // Load agent
-  const { data: agent, error: agentErr } = await supabase
+  const db = user ? auth : createServiceClient();
+  let agentQuery = db
     .from("agents")
-    .select("id, tenant_id, name, system_prompt, first_message, llm_model, silk_voice_id")
+    .select("id, tenant_id, name, status, system_prompt, first_message, llm_model, silk_voice_id")
     .eq("id", agentId)
     .single();
+
+  if (!user) {
+    agentQuery = db
+      .from("agents")
+      .select("id, tenant_id, name, status, system_prompt, first_message, llm_model, silk_voice_id")
+      .eq("id", agentId)
+      .in("status", ["live", "active"])
+      .single();
+  }
+
+  const { data: agent, error: agentErr } = await agentQuery;
 
   if (agentErr || !agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
 
@@ -161,12 +172,16 @@ VOICE EMOTION VARIABLES:
   }
 
   try {
+    const safeVisitorId = typeof visitorId === "string"
+      ? visitorId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48)
+      : "";
+
     await createServiceClient().from("voice_sessions").upsert({
       call_sid:       call.id,
       tenant_id:      agent.tenant_id,
       agent_id:       agent.id,
-      caller_phone:   "web-call",
-      platform_phone: "web",
+      caller_phone:   safeVisitorId ? `web:${safeVisitorId}` : user ? "web-dashboard" : "web-guest",
+      platform_phone: user ? "web-dashboard" : "web-public",
       messages:       [{
         role: "agent",
         content: firstMessage,

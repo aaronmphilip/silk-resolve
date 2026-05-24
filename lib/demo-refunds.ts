@@ -1,6 +1,6 @@
 import type { SilkTone } from "./voice-emotion";
 
-export type DemoRefundState = "eligible" | "manual_review" | "already_refunded";
+export type DemoRefundState = "eligible" | "manual_review" | "already_refunded" | "refund_initiated";
 export type DemoVoiceEmotion =
   | "welcoming"
   | "focused_lookup"
@@ -114,11 +114,14 @@ function hasAny(text: string, words: RegExp[]): boolean {
   return words.some((pattern) => pattern.test(text));
 }
 
-export function findDemoRefundOrder(text: string): DemoRefundOrder | null {
+export function findDemoRefundOrder(
+  text: string,
+  orders: DemoRefundOrder[] = DEMO_REFUND_ORDERS
+): DemoRefundOrder | null {
   const source = compact(text);
   if (!source) return null;
 
-  for (const order of DEMO_REFUND_ORDERS) {
+  for (const order of orders) {
     const orderKeys = [order.orderId, ...order.aliases].map(compact);
     if (orderKeys.some((key) => key && source.includes(key))) return order;
     if (source.includes(order.phoneLast4)) return order;
@@ -201,12 +204,16 @@ function shortIssueOnly(text: string): boolean {
   return /^(hi|hello|hey|help|my problem|problem|issue|i have a problem|i need help)$/i.test(text.trim());
 }
 
-function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0): DemoVoiceReplyCore {
+function buildDemoVoiceReplyCore(
+  messages: DemoChatMessage[],
+  currentTension = 0,
+  orders: DemoRefundOrder[] = DEMO_REFUND_ORDERS
+): DemoVoiceReplyCore {
   const userText = allUserText(messages);
   const assistantText = allAssistantText(messages);
   const lastUser = lastUserMessage(messages);
   const refundIntent = isRefundIntent(userText);
-  const order = findDemoRefundOrder(userText);
+  const order = findDemoRefundOrder(userText, orders);
   const reason = inferRefundReason(userText);
   const askedToConfirm = /is that the right order|is that right|please confirm|confirm this order/i.test(assistantText);
   const askedForReason = /reason for the refund|what went wrong|why do you want/i.test(assistantText);
@@ -272,6 +279,18 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
       tensionLevel,
       status: "resolved",
       resolution: `refund_already_completed:${order.orderId}:${order.refundReference}`,
+      orderId: order.orderId,
+      action: "refund_status",
+    };
+  }
+
+  if (order.state === "refund_initiated") {
+    return {
+      text: `Refund ${speakableReference(order.refundReference)} is already started. It should reach ${speakablePaymentMethod(order.paymentMethod)} in 3 to 5 days.`,
+      intent: "refund_status",
+      tensionLevel,
+      status: "resolved",
+      resolution: `refund_already_initiated:${order.orderId}:${order.refundReference}`,
       orderId: order.orderId,
       action: "refund_status",
     };
@@ -433,8 +452,12 @@ function selectVoiceState(
   return { silkTone, emotion, arousal, valence, voiceScore };
 }
 
-export function buildDemoVoiceReply(messages: DemoChatMessage[], currentTension = 0): DemoVoiceReply {
-  const core = buildDemoVoiceReplyCore(messages, currentTension);
+export function buildDemoVoiceReply(
+  messages: DemoChatMessage[],
+  currentTension = 0,
+  orders: DemoRefundOrder[] = DEMO_REFUND_ORDERS
+): DemoVoiceReply {
+  const core = buildDemoVoiceReplyCore(messages, currentTension, orders);
   const userText = allUserText(messages);
   const tensionLevel = inferTensionLevel(messages, core, currentTension);
   const voice = selectVoiceState(core, tensionLevel, userText);

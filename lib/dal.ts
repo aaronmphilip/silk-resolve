@@ -291,3 +291,49 @@ export async function getABTests(): Promise<ABTest[]> {
     .order("created_at", { ascending: false });
   return (data ?? []).map(mapABTest);
 }
+
+// ── Single call + transcript ──────────────────────────────────────────────────
+
+export interface TranscriptMessage {
+  role: "agent" | "customer";
+  content: string;
+  time?: number;
+}
+
+export interface CallDetail extends Call {
+  transcript: TranscriptMessage[];
+  summary: string | null;
+  recordingUrl: string | null;
+  callerPhone: string | null;
+}
+
+export async function getCallById(id: string): Promise<CallDetail | null> {
+  const supabase = createClient();
+
+  const [{ data: callRow }, { data: session }] = await Promise.all([
+    supabase.from("calls").select("*").eq("id", id).single(),
+    supabase
+      .from("voice_sessions")
+      .select("messages, caller_phone, recording_url")
+      .eq("call_sid", id)
+      .single(),
+  ]);
+
+  if (!callRow) return null;
+
+  const base = mapCall(callRow as Record<string, unknown>);
+  const raw = (session?.messages ?? []) as Array<Record<string, unknown>>;
+  const transcript: TranscriptMessage[] = raw.map((m) => ({
+    role: (["agent", "bot", "assistant"].includes(String(m.role)) ? "agent" : "customer") as TranscriptMessage["role"],
+    content: String(m.content ?? m.message ?? ""),
+    time: typeof m.time === "number" ? m.time : undefined,
+  })).filter((m) => m.content.trim());
+
+  return {
+    ...base,
+    transcript,
+    summary: null,
+    recordingUrl: session?.recording_url ?? null,
+    callerPhone: session?.caller_phone ?? null,
+  };
+}

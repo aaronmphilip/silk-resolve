@@ -9,6 +9,12 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        brand: {
+          bg: "#ECE7D3",
+          panel: "#E3DDCA",
+          ink: "#0A0908",
+          cream: "#F0EBE0",
+        },
         cream: "#f0ebe0",
         ink: "#0a0a0a",
       },

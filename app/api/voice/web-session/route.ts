@@ -13,30 +13,48 @@ function cleanSpokenText(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const auth = createClient();
+  const { data: { user } } = await auth.auth.getUser();
 
-  const { agentId, callId } = await req.json() as { agentId?: string; callId?: string };
+  const { agentId, callId, visitorId } = await req.json() as {
+    agentId?: string;
+    callId?: string;
+    visitorId?: string;
+  };
   if (!agentId) return NextResponse.json({ error: "agentId required" }, { status: 400 });
   if (!callId) return NextResponse.json({ error: "callId required" }, { status: 400 });
 
-  const { data: agent, error } = await supabase
+  const db = user ? auth : createServiceClient();
+  let agentQuery = db
     .from("agents")
-    .select("id, tenant_id, first_message")
+    .select("id, tenant_id, status, first_message")
     .eq("id", agentId)
     .single();
+
+  if (!user) {
+    agentQuery = db
+      .from("agents")
+      .select("id, tenant_id, status, first_message")
+      .eq("id", agentId)
+      .in("status", ["live", "active"])
+      .single();
+  }
+
+  const { data: agent, error } = await agentQuery;
 
   if (error || !agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
 
   const firstMessage = cleanSpokenText(agent.first_message || "Hello, how can I help you today?");
+  const safeVisitorId = typeof visitorId === "string"
+    ? visitorId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48)
+    : "";
 
   const { error: sessionError } = await createServiceClient().from("voice_sessions").upsert({
     call_sid:       callId,
     tenant_id:      agent.tenant_id,
     agent_id:       agent.id,
-    caller_phone:   "web-call",
-    platform_phone: "web",
+    caller_phone:   safeVisitorId ? `web:${safeVisitorId}` : user ? "web-dashboard" : "web-guest",
+    platform_phone: user ? "web-dashboard" : "web-public",
     messages:       [{
       role: "agent",
       content: firstMessage,

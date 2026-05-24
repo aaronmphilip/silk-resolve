@@ -36,16 +36,21 @@ function deriveOutcome(endedReason: string, sessionStatus: string): string {
 
 function buildTags(
   messages: Array<{ role: string }>,
-  analysis?: Record<string, unknown>
+  analysis?: Record<string, unknown>,
+  session?: Record<string, unknown>
 ): string[] {
   const tags: string[] = [];
   const turnCount = messages.filter((m) => m.role === "user").length;
   const sentiment = analysis?.sentiment as string | undefined;
   const outcome = analysis?.outcome as string | undefined;
+  const platformPhone = String(session?.platform_phone ?? "");
+  const resolution = String(session?.resolution ?? "");
 
   if (outcome === "escalated")           tags.push("escalated");
   if (sentiment === "negative")          tags.push("frustrated-caller");
   if (turnCount > 6)                     tags.push("long-call");
+  if (platformPhone.startsWith("web"))    tags.push("web");
+  if (resolution.includes("refund"))      tags.push("refund");
   return tags;
 }
 
@@ -179,7 +184,8 @@ export async function POST(req: NextRequest) {
 
       const tags = buildTags(
         transcript,
-        structured as Record<string, unknown>
+        structured as Record<string, unknown>,
+        session as Record<string, unknown>
       );
 
       // 1. Finalise session
@@ -204,11 +210,12 @@ export async function POST(req: NextRequest) {
 
       await db.from("calls").upsert(
         {
+          id:               callId,
           agent_id:         session.agent_id,
           agent_name:       agent?.name ?? "Unknown",
           tenant_id:        session.tenant_id,
           call_sid:         callId,
-          client:           fromPhone,
+          client:           fromPhone || session.caller_phone || "web",
           duration:         formatDuration(duration),
           duration_seconds: duration,
           empathy_score:    empathyScore,
@@ -218,6 +225,38 @@ export async function POST(req: NextRequest) {
         },
         { onConflict: "call_sid", ignoreDuplicates: true }
       );
+
+      if (session.agent_id) {
+        try {
+          const today = new Date(now).toISOString().slice(0, 10);
+          const { count: totalCalls } = await db
+            .from("calls")
+            .select("id", { count: "exact", head: true })
+            .eq("agent_id", session.agent_id);
+          const { count: callsToday } = await db
+            .from("calls")
+            .select("id", { count: "exact", head: true })
+            .eq("agent_id", session.agent_id)
+            .gte("timestamp", `${today}T00:00:00.000Z`);
+          const { count: resolvedCalls } = await db
+            .from("calls")
+            .select("id", { count: "exact", head: true })
+            .eq("agent_id", session.agent_id)
+            .eq("outcome", "resolved");
+          const resolvedRate = totalCalls
+            ? Math.round(((resolvedCalls ?? 0) / totalCalls) * 100)
+            : 0;
+
+          await db.from("agents").update({
+            total_calls: totalCalls ?? 0,
+            calls_today: callsToday ?? 0,
+            empathy_score: empathyScore,
+            resolved_rate: resolvedRate,
+            avg_handle_time: formatDuration(duration),
+            last_active: "just now",
+          }).eq("id", session.agent_id);
+        } catch {}
+      }
 
       // 3. Update MESH profile
       if (session.mesh_profile_id) {

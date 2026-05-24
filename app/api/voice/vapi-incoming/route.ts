@@ -103,16 +103,13 @@ export async function POST(req: NextRequest) {
     let agentRow: Record<string, unknown> | null = null;
 
     if (agentIdMeta) {
-      // Web/browser call — agent ID passed directly from our UI
       const { data } = await db.from("agents").select("*").eq("id", agentIdMeta).single();
       agentRow = data as Record<string, unknown> | null;
     } else if (toPhone) {
-      // Real phone call — look up by number
       const { data } = await db.from("agents").select("*").eq("twilio_phone", toPhone).eq("status", "live").single();
       agentRow = data as Record<string, unknown> | null;
     }
 
-    // Fallback: grab the first live agent for the platform (demo/test mode)
     if (!agentRow) {
       const { data } = await db.from("agents").select("*").eq("status", "live").limit(1).single();
       agentRow = data as Record<string, unknown> | null;
@@ -126,16 +123,18 @@ export async function POST(req: NextRequest) {
       }});
     }
 
-    // ── 2. MESH — recall caller's history ────────────────────────────────────
-    let meshRow: Record<string, unknown> | null = null;
-    if (fromPhone) {
-      const { data } = await db.from("mesh_profiles")
-        .select("*")
-        .eq("phone", fromPhone)
-        .eq("tenant_id", agentRow.tenant_id)
-        .single();
-      meshRow = data as Record<string, unknown> | null;
-    }
+    // ── 2. MESH + voice config — parallel fetch ───────────────────────────────
+    const meshPromise = fromPhone
+      ? db.from("mesh_profiles")
+          .select("*")
+          .eq("phone", fromPhone)
+          .eq("tenant_id", agentRow.tenant_id)
+          .single()
+          .then(({ data }) => data as Record<string, unknown> | null)
+          .catch(() => null as null)
+      : Promise.resolve(null as null);
+
+    const [meshRow] = await Promise.all([meshPromise]);
 
     const meshContext = buildMeshContext(meshRow);
 

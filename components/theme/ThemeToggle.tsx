@@ -15,7 +15,7 @@ export function ThemeToggle() {
         dark:text-[#e8dece]/50 dark:hover:text-[#e8dece]"
     >
       {isDark ? <Sun size={11} /> : <Moon size={11} />}
-      <span>{isDark ? "light mode" : "dark mode"}</span>
+      <span className="hidden xl:inline">{isDark ? "light mode" : "dark mode"}</span>
     </button>
   );
 }

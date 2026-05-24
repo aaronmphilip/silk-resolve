@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Check, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 const INDUSTRIES = [
   { id: "healthcare",  label: "Healthcare",        sub: "Billing, reports, appointments" },
@@ -64,14 +65,11 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#e8dece] flex flex-col" style={{ backgroundImage: "radial-gradient(rgba(0,0,0,0.08) 1px, transparent 1px)", backgroundSize: "22px 22px" }}>
+    <div className="min-h-screen bg-[#e8dece] flex flex-col">
 
       {/* Top bar */}
       <div className="border-b-2 border-black px-6 py-4 bg-[#e8dece] flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-lg">✳</span>
-          <span className="font-bold text-sm tracking-tight">silk resolve</span>
-        </div>
+        <BrandLogo href="/" textClassName="text-sm" />
         {/* Step dots */}
         <div className="flex items-center gap-2">
           {[1, 2].map(s => (
@@ -184,7 +182,7 @@ export default function OnboardingPage() {
                 {[
                   { done: true,  label: "Company profile",         hint: company.name },
                   { done: false, label: "Create your first agent", hint: "2 min → AI writes the prompt" },
-                  { done: false, label: "Add API keys",            hint: "VAPI_PRIVATE_KEY + GEMINI_API_KEY in Vercel env vars" },
+                  { done: false, label: "Add API keys",            hint: "VAPI_PUBLIC_KEY + GEMINI_API_KEY in Vercel env vars" },
                   { done: false, label: "Test with Talk button",   hint: "Browser call, no phone needed" },
                 ].map(item => (
                   <div key={item.label} className="flex items-center gap-4 px-5 py-4">

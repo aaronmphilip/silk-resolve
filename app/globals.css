@@ -8,7 +8,7 @@
   --bg-panel:    #E3DDCA;   /* slightly deeper parchment for panels  */
   --fg:          #0A0908;
   --fg-muted:    #3a3530;
-  --dot-color:   rgba(0, 0, 0, 0.055);
+  --bg-surface:  rgba(255, 255, 255, 0.42);
 }
 
 html.dark {
@@ -16,7 +16,7 @@ html.dark {
   --bg-panel:    #111110;
   --fg:          #F0EBE0;
   --fg-muted:    #857D72;
-  --dot-color:   rgba(255, 255, 255, 0.04);
+  --bg-surface:  rgba(232, 220, 206, 0.025);
 }
 
 /* ─── Base body styles ──────────────────────────────────────── */
@@ -29,21 +29,6 @@ body {
   transition: background-color 0.25s ease, color 0.25s ease;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-/* Subtle dot grid — matches Rumik's linen-dot texture */
-body {
-  background-image: radial-gradient(rgba(0,0,0,0.045) 1px, transparent 1px);
-  background-size: 24px 24px;
-}
-html.dark body {
-  background-image: none;
-}
-
-/* ─── Dot-pattern utility class ─────────────────────────────── */
-.dot-pattern {
-  background-image: radial-gradient(var(--dot-color) 1px, transparent 1px);
-  background-size: 24px 24px;
 }
 
 /* ─── Dark-mode overrides for hardcoded Tailwind classes ─────
@@ -66,11 +51,42 @@ html.dark .text-black {
   color: #e8dece;
 }
 
+/* Fine-grained opacity overrides for dashboard text */
+html.dark .text-black\/20  { color: rgba(232, 220, 206, 0.20); }
+html.dark .text-black\/25  { color: rgba(232, 220, 206, 0.25); }
+html.dark .text-black\/30  { color: rgba(232, 220, 206, 0.30); }
+html.dark .text-black\/35  { color: rgba(232, 220, 206, 0.35); }
+html.dark .text-black\/40  { color: rgba(232, 220, 206, 0.40); }
+html.dark .text-black\/50  { color: rgba(232, 220, 206, 0.50); }
+html.dark .text-black\/60  { color: rgba(232, 220, 206, 0.60); }
+html.dark .text-black\/70  { color: rgba(232, 220, 206, 0.70); }
+html.dark .text-black\/80  { color: rgba(232, 220, 206, 0.80); }
+
+/* Border opacity overrides */
+html.dark .border-black\/5   { border-color: rgba(232, 220, 206, 0.05); }
+html.dark .border-black\/10  { border-color: rgba(232, 220, 206, 0.10); }
+html.dark .border-black\/15  { border-color: rgba(232, 220, 206, 0.15); }
+html.dark .border-black\/20  { border-color: rgba(232, 220, 206, 0.20); }
+html.dark .border-black\/25  { border-color: rgba(232, 220, 206, 0.20); }
+html.dark .border-black\/30  { border-color: rgba(232, 220, 206, 0.22); }
+html.dark .border-black\/40  { border-color: rgba(232, 220, 206, 0.30); }
+
+/* divide-black overrides */
+html.dark [class*="divide-black"] > * + * {
+  border-color: rgba(232, 220, 206, 0.15);
+}
+
 /* Subtle background tints */
-html.dark .bg-black\/\[0\.02\] { background-color: rgba(232, 220, 206, 0.02); }
-html.dark .bg-black\/5         { background-color: rgba(232, 220, 206, 0.05); }
-html.dark .bg-black\/10        { background-color: rgba(232, 220, 206, 0.08); }
-html.dark .bg-black\/15        { background-color: rgba(232, 220, 206, 0.10); }
+html.dark .bg-black\/\[0\.02\]  { background-color: rgba(232, 220, 206, 0.02); }
+html.dark .bg-black\/\[0\.03\]  { background-color: rgba(232, 220, 206, 0.03); }
+html.dark .bg-black\/\[0\.04\]  { background-color: rgba(232, 220, 206, 0.04); }
+html.dark .bg-black\/5          { background-color: rgba(232, 220, 206, 0.05); }
+html.dark .bg-black\/10         { background-color: rgba(232, 220, 206, 0.08); }
+html.dark .bg-black\/15         { background-color: rgba(232, 220, 206, 0.10); }
+html.dark .bg-black\/20         { background-color: rgba(232, 220, 206, 0.12); }
+html.dark .bg-black\/25         { background-color: rgba(232, 220, 206, 0.14); }
+html.dark .bg-black\/30         { background-color: rgba(232, 220, 206, 0.16); }
+html.dark .bg-black\/40         { background-color: rgba(232, 220, 206, 0.18); }
 
 /* Hard shadows → invert to cream on dark */
 html.dark .shadow-hard    { box-shadow: 2px 2px 0px rgba(232, 220, 206, 0.35); }
@@ -80,6 +96,88 @@ html.dark .shadow-hard-sm { box-shadow: 1px 1px 0px rgba(232, 220, 206, 0.35); }
 html.dark .bg-\[#e8dece\],
 html.dark .bg-\[#f0ebe0\],
 html.dark .bg-\[#E3DDCA\]  { background-color: var(--bg-panel); }
+
+/* Light-mode brand surfaces for legacy hardcoded page backgrounds */
+html:not(.dark) .bg-\[#ECE7D3\],
+html:not(.dark) .bg-\[#f5f0e8\] {
+  background-color: var(--bg);
+}
+html:not(.dark) .bg-\[#ede8dc\],
+html:not(.dark) .bg-\[#E3DDCA\] {
+  background-color: var(--bg-panel);
+}
+
+.brand-nav-surface {
+  background-color: rgba(236, 231, 211, 0.88);
+}
+html.dark .brand-nav-surface {
+  background-color: rgba(9, 9, 10, 0.88);
+}
+
+/* Admin light theme. Dark admin remains governed by its existing classes. */
+html:not(.dark) .admin-shell {
+  background-color: var(--bg);
+  color: var(--fg);
+}
+
+html:not(.dark) .admin-nav-panel {
+  background-color: var(--bg-panel);
+}
+
+html.dark .admin-nav-panel {
+  background-color: transparent;
+}
+
+html:not(.dark) .admin-shell [class~="bg-[#0a0a0a]"],
+html:not(.dark) .admin-shell [class~="bg-[#0f0f0f]"] {
+  background-color: var(--bg-panel);
+}
+
+html:not(.dark) .admin-shell [class~="bg-[#f0ebe0]"] {
+  background-color: var(--fg);
+}
+
+html:not(.dark) .admin-shell [class*="bg-[#f0ebe0]/[0.02]"],
+html:not(.dark) .admin-shell [class*="bg-[#f0ebe0]/[0.03]"] {
+  background-color: rgba(10, 9, 8, 0.035);
+}
+
+html:not(.dark) .admin-shell [class*="bg-[#f0ebe0]/5"]  { background-color: rgba(10, 9, 8, 0.05); }
+html:not(.dark) .admin-shell [class*="bg-[#f0ebe0]/10"] { background-color: rgba(10, 9, 8, 0.10); }
+html:not(.dark) .admin-shell [class*="bg-[#f0ebe0]/20"] { background-color: rgba(10, 9, 8, 0.20); }
+html:not(.dark) .admin-shell [class*="bg-[#f0ebe0]/30"] { background-color: rgba(10, 9, 8, 0.30); }
+html:not(.dark) .admin-shell [class*="bg-[#f0ebe0]/40"] { background-color: rgba(10, 9, 8, 0.40); }
+html:not(.dark) .admin-shell [class*="bg-[#f0ebe0]/50"] { background-color: rgba(10, 9, 8, 0.50); }
+
+html:not(.dark) .admin-shell [class~="text-[#f0ebe0]"] {
+  color: var(--fg);
+}
+
+html:not(.dark) .admin-shell [class~="text-[#0a0a0a]"] {
+  color: var(--bg);
+}
+
+html:not(.dark) .admin-shell [class*="text-[#f0ebe0]/5"]  { color: rgba(10, 9, 8, 0.05); }
+html:not(.dark) .admin-shell [class*="text-[#f0ebe0]/10"] { color: rgba(10, 9, 8, 0.10); }
+html:not(.dark) .admin-shell [class*="text-[#f0ebe0]/15"] { color: rgba(10, 9, 8, 0.15); }
+html:not(.dark) .admin-shell [class*="text-[#f0ebe0]/20"] { color: rgba(10, 9, 8, 0.20); }
+html:not(.dark) .admin-shell [class*="text-[#f0ebe0]/25"] { color: rgba(10, 9, 8, 0.25); }
+html:not(.dark) .admin-shell [class*="text-[#f0ebe0]/30"] { color: rgba(10, 9, 8, 0.30); }
+html:not(.dark) .admin-shell [class*="text-[#f0ebe0]/35"] { color: rgba(10, 9, 8, 0.35); }
+html:not(.dark) .admin-shell [class*="text-[#f0ebe0]/40"] { color: rgba(10, 9, 8, 0.40); }
+html:not(.dark) .admin-shell [class*="text-[#f0ebe0]/50"] { color: rgba(10, 9, 8, 0.50); }
+html:not(.dark) .admin-shell [class*="text-[#f0ebe0]/60"] { color: rgba(10, 9, 8, 0.60); }
+html:not(.dark) .admin-shell [class*="text-[#f0ebe0]/70"] { color: rgba(10, 9, 8, 0.70); }
+
+html:not(.dark) .admin-shell [class*="border-[#f0ebe0]/5"]  { border-color: rgba(10, 9, 8, 0.05); }
+html:not(.dark) .admin-shell [class*="border-[#f0ebe0]/10"] { border-color: rgba(10, 9, 8, 0.10); }
+html:not(.dark) .admin-shell [class*="border-[#f0ebe0]/15"] { border-color: rgba(10, 9, 8, 0.15); }
+html:not(.dark) .admin-shell [class*="border-[#f0ebe0]/20"] { border-color: rgba(10, 9, 8, 0.20); }
+html:not(.dark) .admin-shell [class*="border-[#f0ebe0]/50"] { border-color: rgba(10, 9, 8, 0.50); }
+
+html:not(.dark) .admin-shell [class*="placeholder:text-[#f0ebe0]/20"]::placeholder {
+  color: rgba(10, 9, 8, 0.20);
+}
 
 /* ─── React Flow — light mode ───────────────────────────────── */
 .react-flow__attribution { display: none; }

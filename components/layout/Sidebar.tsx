@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 const PLATFORM_NAV = [
   { href: "/dashboard",  label: "overview",   icon: LayoutDashboard, exact: true },
@@ -113,14 +114,14 @@ function NavLinks({ pathname }: { pathname: string }) {
       <p className="text-[9px] font-mono uppercase tracking-widest px-2 mb-2 pt-3 font-semibold
         text-black/50 dark:text-[#e8dece]/40
         border-t border-black/15 dark:border-[#e8dece]/10">
-        docs
+        public
       </p>
-      <Link href="/research"
+      <Link href="/use-cases"
         className="flex items-center gap-2.5 px-3 py-2.5 text-xs transition-all
           text-black/70 hover:text-black hover:bg-black/10
           dark:text-[#e8dece]/60 dark:hover:text-[#e8dece] dark:hover:bg-[#e8dece]/10">
         <ExternalLink size={13} />
-        <span>research</span>
+        <span>use cases</span>
       </Link>
     </nav>
   );
@@ -200,10 +201,7 @@ export default function Sidebar() {
   const Logo = ({ onClose }: { onClose?: () => void }) => (
     <div className="px-5 py-4 border-b-2 flex items-center justify-between flex-shrink-0
       border-black dark:border-[#e8dece]/20">
-      <div className="flex items-center gap-2">
-        <span className="text-base leading-none">✳</span>
-        <span className="font-bold text-sm tracking-tight">silk resolve</span>
-      </div>
+      <BrandLogo href="/" textClassName="text-sm" />
       {onClose && (
         <button onClick={onClose} className="transition-colors lg:hidden
           text-black/50 hover:text-black
@@ -247,10 +245,7 @@ export default function Sidebar() {
         "border-b-2 border-black dark:border-[#e8dece]/20",
         panelCls,
       )}>
-        <div className="flex items-center gap-2">
-          <span className="text-base leading-none">✳</span>
-          <span className="font-bold text-sm tracking-tight">silk resolve</span>
-        </div>
+        <BrandLogo href="/" textClassName="text-sm" />
         <button
           onClick={() => setMobileOpen(true)}
           className="transition-colors

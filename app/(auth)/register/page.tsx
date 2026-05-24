@@ -5,6 +5,7 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 const fadeUp = (delay = 0) => ({
   initial: { opacity: 0, y: 20 },
@@ -72,7 +73,7 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-10
-      bg-[#ECE7D3] dark:bg-[#09090A] dot-pattern">
+      bg-[#ECE7D3] dark:bg-[#09090A]">
 
       <div className="fixed inset-0 pointer-events-none hidden dark:block"
         style={{ background: "radial-gradient(ellipse 70% 60% at 50% 40%, rgba(232,220,206,0.03) 0%, transparent 70%)" }}
@@ -81,18 +82,7 @@ export default function RegisterPage() {
       <div className="relative w-full max-w-md">
         {/* Logo */}
         <motion.div className="mb-8 text-center" {...fadeUp(0.05)}>
-          <Link href="/" className="inline-flex items-center gap-2 mb-5 group">
-            <motion.span
-              className="text-xl leading-none"
-              animate={{ rotate: [0, 15, -15, 0] }}
-              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-            >
-              âœ³
-            </motion.span>
-            <span className="font-bold text-base tracking-tight group-hover:opacity-70 transition-opacity">
-              silk resolve
-            </span>
-          </Link>
+          <BrandLogo href="/" className="inline-flex mb-5 justify-center" textClassName="text-base" />
           <h1 className="text-2xl font-bold tracking-tight">create your account.</h1>
           <p className="text-xs text-black/35 dark:text-[#e8dece]/35 mt-2 font-mono">
             / enterprise voice infrastructure /

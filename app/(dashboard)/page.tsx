@@ -6,6 +6,8 @@ import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion"
 import { VoiceOrb } from "@/components/marketing/VoiceOrb";
 import { Reveal, Stagger, StaggerItem } from "@/components/marketing/Reveal";
 import SilkTerminal from "@/components/marketing/SilkTerminal";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    CYCLING TAGLINE  â€” fixed-height container prevents layout shift
@@ -91,10 +93,7 @@ function MagneticButton({ children, className }: { children: React.ReactNode; cl
    SCROLL-AWARE NAV
 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 const NAV_LINKS = [
-  { label: "features",   href: "/features"   },
   { label: "use cases",  href: "/use-cases"  },
-  { label: "pricing",    href: "/pricing"    },
-  { label: "docs",       href: "/docs"       },
 ];
 
 function Nav() {
@@ -109,21 +108,17 @@ function Nav() {
     <motion.nav
       className={`fixed top-0 left-0 right-0 z-50 px-6 md:px-10 flex items-center justify-between h-16 transition-all duration-500 ${
         scrolled
-          ? "bg-[#ECE7D3]/85 dark:bg-[#09090A]/85 backdrop-blur-xl border-b border-black/[0.07] dark:border-[#e8dece]/[0.07] shadow-sm"
+          ? "brand-nav-surface backdrop-blur-xl border-b border-black/[0.07] dark:border-[#e8dece]/[0.07] shadow-sm"
           : "bg-transparent"
       }`}
       initial={{ opacity: 0, y: -12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.1 }}
     >
-      {/* Logo */}
-      <Link href="/" className="flex items-center gap-2 group">
-        <span className="text-xl leading-none group-hover:opacity-70 transition-opacity">âœ³</span>
-        <span className="font-bold text-[15px] tracking-tight">silk resolve</span>
-      </Link>
+      <BrandLogo />
 
       {/* Links */}
-      <div className="hidden md:flex items-center gap-7">
+      <div className="hidden md:flex items-center gap-5 lg:gap-7">
         {NAV_LINKS.map(({ label, href }, i) => (
           <motion.div key={label}
             initial={{ opacity: 0, y: -8 }}
@@ -143,15 +138,17 @@ function Nav() {
 
       {/* CTA */}
       <motion.div
+        className="flex items-center gap-4"
         initial={{ opacity: 0, scale: 0.92 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{ duration: 0.4, delay: 0.45 }}
       >
+        <ThemeToggle />
         <Link
           href="/register"
-          className="flex items-center gap-1.5 bg-black dark:bg-[#e8dece]
+          className="flex items-center gap-1.5 whitespace-nowrap bg-black dark:bg-[#e8dece]
             text-[#e8dece] dark:text-[#0a0908]
-            px-5 py-2 rounded-full text-[13px] font-semibold hover:opacity-80 transition-opacity"
+            px-4 lg:px-5 py-2 rounded-full text-[13px] font-semibold hover:opacity-80 transition-opacity"
         >
           get access <ArrowUpRight size={12} />
         </Link>
@@ -312,12 +309,6 @@ export default function LandingPage() {
       ref={containerRef}
       className="min-h-screen bg-[#ECE7D3] dark:bg-[#09090A] text-[#0A0908] dark:text-[#F0EBE0]"
     >
-      {/* Dot grid â€” light mode only */}
-      <div
-        className="fixed inset-0 pointer-events-none dark:opacity-0 transition-opacity duration-500"
-        style={{ backgroundImage: "radial-gradient(rgba(0,0,0,0.065) 1px, transparent 1px)", backgroundSize: "24px 24px" }}
-      />
-
       <Nav />
 
       {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â• HERO â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
@@ -346,7 +337,7 @@ export default function LandingPage() {
         {/* Headline */}
         <AnimatedHeadline
           text="Resolution that remembers."
-          className="text-[clamp(38px,7vw,92px)] font-bold tracking-tight leading-[1.03] text-center mb-5"
+          className="text-[clamp(36px,6vw,86px)] font-bold tracking-tight leading-[1.03] text-center mb-5"
         />
 
         {/* Cycling sub-tagline â€” fixed height, no layout shift */}
@@ -552,7 +543,7 @@ export default function LandingPage() {
       <section className="relative px-6 py-32 overflow-hidden">
         <div className="max-w-2xl mx-auto text-center">
           <Reveal>
-            <p className="text-[10px] font-mono text-black/22 dark:text-[#e8dece]/22 uppercase tracking-widest mb-6">/ get started today /</p>
+            <p className="text-[10px] font-mono text-black/22 dark:text-[#e8dece]/22 uppercase tracking-widest mb-6">/ get access /</p>
           </Reveal>
           <Reveal delay={0.08}>
             <h2 className="text-5xl md:text-6xl font-bold tracking-tight leading-tight mb-6">
@@ -594,21 +585,26 @@ export default function LandingPage() {
       {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â• FOOTER â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
       <footer className="border-t border-black/[0.055] dark:border-[#e8dece]/[0.055] px-6 md:px-10 py-8">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-base leading-none">âœ³</span>
-            <span className="font-bold text-sm tracking-tight">silk resolve</span>
+          <div className="flex items-center gap-3">
+            <BrandLogo href="/" textClassName="text-sm" />
             <span className="text-[10px] font-mono text-black/18 dark:text-[#e8dece]/18 ml-1">/ enterprise voice infrastructure /</span>
           </div>
           <div className="flex items-center gap-6">
-            {["product", "pricing", "docs", "privacy", "terms"].map(l => (
-              <a key={l} href="#"
+            {[
+              { label: "use cases", href: "/use-cases" },
+              { label: "sign in", href: "/login" },
+              { label: "get access", href: "/register" },
+            ].map(({ label, href }) => (
+              <Link key={label} href={href}
                 className="text-[11px] font-mono text-black/25 dark:text-[#e8dece]/25
                   hover:text-black/55 dark:hover:text-[#e8dece]/55 transition-colors">
-                {l}
-              </a>
+                {label}
+              </Link>
             ))}
           </div>
-          <p className="text-[10px] font-mono text-black/18 dark:text-[#e8dece]/18">Â© 2026 silk resolve</p>
+          <p className="text-[10px] font-mono text-black/18 dark:text-[#e8dece]/18">
+            &copy; 2026 silk resolve
+          </p>
         </div>
       </footer>
     </div>

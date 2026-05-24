@@ -4,7 +4,7 @@
  * No API keys ever touch the browser.
  */
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
 import { stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
 
@@ -34,15 +34,26 @@ function cleanSpokenText(text: string): string {
 
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  const auth = createClient();
+  const { data: { user } } = await auth.auth.getUser();
 
-  const { data: agent, error } = await supabase
+  const db = user ? auth : createServiceClient();
+  let agentQuery = db
     .from("agents")
-    .select("id, name, system_prompt, first_message, llm_model")
+    .select("id, name, status, system_prompt, first_message, llm_model")
     .eq("id", id)
     .single();
+
+  if (!user) {
+    agentQuery = db
+      .from("agents")
+      .select("id, name, status, system_prompt, first_message, llm_model")
+      .eq("id", id)
+      .in("status", ["live", "active"])
+      .single();
+  }
+
+  const { data: agent, error } = await agentQuery;
 
   if (error || !agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
 
@@ -91,16 +102,17 @@ VOICE EMOTION VARIABLES:
     model: {
       provider: "custom-llm",
       url: `${origin}/api/voice/vapi-llm`,
-      timeoutSeconds: 8,
-      model: agent.llm_model || "gemini-2.5-flash",
+      timeoutSeconds: 10,
+      // gemini-2.0-flash is 2-3× faster than 2.5-flash for real-time voice
+      model: agent.llm_model?.replace("gemini-2.5-flash", "gemini-2.0-flash") || "gemini-2.0-flash",
       messages: [{ role: "system", content: voicePrompt }],
-      temperature: 0.2,
-      maxTokens: 180,
+      temperature: 0.25,
+      maxTokens: 150,
     },
     voice,
     firstMessage: spokenFirstMessage,
     firstMessageMode: "assistant-speaks-first",
-    firstMessageInterruptionsEnabled: false,
+    firstMessageInterruptionsEnabled: true,
     customerJoinTimeoutSeconds: 60,
     endCallPhrases: [],
     endCallMessage: "",
@@ -110,8 +122,11 @@ VOICE EMOTION VARIABLES:
       language: "en",
       smartFormat: true,
       numerals: true,
-      endpointing: 150,
+      endpointing: 100,   // 100ms endpointing for faster turn detection
     },
+    silenceTimeoutSeconds: 25,
+    maxDurationSeconds: 1800,
+    backchannelingEnabled: false,
     clientMessages: ["assistant.speechStarted", "transcript", "hang", "speech-update", "status-update", "metadata"],
     serverMessages: ["end-of-call-report", "status-update", "tool-calls"],
     serverUrl: `${origin}/api/voice/vapi-events`,

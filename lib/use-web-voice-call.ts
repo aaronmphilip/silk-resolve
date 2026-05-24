@@ -37,6 +37,7 @@ const SDK_LOAD_TIMEOUT_MS = 15_000;
 const CONFIG_TIMEOUT_MS = 60_000;
 const START_TIMEOUT_MS = 75_000;
 const ASSISTANT_MERGE_WINDOW_MS = 12_000;
+const VISITOR_ID_KEY = "silk_resolve_voice_visitor_id";
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -186,6 +187,23 @@ function appendTranscriptLine(
   return [...lines, { role, text, ts }];
 }
 
+function getOrCreateVisitorId(): string {
+  if (typeof window === "undefined") return "";
+
+  try {
+    const existing = window.localStorage.getItem(VISITOR_ID_KEY);
+    if (existing) return existing;
+
+    const generated = typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `guest-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    window.localStorage.setItem(VISITOR_ID_KEY, generated);
+    return generated;
+  } catch {
+    return "";
+  }
+}
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
   const payload = await response.json().catch(() => ({}));
@@ -253,7 +271,7 @@ export function useWebVoiceCall(agentId: string) {
       await fetchJson("/api/voice/web-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId, callId }),
+        body: JSON.stringify({ agentId, callId, visitorId: getOrCreateVisitorId() }),
       });
     } catch (err) {
       console.warn("[voice] failed to register web session", err);
