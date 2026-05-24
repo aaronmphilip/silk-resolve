@@ -212,10 +212,10 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="bg-[#0a0a0a] border border-[#f0ebe0]/20 w-full max-w-2xl flex flex-col max-h-[85vh]">
+      <div className="bg-[#0a0a0a] border-t sm:border border-[#f0ebe0]/20 w-full sm:max-w-2xl flex flex-col h-[100dvh] sm:h-auto sm:max-h-[85vh]">
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#f0ebe0]/10">
@@ -247,7 +247,7 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
         )}
 
         {/* Transcript */}
-        <div ref={scrollRef} className="flex-1 overflow-y-auto p-5 space-y-3 min-h-64">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3 min-h-0 sm:min-h-64">
           {transcript.length === 0 && state !== "error" ? (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
@@ -285,7 +285,7 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
         </div>
 
         {/* Controls */}
-        <div className="px-5 py-4 border-t border-[#f0ebe0]/10 flex items-center justify-end gap-2">
+        <div className="px-4 sm:px-5 py-4 border-t border-[#f0ebe0]/10 flex flex-wrap items-center justify-end gap-2 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {(state === "connecting" || state === "joining") && (
             <div className="flex items-center gap-2 text-xs font-mono text-[#f0ebe0]/30">
               <Loader2 size={11} className="animate-spin" />
@@ -298,7 +298,7 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
               <button
                 type="button"
                 onClick={toggleMute}
-                className={`flex items-center gap-1.5 text-xs font-mono border px-3 py-2 transition-colors ${
+                className={`min-h-11 flex items-center gap-1.5 text-xs font-mono border px-4 sm:px-3 py-2 transition-colors ${
                   muted
                     ? "border-amber-400/40 text-amber-400"
                     : "border-[#f0ebe0]/20 text-[#f0ebe0]/60 hover:border-[#f0ebe0]/40"
@@ -310,7 +310,7 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
               <button
                 type="button"
                 onClick={endCall}
-                className="flex items-center gap-1.5 text-xs font-mono border border-red-400/30 text-red-400 px-3 py-2 hover:bg-red-400/10 transition-colors"
+                className="min-h-11 flex items-center gap-1.5 text-xs font-mono border border-red-400/30 text-red-400 px-4 sm:px-3 py-2 hover:bg-red-400/10 transition-colors"
               >
                 <PhoneOff size={11} /> end call
               </button>
@@ -327,7 +327,7 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="text-xs font-mono border border-[#f0ebe0]/20 px-4 py-2 text-[#f0ebe0] hover:border-[#f0ebe0]/50 transition-colors"
+              className="min-h-11 text-xs font-mono border border-[#f0ebe0]/20 px-5 py-2 text-[#f0ebe0] hover:border-[#f0ebe0]/50 transition-colors"
             >
               close
             </button>

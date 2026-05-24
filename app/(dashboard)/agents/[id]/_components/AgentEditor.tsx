@@ -541,8 +541,8 @@ export default function AgentEditor({
       {showTalk && <TalkModal agentId={agent.id} agentName={agent.name} onClose={() => setShowTalk(false)} />}
 
       {/* Top bar */}
-      <div className="border-b border-[#f0ebe0]/10 px-4 sm:px-8 py-4 flex items-center justify-between sticky top-0 bg-[#0a0a0a] z-40 gap-3">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="border-b border-[#f0ebe0]/10 px-4 sm:px-8 py-4 flex flex-col sm:flex-row sm:items-center justify-between sticky top-14 lg:top-0 bg-[#0a0a0a] z-30 gap-3">
+        <div className="flex items-center gap-3 min-w-0 w-full sm:w-auto">
           <Link href="/agents" className="flex items-center gap-1.5 text-[10px] font-mono text-[#f0ebe0]/30 hover:text-[#f0ebe0]/80 transition-opacity flex-shrink-0">
             <ArrowLeft size={11} /> <span className="hidden sm:inline">agents</span>
           </Link>
@@ -559,22 +559,22 @@ export default function AgentEditor({
           </button>
         </div>
 
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0 w-full sm:w-auto overflow-x-auto pb-0.5 sm:overflow-visible">
           {error && <span className="text-[10px] font-mono text-red-400 hidden sm:block">{error}</span>}
           {saved && <span className="text-[10px] font-mono text-emerald-400">✓ saved</span>}
 
           <button type="button" onClick={() => setShowTalk(true)}
-            className="flex items-center gap-1.5 text-xs font-mono border border-emerald-400/40 text-emerald-400 px-3 py-2 hover:bg-emerald-400/10 transition-colors">
-            <PhoneCall size={11} /> <span className="hidden sm:inline">Talk</span>
+            className="min-h-10 flex items-center gap-1.5 text-xs font-mono border border-emerald-400/40 text-emerald-400 px-3 py-2 hover:bg-emerald-400/10 transition-colors whitespace-nowrap">
+            <PhoneCall size={11} /> <span>Talk</span>
           </button>
 
           <button type="button" onClick={() => save()} disabled={saving || !changed}
-            className="flex items-center gap-1.5 text-xs font-mono border border-[#f0ebe0]/20 px-3 py-2 text-[#f0ebe0]/60 hover:border-[#f0ebe0]/50 transition-colors disabled:opacity-30">
+            className="min-h-10 flex items-center gap-1.5 text-xs font-mono border border-[#f0ebe0]/20 px-3 py-2 text-[#f0ebe0]/60 hover:border-[#f0ebe0]/50 transition-colors disabled:opacity-30 whitespace-nowrap">
             {saving ? <Loader2 size={10} className="animate-spin" /> : null}
             {saving ? "saving..." : "save"}
           </button>
           <button type="button" onClick={() => save("live")} disabled={saving}
-            className="flex items-center gap-1.5 text-xs font-mono bg-[#f0ebe0] text-[#0a0a0a] px-3 sm:px-4 py-2 hover:bg-[#f0ebe0]/90 transition-colors disabled:opacity-50">
+            className="min-h-10 flex items-center gap-1.5 text-xs font-mono bg-[#f0ebe0] text-[#0a0a0a] px-3 sm:px-4 py-2 hover:bg-[#f0ebe0]/90 transition-colors disabled:opacity-50 whitespace-nowrap">
             {saved ? <Check size={10} /> : null}
             {agent.status === "live" ? "published" : "publish"}
           </button>
@@ -582,20 +582,22 @@ export default function AgentEditor({
       </div>
 
       {/* Body */}
-      <div className="flex">
+      <div className="flex flex-col lg:flex-row">
         {/* Left nav — tabs + stats */}
-        <div className="w-40 sm:w-44 border-r border-[#f0ebe0]/10 min-h-screen flex-shrink-0 pt-6">
-          {(["configure", "tools", "logs"] as const).map(t => (
-            <button key={t} type="button" onClick={() => setTab(t)}
-              className={`w-full text-left px-5 py-3 text-xs font-mono flex items-center justify-between transition-colors ${tab === t ? "text-[#f0ebe0]" : "text-[#f0ebe0]/30 hover:text-[#f0ebe0]/60"}`}>
-              <span className="capitalize">{t}</span>
-              {t === "logs" && calls.length > 0 && (
-                <span className="text-[9px] font-mono border border-[#f0ebe0]/20 px-1.5">{calls.length}</span>
-              )}
-            </button>
-          ))}
+        <div className="w-full lg:w-44 border-b lg:border-b-0 lg:border-r border-[#f0ebe0]/10 flex-shrink-0 lg:min-h-screen lg:pt-6">
+          <div className="flex lg:block overflow-x-auto">
+            {(["configure", "tools", "logs"] as const).map(t => (
+              <button key={t} type="button" onClick={() => setTab(t)}
+                className={`min-w-max lg:w-full text-left px-5 py-3 text-xs font-mono flex items-center justify-between gap-2 transition-colors ${tab === t ? "text-[#f0ebe0]" : "text-[#f0ebe0]/30 hover:text-[#f0ebe0]/60"}`}>
+                <span className="capitalize">{t}</span>
+                {t === "logs" && calls.length > 0 && (
+                  <span className="text-[9px] font-mono border border-[#f0ebe0]/20 px-1.5">{calls.length}</span>
+                )}
+              </button>
+            ))}
+          </div>
 
-          <div className="mt-8 px-5 space-y-3 border-t border-[#f0ebe0]/10 pt-5">
+          <div className="hidden lg:block mt-8 px-5 space-y-3 border-t border-[#f0ebe0]/10 pt-5">
             {[
               { label: "total calls", value: agent.total_calls > 0 ? agent.total_calls.toLocaleString() : "0" },
               { label: "today",       value: agent.calls_today.toString() },
@@ -612,7 +614,7 @@ export default function AgentEditor({
         </div>
 
         {/* Main content */}
-        <div className="flex-1 px-6 sm:px-10 py-8 max-w-2xl">
+        <div className="flex-1 px-4 sm:px-10 py-6 sm:py-8 max-w-2xl w-full">
           {tab === "configure" && ConfigureTab}
           {tab === "tools"     && ToolsTab}
           {tab === "logs"      && LogsTab}

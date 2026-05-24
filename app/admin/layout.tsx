@@ -9,7 +9,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // Guard: env vars not configured yet
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
     return (
-      <div className="min-h-screen bg-[#0a0a0a] text-[#f0ebe0] flex items-center justify-center p-8">
+      <div className="admin-shell min-h-screen bg-[var(--bg)] text-[var(--fg)] dark:bg-[#0a0a0a] dark:text-[#f0ebe0] flex items-center justify-center p-8">
         <div className="max-w-lg space-y-4 text-center">
           <p className="text-3xl font-bold">⚠</p>
           <p className="text-lg font-bold">Supabase not configured</p>
@@ -50,7 +50,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   return (
-    <div className="flex min-h-screen bg-[#0a0a0a] text-[#f0ebe0]">
+    <div className="admin-shell flex min-h-screen flex-col lg:flex-row bg-[var(--bg)] text-[var(--fg)] dark:bg-[#0a0a0a] dark:text-[#f0ebe0]">
       <AdminNav userEmail={user.email ?? ""} />
       <main className="flex-1 min-w-0 overflow-x-hidden">{children}</main>
     </div>
