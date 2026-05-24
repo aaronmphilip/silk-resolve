@@ -13,6 +13,15 @@ import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
 
 export const runtime = "nodejs";
 
+function cleanSpokenText(text: string): string {
+  return text
+    .replace(/\{\{\s*caller_name\s*\}\}/gi, "there")
+    .replace(/\{\{\s*customer_name\s*\}\}/gi, "there")
+    .replace(/\{\{\s*preferred_address\s*\}\}/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export async function POST(req: NextRequest) {
   const supabase = createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -70,12 +79,19 @@ export async function POST(req: NextRequest) {
 
   const systemPrompt = agent.system_prompt ||
     `You are ${agent.name}, a helpful voice assistant. Be concise and warm.`;
-  const firstMessage = agent.first_message ||
-    `Hi, I'm ${agent.name}. How can I help you today?`;
+  const firstMessage = cleanSpokenText(
+    agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`
+  );
 
   // Voice priority: SILK (Rumik) → Vapi built-in PlayHT
   const voice = silk.apiKey
-    ? { provider: "custom-voice", server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 10 } }
+    ? {
+        provider: "custom-voice",
+        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 10 },
+        fallbackPlan: {
+          voices: [{ provider: "playht", voiceId: "jennifer" }],
+        },
+      }
     : { provider: "playht", voiceId: "jennifer" };
 
   // Build the assistant config — same shape as before but sent to Vapi's REST API

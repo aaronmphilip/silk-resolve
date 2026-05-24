@@ -1,13 +1,35 @@
 /**
- * Returns a Vapi-compatible inline assistant config for the given agent.
- * Uses custom-llm so ALL LLM calls route through our /api/voice/vapi-llm.
+ * Returns a Vapi-compatible inline assistant config for browser calls.
+ * Uses custom-llm so all LLM calls route through /api/voice/vapi-llm.
  * No API keys ever touch the browser.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { getPlatformVoiceConfig } from "@/lib/platform";
+import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+function deriveOrigin(req: NextRequest): string {
+  const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000")
+    .split(",")[0]
+    .trim();
+  const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const hostname = host.startsWith("[")
+    ? host.slice(1, host.indexOf("]")).toLowerCase()
+    : host.split(":")[0]?.toLowerCase();
+  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  const proto = forwardedProto || (isLocalHost ? "http" : "https");
+  return `${proto}://${host}`;
+}
+
+function cleanSpokenText(text: string): string {
+  return text
+    .replace(/\{\{\s*caller_name\s*\}\}/gi, "there")
+    .replace(/\{\{\s*customer_name\s*\}\}/gi, "there")
+    .replace(/\{\{\s*preferred_address\s*\}\}/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
@@ -17,27 +39,43 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
   const { data: agent, error } = await supabase
     .from("agents")
-    .select("id, name, system_prompt, first_message, language, llm_provider, llm_model, silk_voice_id, companion_vibe")
+    .select("id, name, system_prompt, first_message, llm_model")
     .eq("id", id)
     .single();
 
   if (error || !agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
 
-  const { silk } = await getPlatformVoiceConfig();
+  const [{ silk }, aiConfig] = await Promise.all([
+    getPlatformVoiceConfig(),
+    getPlatformAIConfig(),
+  ]);
 
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000";
-  const proto = host.startsWith("localhost") ? "http" : "https";
-  const origin = `${proto}://${host}`;
+  if (!aiConfig.apiKey) {
+    return NextResponse.json(
+      { error: "Voice AI is not configured. Add GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY before starting calls." },
+      { status: 500 }
+    );
+  }
 
-  // Voice priority: SILK (Rumik) → Vapi built-in PlayHT
+  const origin = deriveOrigin(req);
+
   const voice = silk.apiKey
-    ? { provider: "custom-voice", server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 10 } }
+    ? {
+        provider: "custom-voice",
+        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 10 },
+        fallbackPlan: {
+          voices: [{ provider: "playht", voiceId: "jennifer" }],
+        },
+      }
     : { provider: "playht", voiceId: "jennifer" };
 
-  const systemPrompt = agent.system_prompt || `You are ${agent.name}, a helpful voice assistant. Be concise and friendly.`;
-  const firstMessage = agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`;
+  const systemPrompt = agent.system_prompt ||
+    `You are ${agent.name}, a helpful voice assistant. Be concise and friendly.`;
+  const firstMessage = cleanSpokenText(
+    agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`
+  );
 
-  const assistantConfig = {
+  return NextResponse.json({
     name: agent.name,
     model: {
       provider: "custom-llm",
@@ -49,12 +87,14 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     },
     voice,
     firstMessage,
+    firstMessageMode: "assistant-speaks-first",
+    firstMessageInterruptionsEnabled: false,
+    customerJoinTimeoutSeconds: 60,
     endCallMessage: "Thank you for calling. Goodbye!",
     transcriber: { provider: "deepgram", model: "nova-2", language: "en" },
-    clientMessages: ["transcript", "hang", "speech-update", "metadata"],
-    serverMessages: ["end-of-call-report", "status-update"],
-    metadata: { agentId: agent.id },
-  };
-
-  return NextResponse.json(assistantConfig);
+    clientMessages: ["assistant.speechStarted", "transcript", "hang", "speech-update", "status-update", "metadata"],
+    serverMessages: ["end-of-call-report", "status-update", "tool-calls"],
+    serverUrl: `${origin}/api/voice/vapi-events`,
+    metadata: { agentId: agent.id, aiProvider: aiConfig.provider },
+  });
 }

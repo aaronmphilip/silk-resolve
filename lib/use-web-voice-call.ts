@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DailyCall } from "@daily-co/daily-js";
 
 export type WebVoiceCallState =
   | "idle"
@@ -18,16 +17,24 @@ export interface WebVoiceTranscript {
   ts: number;
 }
 
-interface WebCallResponse {
-  callId: string;
-  roomUrl: string;
+type VapiCtor = typeof import("@vapi-ai/web").default;
+type VapiInstance = InstanceType<VapiCtor>;
+
+interface TokenResponse {
+  apiKey: string;
 }
 
-type DailyFactory = typeof import("@daily-co/daily-js").default;
+interface AssistantConfig {
+  [key: string]: unknown;
+}
 
-const DAILY_LOAD_TIMEOUT_MS = 15_000;
-const CALL_CREATE_TIMEOUT_MS = 20_000;
-const ROOM_JOIN_TIMEOUT_MS = 45_000;
+interface CallResponse {
+  id?: string;
+}
+
+const SDK_LOAD_TIMEOUT_MS = 15_000;
+const CONFIG_TIMEOUT_MS = 60_000;
+const START_TIMEOUT_MS = 75_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -40,13 +47,13 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   });
 }
 
-async function loadDailyFactory(): Promise<DailyFactory> {
-  const daily = await withTimeout(
-    import("@daily-co/daily-js"),
-    DAILY_LOAD_TIMEOUT_MS,
-    "The voice room library did not load. Check your connection and retry."
+async function loadVapiCtor(): Promise<VapiCtor> {
+  const mod = await withTimeout(
+    import("@vapi-ai/web"),
+    SDK_LOAD_TIMEOUT_MS,
+    "The Vapi web SDK did not load. Check your connection and retry."
   );
-  return daily.default;
+  return mod.default;
 }
 
 function ensureBrowserCanUseMic() {
@@ -64,9 +71,8 @@ function ensureBrowserCanUseMic() {
   }
 }
 
-async function getMicrophoneStream(): Promise<MediaStream> {
+async function preflightMicrophone(): Promise<void> {
   ensureBrowserCanUseMic();
-
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
       echoCancellation: true,
@@ -75,22 +81,17 @@ async function getMicrophoneStream(): Promise<MediaStream> {
     },
     video: false,
   });
-
-  if (stream.getAudioTracks().length === 0) {
-    stream.getTracks().forEach(track => track.stop());
-    throw new Error("No microphone audio track was provided by the browser.");
-  }
-
-  return stream;
+  stream.getTracks().forEach(track => track.stop());
 }
 
 function parseErrorText(err: unknown): { name: string; message: string } {
   if (err instanceof Error) return { name: err.name, message: err.message };
 
-  const record = err as { name?: unknown; message?: unknown; errorMsg?: unknown };
+  const record = err as { name?: unknown; message?: unknown; error?: unknown; errorMsg?: unknown };
   const name = typeof record?.name === "string" ? record.name : "";
   const message =
     typeof record?.message === "string" ? record.message :
+    typeof record?.error === "string" ? record.error :
     typeof record?.errorMsg === "string" ? record.errorMsg :
     typeof err === "string" ? err :
     "Failed to start call";
@@ -112,8 +113,11 @@ export function normalizeVoiceCallError(err: unknown): string {
   if (name === "NotReadableError" || name === "TrackStartError") {
     return "The microphone is already in use or blocked by the operating system. Close other apps using it and retry.";
   }
+  if (lower.includes("invalid key")) {
+    return "Vapi rejected the browser key. Check that VAPI_PUBLIC_KEY is the public key, not the private key.";
+  }
   if (lower.includes("meeting has ended") || lower.includes("room has ended")) {
-    return "The Vapi room ended before the browser joined. Retry after allowing mic access; if it repeats, check the call diagnostics.";
+    return "The Vapi room ended before the browser fully joined. Retry after allowing mic access.";
   }
   if (lower.includes("network") || lower.includes("fetch failed")) {
     return "Network error while starting the voice call. Check connection and retry.";
@@ -122,25 +126,31 @@ export function normalizeVoiceCallError(err: unknown): string {
   return message;
 }
 
-function stopStream(stream: MediaStream | null) {
-  stream?.getTracks().forEach(track => track.stop());
-}
-
 function normalizeTranscriptRole(role: unknown): "user" | "assistant" {
   if (role === "assistant" || role === "bot" || role === "agent") return "assistant";
   return "user";
 }
 
-function parseAppMessage(data: unknown): Record<string, unknown> | "listening" | null {
-  if (data === "listening") return "listening";
-  if (typeof data === "object" && data !== null) return data as Record<string, unknown>;
-  if (typeof data !== "string") return null;
+function getTranscriptText(message: Record<string, unknown>): string {
+  const transcript = message.transcript;
+  if (typeof transcript === "string") return transcript.trim();
 
-  try {
-    return JSON.parse(data) as Record<string, unknown>;
-  } catch {
-    return null;
+  const text = message.text;
+  if (typeof text === "string") return text.trim();
+
+  return "";
+}
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = payload && typeof payload === "object" && "error" in payload
+      ? String((payload as { error: unknown }).error)
+      : `Request failed (${response.status})`;
+    throw new Error(error);
   }
+  return payload as T;
 }
 
 export function useWebVoiceCall(agentId: string) {
@@ -152,12 +162,10 @@ export function useWebVoiceCall(agentId: string) {
   const [transcript, setTranscript] = useState<WebVoiceTranscript[]>([]);
 
   const mountedRef = useRef(true);
-  const callRef = useRef<DailyCall | null>(null);
-  const micStreamRef = useRef<MediaStream | null>(null);
-  const abortRef = useRef<AbortController | null>(null);
+  const vapiRef = useRef<VapiInstance | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const runIdRef = useRef(0);
-  const suppressLeftEventRef = useRef(false);
+  const registeredCallIdsRef = useRef(new Set<string>());
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -173,62 +181,37 @@ export function useWebVoiceCall(agentId: string) {
     }, 1000);
   }, []);
 
-  const releaseMicrophone = useCallback(() => {
-    stopStream(micStreamRef.current);
-    micStreamRef.current = null;
+  const destroyVapi = useCallback(async () => {
+    const vapi = vapiRef.current;
+    vapiRef.current = null;
+    if (!vapi) return;
+
+    try {
+      vapi.removeAllListeners();
+    } catch {}
+    try {
+      await vapi.stop();
+    } catch {}
   }, []);
 
   const cleanupCall = useCallback(async () => {
-    abortRef.current?.abort();
-    abortRef.current = null;
     stopTimer();
-
-    const call = callRef.current;
-    callRef.current = null;
-
-    if (call) {
-      suppressLeftEventRef.current = true;
-      try {
-        await call.leave();
-      } catch {}
-      try {
-        await call.destroy();
-      } catch {}
-      suppressLeftEventRef.current = false;
-    }
-
-    releaseMicrophone();
+    await destroyVapi();
     setMuted(false);
-  }, [releaseMicrophone, stopTimer]);
+  }, [destroyVapi, stopTimer]);
 
-  const createWebCall = useCallback(async (): Promise<WebCallResponse> => {
-    const controller = new AbortController();
-    abortRef.current = controller;
-    let timedOut = false;
-    const timeoutId = setTimeout(() => {
-      timedOut = true;
-      controller.abort();
-    }, CALL_CREATE_TIMEOUT_MS);
+  const registerCall = useCallback(async (callId: string) => {
+    if (!callId || registeredCallIdsRef.current.has(callId)) return;
+    registeredCallIdsRef.current.add(callId);
 
     try {
-      const response = await fetch("/api/voice/web-call", {
+      await fetchJson("/api/voice/web-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId }),
-        signal: controller.signal,
+        body: JSON.stringify({ agentId, callId }),
       });
-
-      const payload = await response.json().catch(() => ({})) as Partial<WebCallResponse> & { error?: string };
-      if (!response.ok) throw new Error(payload.error ?? `Failed to create call (${response.status})`);
-      if (!payload.callId || !payload.roomUrl) throw new Error("The voice provider did not return a usable room.");
-
-      return { callId: payload.callId, roomUrl: payload.roomUrl };
     } catch (err) {
-      if (timedOut) throw new Error("Creating the Vapi call timed out. Retry in a moment.");
-      throw err;
-    } finally {
-      clearTimeout(timeoutId);
-      if (abortRef.current === controller) abortRef.current = null;
+      console.warn("[voice] failed to register web session", err);
     }
   }, [agentId]);
 
@@ -258,62 +241,62 @@ export function useWebVoiceCall(agentId: string) {
     setDuration(0);
 
     try {
-      const [Daily, micStream] = await Promise.all([
-        loadDailyFactory(),
-        getMicrophoneStream(),
-      ]);
-
-      if (!mountedRef.current || runId !== runIdRef.current) {
-        stopStream(micStream);
-        return;
-      }
-
-      micStreamRef.current = micStream;
-      const audioTrack = micStream.getAudioTracks()[0];
-      const { roomUrl } = await createWebCall();
+      const [Vapi, token, assistant] = await withTimeout(
+        Promise.all([
+          loadVapiCtor(),
+          fetchJson<TokenResponse>("/api/voice/vapi-token"),
+          fetchJson<AssistantConfig>(`/api/agents/${agentId}/vapi-config`),
+          preflightMicrophone(),
+        ]),
+        CONFIG_TIMEOUT_MS,
+        "Voice configuration took too long to load. Retry in a moment."
+      ).then(([Ctor, tokenResponse, assistantConfig]) => [Ctor, tokenResponse, assistantConfig] as const);
 
       if (!mountedRef.current || runId !== runIdRef.current) return;
 
-      const call = Daily.createCallObject({
-        audioSource: audioTrack,
-        videoSource: false,
-      });
-      callRef.current = call;
+      const vapi = new Vapi(
+        token.apiKey,
+        undefined,
+        { alwaysIncludeMicInPermissionPrompt: true },
+        { startAudioOff: false }
+      );
+      vapiRef.current = vapi;
 
-      call.on("joined-meeting", () => {
+      vapi.on("call-start", () => {
         if (!mountedRef.current || runId !== runIdRef.current) return;
         setState("active");
         startTimer();
       });
 
-      call.on("left-meeting", () => {
-        if (!mountedRef.current || runId !== runIdRef.current || suppressLeftEventRef.current) return;
-        stopTimer();
-        releaseMicrophone();
-        callRef.current = null;
-        setState(prev => prev === "ending" ? "ended" : prev === "active" ? "ended" : "error");
-        setError(prev => prev || "The call room closed before it fully connected.");
+      vapi.on("call-start-success", event => {
+        if (!mountedRef.current || runId !== runIdRef.current) return;
+        if (event.callId) void registerCall(event.callId);
       });
 
-      call.on("error", event => {
+      vapi.on("call-start-failed", event => {
         if (!mountedRef.current || runId !== runIdRef.current) return;
-        setError(normalizeVoiceCallError(event));
+        setError(normalizeVoiceCallError(event.error));
         void finishCall("error");
       });
 
-      call.on("app-message", event => {
+      vapi.on("call-end", () => {
         if (!mountedRef.current || runId !== runIdRef.current) return;
+        stopTimer();
+        setState(prev => prev === "ending" ? "ended" : "ended");
+      });
 
-        const msg = parseAppMessage((event as { data?: unknown }).data);
-        if (msg === "listening") {
-          setState("active");
-          startTimer();
-          return;
-        }
-        if (!msg) return;
+      vapi.on("speech-start", () => {
+        if (!mountedRef.current || runId !== runIdRef.current) return;
+        setState("active");
+        startTimer();
+      });
 
+      vapi.on("message", message => {
+        if (!mountedRef.current || runId !== runIdRef.current || !message) return;
+
+        const msg = message as Record<string, unknown>;
         if (msg.type === "transcript" && msg.transcriptType === "final") {
-          const text = typeof msg.transcript === "string" ? msg.transcript.trim() : "";
+          const text = getTranscriptText(msg);
           if (!text) return;
 
           const role = normalizeTranscriptRole(msg.role);
@@ -321,17 +304,25 @@ export function useWebVoiceCall(agentId: string) {
           if (role === "user") setTension(value => Math.min(10, value + 0.4));
         }
 
-        if ((msg.type === "status-update" && msg.status === "ended") || msg.type === "hang") {
+        if (msg.type === "status-update" && msg.status === "ended") {
           void finishCall("ended");
         }
       });
 
+      vapi.on("error", event => {
+        if (!mountedRef.current || runId !== runIdRef.current) return;
+        setError(normalizeVoiceCallError(event));
+        void finishCall("error");
+      });
+
       setState("joining");
-      await withTimeout(
-        call.join({ url: roomUrl }),
-        ROOM_JOIN_TIMEOUT_MS,
-        "Joining the voice room timed out. Check microphone permission and retry."
-      );
+      const call = await withTimeout(
+        vapi.start(assistant),
+        START_TIMEOUT_MS,
+        "Vapi did not finish starting the web call. Check mic permission and retry."
+      ) as CallResponse | null;
+
+      if (call?.id) void registerCall(call.id);
     } catch (err) {
       if (!mountedRef.current || runId !== runIdRef.current) return;
       await cleanupCall();
@@ -341,17 +332,32 @@ export function useWebVoiceCall(agentId: string) {
   }, [
     agentId,
     cleanupCall,
-    createWebCall,
     finishCall,
-    releaseMicrophone,
+    registerCall,
     startTimer,
     stopTimer,
   ]);
 
   const endCall = useCallback(async () => {
     runIdRef.current += 1;
-    await finishCall("ended");
-  }, [finishCall]);
+    const vapi = vapiRef.current;
+    setState("ending");
+    stopTimer();
+    if (vapi) {
+      try {
+        vapi.end();
+      } catch {
+        try {
+          await vapi.stop();
+        } catch {}
+      }
+      try {
+        vapi.removeAllListeners();
+      } catch {}
+      vapiRef.current = null;
+    }
+    if (mountedRef.current) setState("ended");
+  }, [stopTimer]);
 
   const reset = useCallback(async () => {
     runIdRef.current += 1;
@@ -365,11 +371,11 @@ export function useWebVoiceCall(agentId: string) {
   }, [cleanupCall]);
 
   const toggleMute = useCallback(() => {
-    const call = callRef.current;
-    if (!call) return;
+    const vapi = vapiRef.current;
+    if (!vapi) return;
 
     const nextMuted = !muted;
-    call.setLocalAudio(!nextMuted);
+    vapi.setMuted(nextMuted);
     setMuted(nextMuted);
   }, [muted]);
 
