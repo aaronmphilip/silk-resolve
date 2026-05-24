@@ -168,7 +168,7 @@ export default function TestCallPage() {
 
               <div className="border-t border-black/10 pt-4 text-left">
                 <p className="text-[10px] font-mono text-black/40 leading-relaxed">
-                  mic → Vapi STT → Gemini 2.5 Flash → SILK / PlayHT → speaker
+                  {"mic -> Vapi STT -> refund resolver -> SILK / PlayHT -> speaker"}
                 </p>
               </div>
             </div>
@@ -214,9 +214,9 @@ export default function TestCallPage() {
                 <p className="text-[10px] font-mono text-black/50 uppercase tracking-widest font-semibold">what to test</p>
                 {[
                   { label: "First message", desc: "Agent speaks immediately when call connects" },
-                  { label: "PEEK",          desc: "Express frustration — tension score should rise" },
+                  { label: "Refund DB",     desc: "Say refund, then SR-1001, confirm it, and say duplicate charge" },
                   { label: "Voice",         desc: "SILK voice (Rumik) if key set, else Vapi PlayHT" },
-                  { label: "Escalation",    desc: "Push hard — agent should offer to escalate" },
+                  { label: "Review path",   desc: "Use SR-1002 to show senior review instead of instant refund" },
                 ].map(item => (
                   <div key={item.label} className="flex items-start gap-3">
                     <span className="text-[10px] font-mono border-2 border-black/20 px-2 py-0.5 text-black/50 flex-shrink-0 mt-0.5">

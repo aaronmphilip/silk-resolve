@@ -124,11 +124,11 @@ export async function GET(req: NextRequest) {
 
   checks.push({
     id: "ai-provider",
-    label: "AI provider",
-    status: aiConfig.apiKey ? "ok" : "error",
+    label: "Optional AI provider",
+    status: aiConfig.apiKey ? "ok" : "warning",
     message: aiConfig.apiKey
-      ? `${aiConfig.provider} is configured for live replies.`
-      : "No AI API key is configured. Live replies will fail after the first message.",
+      ? `${aiConfig.provider} is configured for non-voice AI features.`
+      : "No AI API key is configured. The live refund demo still works because voice replies use the deterministic resolver.",
   });
 
   checks.push({
