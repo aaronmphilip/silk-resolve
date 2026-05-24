@@ -1,14 +1,27 @@
 /**
  * POST /api/voice/silk-tts
  *
- * Custom voice server for Rumik SILK model.
+ * Custom voice server for Rumik SILK — muga model.
  * Vapi calls this when SILK_API_KEY is set in env vars.
- * If SILK returns an error, Vapi automatically falls back to its built-in voice.
+ *
+ * muga tone is controlled by a [tone] prefix on the text:
+ *   neutral (default) | happy | sad | excited | angry | whisper
+ *
+ * The tone prefix is added by vapi-llm based on PEEK tension level:
+ *   0–2  → [happy]    (calm, positive)
+ *   3–4  → [neutral]  (professional)
+ *   5–6  → [sad]      (empathetic)
+ *   7–10 → [whisper]  (de-escalating)
+ *
+ * Returns 24 kHz mono WAV.
+ * On error → 502 so Vapi falls back to its built-in voice automatically.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getPlatformVoiceConfig } from "@/lib/platform";
 
 export const runtime = "nodejs";
+
+const SILK_ENDPOINT = "https://silk-api.rumik.ai/v1/tts";
 
 export async function POST(req: NextRequest) {
   const { silk } = await getPlatformVoiceConfig();
@@ -25,17 +38,15 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const silkRes = await fetch(`${silk.baseUrl}/audio/speech`, {
+    const silkRes = await fetch(SILK_ENDPOINT, {
       method: "POST",
       headers: {
         "Authorization": `Bearer ${silk.apiKey}`,
         "Content-Type": "application/json",
-        "Accept": "audio/mpeg",
       },
       body: JSON.stringify({
-        model:  silk.voiceId || "silk-1",
-        input:  text,
-        format: "mp3",
+        model: "muga",
+        text,           // [tone] prefix already embedded by vapi-llm
       }),
     });
 
@@ -45,9 +56,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: `SILK error ${silkRes.status}` }, { status: 502 });
     }
 
+    // muga returns 24 kHz mono WAV
     return new NextResponse(silkRes.body, {
       headers: {
-        "Content-Type": "audio/mpeg",
+        "Content-Type": "audio/wav",
         "Cache-Control": "no-store",
       },
     });

@@ -221,10 +221,17 @@ export async function POST(req: NextRequest) {
       })();
     }
 
-    // Strip SILK tags before sending to voice provider
+    // Strip SILK markup tags, then prepend muga tone based on PEEK tension
     const cleanText = stripTags(agentText);
+    const silkTone  = newTension >= 7 ? "whisper"
+                    : newTension >= 5 ? "sad"
+                    : newTension >= 3 ? "neutral"
+                    : "happy";
+    // Prefix is picked up by /api/voice/silk-tts when SILK is active;
+    // ignored by Vapi's built-in PlayHT (it only receives the final text)
+    const voiceText = `[${silkTone}] ${cleanText}`;
 
-    return wantsStream ? streamText(cleanText) : jsonResponse(cleanText);
+    return wantsStream ? streamText(voiceText) : jsonResponse(voiceText);
 
   } catch (err) {
     console.error("[vapi-llm] error:", err);

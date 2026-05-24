@@ -44,9 +44,7 @@ export async function getPlatformVoiceConfig() {
       phoneNumber: process.env.VAPI_PHONE_NUMBER ?? "",
     },
     silk: {
-      apiKey:  process.env.SILK_API_KEY  ?? "",
-      voiceId: process.env.SILK_VOICE_ID ?? "",
-      baseUrl: process.env.SILK_BASE_URL ?? "https://api.rumik.ai/v1",
+      apiKey: process.env.SILK_API_KEY ?? "",
     },
   };
 }

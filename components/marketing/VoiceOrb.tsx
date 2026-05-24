@@ -1,91 +1,82 @@
 "use client";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
 
 const INNER_BARS = [3, 5, 8, 12, 16, 12, 8, 5, 3, 5, 8, 12, 8, 5, 3];
-const OUTER_BARS = 32;
 
-function randomise(h: number) {
-  return Math.max(8, Math.min(96, h + (Math.random() - 0.5) * 28));
-}
-
-const BASE = Array.from({ length: OUTER_BARS }, (_, i) => {
-  const t = i / OUTER_BARS;
-  return 18 + Math.sin(t * Math.PI * 4) * 36 + Math.cos(t * Math.PI * 2) * 18;
+/* Pre-computed outer bar configs — static, no JS interval, no re-renders */
+const OUTER = Array.from({ length: 32 }, (_, i) => {
+  const t = i / 32;
+  const base = 14 + Math.sin(t * Math.PI * 4) * 22 + Math.cos(t * Math.PI * 2) * 10;
+  return {
+    minH: Math.max(5, base * 0.28),
+    maxH: Math.max(10, base * 0.95),
+    dur:   0.85 + (i % 7) * 0.14,   // 0.85 – 1.69 s
+    delay: -(i * 0.072),             // stagger via negative delay
+  };
 });
 
 export function VoiceOrb({ size = 300 }: { size?: number }) {
-  const [outerH, setOuterH] = useState(BASE);
-
-  /* Live-randomise outer bars every 120 ms to look like real audio */
-  useEffect(() => {
-    const id = setInterval(() =>
-      setOuterH(prev => prev.map(randomise)), 120);
-    return () => clearInterval(id);
-  }, []);
-
   return (
-    <div className="relative flex flex-col items-center">
-      {/* ── Outer glow blob ─────────────────────────────── */}
+    <div className="relative flex flex-col items-center select-none">
+
+      {/* ── Ambient glow ────────────────────────────────────── */}
       <motion.div
         className="absolute rounded-full pointer-events-none
-          dark:bg-[radial-gradient(circle,rgba(232,220,206,0.08)_0%,transparent_65%)]
-          bg-[radial-gradient(circle,rgba(10,9,8,0.05)_0%,transparent_65%)]"
-        style={{ width: size * 1.6, height: size * 1.6,
-          top: "50%", left: "50%",
-          transform: "translate(-50%,-50%)" }}
-        animate={{ scale: [1, 1.12, 1] }}
-        transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+          bg-[radial-gradient(circle,rgba(10,9,8,0.04)_0%,transparent_65%)]
+          dark:bg-[radial-gradient(circle,rgba(232,220,206,0.07)_0%,transparent_65%)]"
+        style={{
+          width: size * 1.7, height: size * 1.7,
+          top: "50%", left: "50%", transform: "translate(-50%,-50%)",
+        }}
+        animate={{ scale: [1, 1.1, 1] }}
+        transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
       />
 
-      {/* ── Concentric pulse rings ───────────────────────── */}
+      {/* ── Concentric pulse rings ───────────────────────────── */}
       {[0, 1, 2, 3].map(i => (
-        <motion.div
-          key={i}
+        <motion.div key={i}
           className="absolute rounded-full border pointer-events-none
-            border-black/[0.08] dark:border-[#e8dece]/[0.08]"
+            border-black/[0.07] dark:border-[#e8dece]/[0.07]"
           style={{
-            width:  size * 0.38 + i * size * 0.2,
-            height: size * 0.38 + i * size * 0.2,
-            top: "50%", left: "50%",
-            transform: "translate(-50%,-50%)",
+            width:  size * 0.36 + i * size * 0.19,
+            height: size * 0.36 + i * size * 0.19,
+            top: "50%", left: "50%", transform: "translate(-50%,-50%)",
           }}
-          animate={{ scale: [1, 1.35, 1], opacity: [0.7, 0, 0.7] }}
+          animate={{ scale: [1, 1.4, 1], opacity: [0.6, 0, 0.6] }}
           transition={{
-            duration: 4 + i * 0.6,
+            duration: 4.5 + i * 0.55,
             repeat: Infinity,
-            delay: i * 1.1,
+            delay: i * 1.2,
             ease: "easeInOut",
           }}
         />
       ))}
 
-      {/* ── Central orb ─────────────────────────────────── */}
+      {/* ── Central orb ─────────────────────────────────────── */}
       <div
         className="relative flex items-center justify-center rounded-full z-10
           bg-[#0A0908] dark:bg-[#F0EBE0]
-          shadow-[0_0_60px_rgba(0,0,0,0.18),0_0_20px_rgba(0,0,0,0.12)]
-          dark:shadow-[0_0_60px_rgba(240,235,224,0.22),0_0_24px_rgba(240,235,224,0.12)]"
+          shadow-[0_0_50px_rgba(0,0,0,0.16),0_0_18px_rgba(0,0,0,0.10)]
+          dark:shadow-[0_0_50px_rgba(240,235,224,0.20),0_0_20px_rgba(240,235,224,0.10)]"
         style={{ width: size * 0.34, height: size * 0.34 }}
       >
-        {/* Breathing scale */}
+        {/* Breathing scale overlay */}
         <motion.div
           className="absolute inset-0 rounded-full"
-          animate={{ scale: [1, 1.07, 1] }}
-          transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
+          animate={{ scale: [1, 1.06, 1] }}
+          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
         />
-
         {/* Inner waveform bars */}
-        <div className="flex items-center gap-[2px] z-10">
+        <div className="flex items-center gap-[2.5px] z-10">
           {INNER_BARS.map((h, i) => (
-            <motion.div
-              key={i}
-              className="w-[2.5px] rounded-full bg-[#F0EBE0] dark:bg-[#0A0908] opacity-80"
-              animate={{ height: [`${h}px`, `${h * 2.4}px`, `${h}px`] }}
+            <motion.div key={i}
+              className="rounded-full bg-[#F0EBE0] dark:bg-[#0A0908] opacity-80"
+              style={{ width: 2.5 }}
+              animate={{ height: [`${h}px`, `${h * 2.3}px`, `${h}px`] }}
               transition={{
-                duration: 0.7 + i * 0.08,
+                duration: 0.75 + i * 0.07,
                 repeat: Infinity,
-                delay: i * 0.055,
+                delay: i * 0.05,
                 ease: "easeInOut",
               }}
             />
@@ -93,15 +84,19 @@ export function VoiceOrb({ size = 300 }: { size?: number }) {
         </div>
       </div>
 
-      {/* ── Outer waveform bars (horizontal strip below) ─── */}
-      <div className="mt-8 flex items-end justify-center gap-[3px]">
-        {outerH.map((h, i) => (
-          <motion.div
+      {/* ── Outer waveform bars — pure CSS, zero JS re-renders ─ */}
+      <div className="mt-8 flex items-end justify-center gap-[3.5px]">
+        {OUTER.map((cfg, i) => (
+          <div
             key={i}
-            className="rounded-full bg-black/25 dark:bg-[#e8dece]/25"
-            style={{ width: 3 }}
-            animate={{ height: `${h * 0.55}px` }}
-            transition={{ duration: 0.14, ease: "easeOut" }}
+            className="voice-outer-bar rounded-full bg-black/20 dark:bg-[#e8dece]/20"
+            style={{
+              width: 3,
+              "--vb-min": `${cfg.minH}px`,
+              "--vb-max": `${cfg.maxH}px`,
+              animationDuration:  `${cfg.dur}s`,
+              animationDelay:     `${cfg.delay}s`,
+            } as React.CSSProperties}
           />
         ))}
       </div>

@@ -133,6 +133,16 @@ html.dark .react-flow__controls-button:hover { background: #1f1c18; }
 html.dark .react-flow__edge-textbg { fill: #181511; }
 html.dark .react-flow__edge-text   { fill: #e8dece; }
 
+/* ─── Voice orb outer bars (pure CSS — no JS re-renders) ────── */
+@keyframes voice-bar-pulse {
+  0%, 100% { height: var(--vb-min, 6px); }
+  50%       { height: var(--vb-max, 22px); }
+}
+.voice-outer-bar {
+  animation: voice-bar-pulse 1s ease-in-out infinite;
+  /* duration + delay are set via inline style on each bar */
+}
+
 /* ─── Animation ─────────────────────────────────────────────── */
 @keyframes dashdraw {
   to { stroke-dashoffset: -10; }
