@@ -36,6 +36,7 @@ interface CallResponse {
 const SDK_LOAD_TIMEOUT_MS = 15_000;
 const CONFIG_TIMEOUT_MS = 60_000;
 const START_TIMEOUT_MS = 75_000;
+const ASSISTANT_MERGE_WINDOW_MS = 12_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -134,12 +135,55 @@ function normalizeTranscriptRole(role: unknown): "user" | "assistant" {
 
 function getTranscriptText(message: Record<string, unknown>): string {
   const transcript = message.transcript;
-  if (typeof transcript === "string") return stripVoiceMarkers(transcript);
+  if (typeof transcript === "string") return cleanTranscriptText(transcript);
 
   const text = message.text;
-  if (typeof text === "string") return stripVoiceMarkers(text);
+  if (typeof text === "string") return cleanTranscriptText(text);
 
   return "";
+}
+
+function cleanTranscriptText(text: string): string {
+  return stripVoiceMarkers(text)
+    .replace(/\br\s*f\s+minus\s+1,?000\s+on\s+minus\s+524\b/gi, "RF-1001-0524")
+    .replace(/\br\s*f\s+minus\s+one\s+thousand\s+on\s+minus\s+five\s+twenty\s+four\b/gi, "RF-1001-0524")
+    .replace(
+      /\br\s*f\s+(?:1|one)\s+(?:0|zero|oh)\s+(?:0|zero|oh)\s+(?:1|one)\s+(?:0|zero|oh)\s+(?:5|five)\s+(?:2|two)\s+(?:4|four)\b/gi,
+      "RF-1001-0524"
+    )
+    .replace(
+      /\bu\s*p\s*i\s+ending\s+(?:1|one)\s+(?:1|one)\s+(?:8|eight)\s+(?:8|eight)\b/gi,
+      "UPI ending 1188"
+    )
+    .replace(/\bu\s*p\s*i\b/gi, "UPI")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function appendTranscriptLine(
+  lines: WebVoiceTranscript[],
+  role: "user" | "assistant",
+  text: string,
+  ts: number
+): WebVoiceTranscript[] {
+  const previous = lines[lines.length - 1];
+  if (
+    role === "assistant" &&
+    previous?.role === "assistant" &&
+    ts - previous.ts < ASSISTANT_MERGE_WINDOW_MS
+  ) {
+    if (previous.text.toLowerCase().includes(text.toLowerCase())) return lines;
+    return [
+      ...lines.slice(0, -1),
+      {
+        ...previous,
+        text: `${previous.text} ${text}`.replace(/\s+/g, " ").trim(),
+        ts,
+      },
+    ];
+  }
+
+  return [...lines, { role, text, ts }];
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -301,7 +345,8 @@ export function useWebVoiceCall(agentId: string) {
           if (!text) return;
 
           const role = normalizeTranscriptRole(msg.role);
-          setTranscript(lines => [...lines, { role, text, ts: Date.now() }]);
+          const ts = Date.now();
+          setTranscript(lines => appendTranscriptLine(lines, role, text, ts));
           if (role === "user") setTension(value => Math.min(10, value + 0.4));
         }
 

@@ -171,8 +171,17 @@ function inferRefundReason(text: string): string | null {
   return null;
 }
 
-function shortPaymentMethod(paymentMethod: string): string {
-  return paymentMethod.replace(/\s+ending\s+/i, " ");
+function speakablePaymentMethod(paymentMethod: string): string {
+  const last4 = paymentMethod.match(/\d{4}$/)?.[0];
+  if (!last4) return paymentMethod;
+  const provider = paymentMethod.replace(/\s+ending\s+\d{4}$/i, "").trim();
+  return `${provider.split("").join(" ")} ending ${last4.split("").join(" ")}`;
+}
+
+function speakableReference(reference: string): string {
+  const match = reference.match(/^([A-Z]+)-(\d{4})-(\d{4})$/i);
+  if (!match) return reference.replace(/-/g, " ");
+  return `${match[1].toUpperCase().split("").join(" ")} ${match[2].split("").join(" ")} ${match[3].split("").join(" ")}`;
 }
 
 function isRefundIntent(text: string): boolean {
@@ -258,7 +267,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (order.state === "already_refunded") {
     return {
-      text: `${order.orderId} was already refunded. Reference ${order.refundReference}, sent to ${shortPaymentMethod(order.paymentMethod)}.`,
+      text: `${order.orderId} was already refunded. Reference ${speakableReference(order.refundReference)}, sent to ${speakablePaymentMethod(order.paymentMethod)}.`,
       intent: "refund_status",
       tensionLevel,
       status: "resolved",
@@ -270,7 +279,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (order.state === "manual_review") {
     return {
-      text: `${order.orderId} is outside the ${order.refundWindowDays}-day auto-refund window. I opened senior review ${order.refundReference}.`,
+      text: `${order.orderId} is outside the ${order.refundWindowDays}-day auto-refund window. I opened senior review ${speakableReference(order.refundReference)}.`,
       intent: "refund",
       tensionLevel: Math.max(tensionLevel, 5),
       status: "escalated",
@@ -282,7 +291,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (!askedToConfirm && !confirmed) {
     return {
-      text: `I found ${order.orderId}: ${order.item}, paid by ${shortPaymentMethod(order.paymentMethod)}. Is that right?`,
+      text: `I found ${order.orderId}: ${order.item}, paid by ${speakablePaymentMethod(order.paymentMethod)}. Is that right?`,
       intent: "refund",
       tensionLevel,
       status: "active",
@@ -326,7 +335,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
 
   if (alreadyCompleted) {
     return {
-      text: `Refund ${order.refundReference} is already started. It should reach ${shortPaymentMethod(order.paymentMethod)} in 3 to 5 days.`,
+      text: `Refund ${speakableReference(order.refundReference)} is already started. It should reach ${speakablePaymentMethod(order.paymentMethod)} in 3 to 5 days.`,
       intent: "refund_status",
       tensionLevel,
       status: "resolved",
@@ -337,7 +346,7 @@ function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0
   }
 
   return {
-    text: `Refund approved. Ref ${order.refundReference}. It should reach ${shortPaymentMethod(order.paymentMethod)} in 3 to 5 days.`,
+    text: `Refund approved. Reference ${speakableReference(order.refundReference)}. It should reach ${speakablePaymentMethod(order.paymentMethod)} in 3 to 5 days.`,
     intent: "refund",
     tensionLevel,
     status: "resolved",
