@@ -65,11 +65,7 @@ const ENTERPRISE_FEATURES = [
 export default function LandingPage() {
   return (
     <div
-      className="min-h-screen bg-[#e8dece] text-[#111111]"
-      style={{
-        backgroundImage: "radial-gradient(rgba(0,0,0,0.12) 1px, transparent 1px)",
-        backgroundSize: "22px 22px",
-      }}
+      className="min-h-screen dot-pattern bg-[#e8dece] text-[#111111] dark:bg-[#0f0d0b] dark:text-[#e8dece]"
     >
       {/* Binary watermark — same as dashboard */}
       <div className="fixed top-3 right-4 pointer-events-none select-none opacity-[0.07] font-mono text-[10px] leading-relaxed text-right z-0">
@@ -77,7 +73,7 @@ export default function LandingPage() {
       </div>
 
       {/* ── Nav ─────────────────────────────────────────────── */}
-      <nav className="sticky top-0 z-50 px-8 py-4 flex items-center justify-between bg-[#e8dece]/90 backdrop-blur-sm border-b border-black/10">
+      <nav className="sticky top-0 z-50 px-8 py-4 flex items-center justify-between bg-[#e8dece]/90 dark:bg-[#0f0d0b]/90 backdrop-blur-sm border-b border-black/10 dark:border-[#e8dece]/10">
         <div className="flex items-center gap-2">
           <span className="text-lg leading-none">✳</span>
           <span className="font-bold text-base tracking-tight">silk resolve</span>

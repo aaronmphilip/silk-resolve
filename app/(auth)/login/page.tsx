@@ -33,7 +33,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#e8dece", backgroundImage: "radial-gradient(rgba(0,0,0,0.12) 1px, transparent 1px)", backgroundSize: "22px 22px" }}>
+    <div className="min-h-screen flex items-center justify-center px-4 dot-pattern bg-[#e8dece] dark:bg-[#0f0d0b]">
       <div className="fixed top-3 right-4 pointer-events-none select-none opacity-[0.12] font-mono text-[10px] leading-relaxed text-right">
         <div>11111111</div><div>1110011</div><div>000 10</div><div>11111</div><div>0000000</div>
       </div>
@@ -47,7 +47,7 @@ export default function LoginPage() {
           <p className="text-xs opacity-40 mt-1.5 font-mono">/ level 3 autonomous voice infrastructure /</p>
         </div>
 
-        <div className="border border-black shadow-[3px_3px_0px_rgba(0,0,0,0.85)]">
+        <div className="border border-black shadow-[3px_3px_0px_rgba(0,0,0,0.85)] dark:shadow-[3px_3px_0px_rgba(232,220,206,0.2)] dark:border-[#e8dece]/25 bg-[#e8dece] dark:bg-[#181511]">
           <div className="px-6 py-4 border-b border-black">
             <p className="text-xs font-mono opacity-40 uppercase tracking-widest">sign in</p>
           </div>

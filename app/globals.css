@@ -2,82 +2,135 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Theme tokens ──────────────────────────────────────────── */
 :root {
-  --cream: #f0ebe0;
-  --ink: #0a0a0a;
-  --ink-muted: #3a3530;
+  --bg:          #f0ebe0;
+  --bg-panel:    #e8dece;
+  --fg:          #0a0a0a;
+  --fg-muted:    #3a3530;
+  --dot-color:   rgba(0, 0, 0, 0.10);
 }
 
+html.dark {
+  --bg:          #0f0d0b;
+  --bg-panel:    #181511;
+  --fg:          #e8dece;
+  --fg-muted:    #9a9080;
+  --dot-color:   rgba(255, 255, 255, 0.04);
+}
+
+/* ─── Base body styles ──────────────────────────────────────── */
 html,
 body {
-  background-color: #f0ebe0;
-  background-image: radial-gradient(rgba(0, 0, 0, 0.1) 1px, transparent 1px);
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--dot-color) 1px, transparent 1px);
   background-size: 22px 22px;
-  color: #0a0a0a;
+  color: var(--fg);
   font-family: "Space Grotesk", system-ui, sans-serif;
   min-height: 100vh;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
-/* React Flow overrides to match brand */
-.react-flow__attribution {
-  display: none;
+/* ─── Dot-pattern utility (for pages that override body bg) ── */
+.dot-pattern {
+  background-image: radial-gradient(var(--dot-color) 1px, transparent 1px);
+  background-size: 22px 22px;
 }
+
+/* ─── Dark-mode overrides for hardcoded Tailwind classes ─────
+   Non-layered CSS wins over @layer utilities at equal specificity,
+   so these override Tailwind without needing !important.          */
+
+/* Borders */
+html.dark [class*="border-black"] {
+  border-color: rgba(232, 220, 206, 0.15);
+}
+html.dark .border-black {
+  border-color: rgba(232, 220, 206, 0.22);
+}
+
+/* Text — opacity variants first, then solid override wins */
+html.dark [class*="text-black"] {
+  color: rgba(232, 220, 206, 0.55);
+}
+html.dark .text-black {
+  color: #e8dece;
+}
+
+/* Subtle background tints */
+html.dark .bg-black\/\[0\.02\] { background-color: rgba(232, 220, 206, 0.02); }
+html.dark .bg-black\/5         { background-color: rgba(232, 220, 206, 0.05); }
+html.dark .bg-black\/10        { background-color: rgba(232, 220, 206, 0.08); }
+html.dark .bg-black\/15        { background-color: rgba(232, 220, 206, 0.10); }
+
+/* Hard shadows → invert to cream on dark */
+html.dark .shadow-hard    { box-shadow: 2px 2px 0px rgba(232, 220, 206, 0.35); }
+html.dark .shadow-hard-sm { box-shadow: 1px 1px 0px rgba(232, 220, 206, 0.35); }
+
+/* Panels / cards that use hardcoded bg */
+html.dark .bg-\[#e8dece\],
+html.dark .bg-\[#f0ebe0\] { background-color: var(--bg-panel); }
+
+/* ─── React Flow — light mode ───────────────────────────────── */
+.react-flow__attribution { display: none; }
 
 .react-flow__edge-path {
   stroke: #0a0a0a;
   stroke-width: 1.5;
 }
-
 .react-flow__edge.animated path {
   stroke-dasharray: 5;
   animation: dashdraw 0.5s linear infinite;
 }
-
 .react-flow__handle {
   background: #f0ebe0 !important;
   border: 1.5px solid #0a0a0a !important;
   width: 10px !important;
   height: 10px !important;
 }
-
 .react-flow__controls {
   border: 1px solid #0a0a0a;
   box-shadow: 2px 2px 0px rgba(0, 0, 0, 1);
 }
-
 .react-flow__controls-button {
   background: #f0ebe0;
   border-bottom: 1px solid #0a0a0a;
   color: #0a0a0a;
 }
-
-.react-flow__controls-button:hover {
-  background: #e0dbd0;
-}
-
-.react-flow__edge-textbg {
-  fill: #f0ebe0;
-}
-
+.react-flow__controls-button:hover { background: #e0dbd0; }
+.react-flow__edge-textbg { fill: #f0ebe0; }
 .react-flow__edge-text {
   font-size: 10px;
   font-family: "JetBrains Mono", monospace;
   fill: #0a0a0a;
 }
 
+/* ─── React Flow — dark mode ────────────────────────────────── */
+html.dark .react-flow__edge-path { stroke: #e8dece; }
+html.dark .react-flow__handle {
+  background: #181511 !important;
+  border: 1.5px solid rgba(232, 220, 206, 0.4) !important;
+}
+html.dark .react-flow__controls {
+  border: 1px solid rgba(232, 220, 206, 0.2);
+  box-shadow: 2px 2px 0px rgba(232, 220, 206, 0.15);
+}
+html.dark .react-flow__controls-button {
+  background: #181511;
+  border-bottom: 1px solid rgba(232, 220, 206, 0.15);
+  color: #e8dece;
+}
+html.dark .react-flow__controls-button:hover { background: #1f1c18; }
+html.dark .react-flow__edge-textbg { fill: #181511; }
+html.dark .react-flow__edge-text   { fill: #e8dece; }
+
+/* ─── Animation ─────────────────────────────────────────────── */
 @keyframes dashdraw {
-  to {
-    stroke-dashoffset: -10;
-  }
+  to { stroke-dashoffset: -10; }
 }
 
-/* Scrollbar */
-::-webkit-scrollbar {
-  width: 4px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
-}
+/* ─── Scrollbar ─────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.2); }
+html.dark ::-webkit-scrollbar-thumb { background: rgba(232, 220, 206, 0.2); }
