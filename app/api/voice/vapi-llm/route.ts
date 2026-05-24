@@ -1,28 +1,21 @@
 /**
  * POST /api/voice/vapi-llm
  *
- * Custom LLM endpoint — Vapi sends the full conversation in OpenAI chat format
- * and we return a streaming SSE response (OpenAI-compatible).
- *
- * This is where PEEK analysis runs, SILK tags are applied internally,
- * and escalation logic fires.
+ * Vapi calls this endpoint as an OpenAI-compatible custom LLM. Keep this route
+ * fast and deterministic: if it throws or returns malformed SSE, Vapi ends the
+ * live call.
  */
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
-import { getPlatformAIConfig } from "@/lib/platform";
-import { callAI, extractJSON } from "@/lib/ai";
+import {
+  buildDemoVoiceReply,
+  type DemoChatMessage,
+  type DemoVoiceReply,
+} from "@/lib/demo-refunds";
 import { stripTags } from "@/lib/twiml";
-import type { AgentScript } from "@/lib/types";
 
 export const runtime = "nodejs";
-
-function svc() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } }
-  );
-}
+export const maxDuration = 30;
 
 interface OpenAIMessage {
   role: "system" | "user" | "assistant";
@@ -30,48 +23,148 @@ interface OpenAIMessage {
 }
 
 interface VapiLLMRequest {
-  model: string;
-  messages: OpenAIMessage[];
+  model?: string;
+  messages?: unknown;
   stream?: boolean;
-  max_tokens?: number;
-  temperature?: number;
   call?: {
-    id: string;
-    customer?: { number: string };
+    id?: string;
+    customer?: { number?: string };
   };
+  callId?: string;
 }
 
-/** Stream text back as OpenAI-compatible SSE */
-function streamText(text: string): Response {
+interface VoiceSession {
+  id: string;
+  tension_level: number | null;
+  turn_count: number | null;
+  messages: unknown;
+}
+
+function svc(): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim();
+  if (!url || !key) return null;
+
+  return createClient(url, key, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+}
+
+function contentToText(content: unknown): string {
+  if (typeof content === "string") return content;
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") return part;
+        if (part && typeof part === "object" && "text" in part) {
+          const text = (part as { text?: unknown }).text;
+          return typeof text === "string" ? text : "";
+        }
+        return "";
+      })
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+  }
+
+  return "";
+}
+
+function normalizeMessages(input: unknown): OpenAIMessage[] {
+  if (!Array.isArray(input)) return [];
+
+  return input
+    .map((raw): OpenAIMessage | null => {
+      if (!raw || typeof raw !== "object") return null;
+
+      const record = raw as { role?: unknown; content?: unknown; message?: unknown; text?: unknown };
+      const roleValue = typeof record.role === "string" ? record.role.toLowerCase() : "user";
+      const role: OpenAIMessage["role"] =
+        roleValue === "system" ? "system" :
+        roleValue === "assistant" || roleValue === "agent" || roleValue === "bot" ? "assistant" :
+        "user";
+
+      const content =
+        contentToText(record.content) ||
+        contentToText(record.message) ||
+        contentToText(record.text);
+
+      if (!content) return null;
+      return { role, content };
+    })
+    .filter((message): message is OpenAIMessage => Boolean(message));
+}
+
+function toDemoMessages(messages: OpenAIMessage[]): DemoChatMessage[] {
+  return messages
+    .filter((message) => message.role !== "system")
+    .map((message) => ({ role: message.role, content: message.content }));
+}
+
+function normalizeStoredMessages(input: unknown): DemoChatMessage[] {
+  if (!Array.isArray(input)) return [];
+
+  return input
+    .map((raw): DemoChatMessage | null => {
+      if (!raw || typeof raw !== "object") return null;
+      const record = raw as { role?: unknown; content?: unknown };
+      const content = contentToText(record.content);
+      if (!content) return null;
+
+      const rawRole = typeof record.role === "string" ? record.role.toLowerCase() : "user";
+      const role = rawRole === "agent" || rawRole === "assistant" || rawRole === "bot"
+        ? "assistant"
+        : rawRole === "system" ? "system" : "user";
+      if (role === "system") return null;
+
+      return { role, content };
+    })
+    .filter((message): message is DemoChatMessage => Boolean(message));
+}
+
+function mergeDemoMessages(stored: DemoChatMessage[], incoming: DemoChatMessage[]): DemoChatMessage[] {
+  const merged: DemoChatMessage[] = [];
+
+  for (const message of [...stored, ...incoming]) {
+    const previous = merged[merged.length - 1];
+    if (previous?.role === message.role && previous.content === message.content) continue;
+    merged.push(message);
+  }
+
+  return merged.slice(-40);
+}
+
+function lastUserMessage(messages: OpenAIMessage[]): string {
+  return [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+}
+
+function formatSseChunk(id: string, created: number, model: string, delta: Record<string, string>, finishReason: string | null) {
+  return `data: ${JSON.stringify({
+    id,
+    object: "chat.completion.chunk",
+    created,
+    model,
+    choices: [{ index: 0, delta, finish_reason: finishReason }],
+  })}\n\n`;
+}
+
+function streamText(text: string, model = "silk-resolve-demo"): Response {
   const encoder = new TextEncoder();
   const id = `chatcmpl-${Date.now()}`;
+  const created = Math.floor(Date.now() / 1000);
+  const safeText = text.trim() || "I understand. Please tell me a little more so I can help.";
 
   const stream = new ReadableStream({
     start(controller) {
-      // Role delta first
-      controller.enqueue(
-        encoder.encode(
-          `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { role: "assistant" }, index: 0, finish_reason: null }] })}\n\n`
-        )
-      );
+      controller.enqueue(encoder.encode(formatSseChunk(id, created, model, { role: "assistant" }, null)));
 
-      // Stream word by word for natural feel
-      const words = text.split(" ");
-      for (let i = 0; i < words.length; i++) {
-        const chunk = i < words.length - 1 ? words[i] + " " : words[i];
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { content: chunk }, index: 0, finish_reason: null }] })}\n\n`
-          )
-        );
+      const chunks = safeText.match(/.{1,48}(?:\s|$)/g) ?? [safeText];
+      for (const chunk of chunks) {
+        controller.enqueue(encoder.encode(formatSseChunk(id, created, model, { content: chunk }, null)));
       }
 
-      // Stop signal
-      controller.enqueue(
-        encoder.encode(
-          `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: {}, index: 0, finish_reason: "stop" }] })}\n\n`
-        )
-      );
+      controller.enqueue(encoder.encode(formatSseChunk(id, created, model, {}, "stop")));
       controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       controller.close();
     },
@@ -79,23 +172,26 @@ function streamText(text: string): Response {
 
   return new Response(stream, {
     headers: {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
       "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
     },
   });
 }
 
-/** Return non-streaming JSON response (fallback) */
-function jsonResponse(text: string): Response {
-  const id = `chatcmpl-${Date.now()}`;
+function jsonResponse(text: string, model = "silk-resolve-demo"): Response {
+  const safeText = text.trim() || "I understand. Please tell me a little more so I can help.";
+
   return Response.json({
-    id,
+    id: `chatcmpl-${Date.now()}`,
     object: "chat.completion",
+    created: Math.floor(Date.now() / 1000),
+    model,
     choices: [
       {
         index: 0,
-        message: { role: "assistant", content: text },
+        message: { role: "assistant", content: safeText },
         finish_reason: "stop",
       },
     ],
@@ -103,138 +199,105 @@ function jsonResponse(text: string): Response {
   });
 }
 
-/** Build PEEK + agent response prompt from conversation history */
-function buildPeekPrompt(
-  messages: OpenAIMessage[],
-  tensionLevel: number
-): { system: string; user: string } {
-  // Extract last user message
-  const userMessages = messages.filter((m) => m.role === "user");
-  const lastUser = userMessages[userMessages.length - 1]?.content ?? "";
+async function loadSession(db: SupabaseClient | null, callId: string): Promise<VoiceSession | null> {
+  if (!db || !callId) return null;
 
-  // Build conversation history string (last 4 exchanges)
-  const history = messages
-    .filter((m) => m.role !== "system")
-    .slice(-8)
-    .map((m) => `${m.role === "user" ? "Customer" : "Agent"}: ${m.content}`)
-    .join("\n");
+  try {
+    const { data } = await db
+      .from("voice_sessions")
+      .select("id, tension_level, turn_count, messages")
+      .eq("call_sid", callId)
+      .maybeSingle();
 
-  const system = messages.find((m) => m.role === "system")?.content ?? "";
+    return data as VoiceSession | null;
+  } catch (err) {
+    console.error("[vapi-llm] session lookup failed:", err);
+    return null;
+  }
+}
 
-  const peekUser = `Conversation so far:
-${history || "(call just started)"}
+function appendSessionMessages(existing: unknown, userText: string, reply: DemoVoiceReply) {
+  const now = new Date().toISOString();
+  const messages = Array.isArray(existing) ? [...existing] : [];
+  const last = messages[messages.length - 1] as { role?: unknown; content?: unknown } | undefined;
 
-Customer just said: "${lastUser}"
+  if (userText && !(last?.role === "user" && last?.content === userText)) {
+    messages.push({ role: "user", content: userText, ts: now });
+  }
 
-Respond as the agent. Return JSON:
-{
-  "agentText": "what you say (1-3 sentences, plain text only — no markdown)",
-  "intent": "one word: complaint|query|frustrated|satisfied|angry|confused|grateful",
-  "tensionLevel": <0-10>,
-  "arousal": <0-10>,
-  "hiddenIntent": "what they really mean (optional)",
-  "shouldEscalate": <true/false>,
-  "escalationReason": "why (only if escalating)"
-}`;
+  messages.push({
+    role: "agent",
+    content: reply.text,
+    ts: now,
+    meta: {
+      intent: reply.intent,
+      action: reply.action,
+      orderId: reply.orderId,
+      resolution: reply.resolution,
+    },
+  });
 
-  return { system, user: peekUser };
+  return messages.slice(-80);
+}
+
+async function persistSessionTurn(
+  db: SupabaseClient | null,
+  session: VoiceSession | null,
+  userText: string,
+  reply: DemoVoiceReply
+) {
+  if (!db || !session) return;
+
+  try {
+    const nextMessages = appendSessionMessages(session.messages, userText, reply);
+    const nextTurnCount = (session.turn_count ?? 0) + 1;
+
+    await db
+      .from("voice_sessions")
+      .update({
+        messages: nextMessages,
+        turn_count: nextTurnCount,
+        tension_level: reply.tensionLevel,
+        status: reply.status,
+        resolution: reply.resolution ?? null,
+      })
+      .eq("id", session.id);
+  } catch (err) {
+    console.error("[vapi-llm] session update failed:", err);
+  }
+}
+
+function withSaneVoiceText(text: string): string {
+  return stripTags(text).replace(/\s+/g, " ").trim();
 }
 
 export async function POST(req: NextRequest) {
-  const db = svc();
-  const body = await req.json() as VapiLLMRequest;
-
-  const { messages, stream: wantsStream = true, call } = body;
-  const callId    = call?.id ?? "";
-  const fromPhone = call?.customer?.number ?? "";
-
-  // Fallback response helper
-  const fallback = (text: string) =>
-    wantsStream ? streamText(text) : jsonResponse(text);
+  let wantsStream = true;
+  let model = "silk-resolve-demo";
 
   try {
-    const { provider, apiKey } = await getPlatformAIConfig();
+    const body = (await req.json().catch(() => ({}))) as VapiLLMRequest;
+    wantsStream = body.stream !== false;
+    model = typeof body.model === "string" && body.model.trim() ? body.model.trim() : model;
 
-    if (!apiKey) {
-      return fallback("I'm sorry, I'm having technical difficulties right now. Please call back shortly.");
-    }
+    const messages = normalizeMessages(body.messages);
+    const callId = body.call?.id || body.callId || "";
+    const db = svc();
+    const session = await loadSession(db, callId);
 
-    // Load session for current tension level
-    let tensionLevel = 0;
-    let sessionId: string | null = null;
-    if (callId) {
-      const { data: session } = await db
-        .from("voice_sessions")
-        .select("id, tension_level, turn_count, messages, script_id")
-        .eq("call_sid", callId)
-        .single();
-      if (session) {
-        tensionLevel = session.tension_level ?? 0;
-        sessionId = session.id;
-      }
-    }
+    const demoMessages = mergeDemoMessages(
+      normalizeStoredMessages(session?.messages),
+      toDemoMessages(messages)
+    );
+    const reply = buildDemoVoiceReply(demoMessages, session?.tension_level ?? 0);
+    const voiceText = withSaneVoiceText(reply.text);
 
-    // Build PEEK-aware prompt
-    const { system, user } = buildPeekPrompt(messages, tensionLevel);
+    await persistSessionTurn(db, session, lastUserMessage(messages), reply);
 
-    // Call AI
-    const raw = await callAI({
-      provider,
-      apiKey,
-      system,
-      user,
-      maxTokens: 250,
-      jsonMode: true,
-    });
-
-    let agentText = "I understand. Let me help you with that.";
-    let newTension = tensionLevel;
-    let intent = "unknown";
-    let shouldEscalate = false;
-    let hiddenIntent: string | undefined;
-
-    try {
-      const parsed = JSON.parse(extractJSON(raw));
-      agentText       = parsed.agentText ?? agentText;
-      newTension      = Math.min(10, Math.max(0, parsed.tensionLevel ?? tensionLevel));
-      intent          = parsed.intent ?? intent;
-      shouldEscalate  = !!parsed.shouldEscalate;
-      hiddenIntent    = parsed.hiddenIntent;
-
-      // Escalate override response
-      if (shouldEscalate) {
-        agentText = "I completely understand, and I want to make sure you get the best possible help. Let me connect you with a senior member of our team right away.";
-      }
-    } catch {
-      // Use fallback text
-    }
-
-    // Update voice session asynchronously (non-blocking — fire and forget)
-    if (sessionId) {
-      void (async () => {
-        try {
-          await db.from("voice_sessions").update({
-            tension_level: newTension,
-            status:        shouldEscalate ? "escalated" : "active",
-          }).eq("id", sessionId);
-        } catch {}
-      })();
-    }
-
-    // Strip SILK markup tags, then prepend muga tone based on PEEK tension
-    const cleanText = stripTags(agentText);
-    const silkTone  = newTension >= 7 ? "whisper"
-                    : newTension >= 5 ? "sad"
-                    : newTension >= 3 ? "neutral"
-                    : "happy";
-    // Prefix is picked up by /api/voice/silk-tts when SILK is active;
-    // ignored by Vapi's built-in PlayHT (it only receives the final text)
-    const voiceText = `[${silkTone}] ${cleanText}`;
-
-    return wantsStream ? streamText(voiceText) : jsonResponse(voiceText);
-
+    return wantsStream ? streamText(voiceText, model) : jsonResponse(voiceText, model);
   } catch (err) {
-    console.error("[vapi-llm] error:", err);
-    return fallback("I'm sorry, I had a momentary issue. Could you please repeat that?");
+    console.error("[vapi-llm] fatal fallback:", err);
+    const text = "I heard you. Please repeat the order ID or the issue, and I will continue from there.";
+    return wantsStream ? streamText(text, model) : jsonResponse(text, model);
   }
 }

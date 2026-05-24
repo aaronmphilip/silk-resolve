@@ -57,12 +57,6 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  if (!aiConfig.apiKey) {
-    return NextResponse.json(
-      { error: "Voice AI is not configured. Add GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY before starting calls." },
-      { status: 500 }
-    );
-  }
 
   // Derive server origin from the request for the serverUrl webhook.
   // Vercel sends x-forwarded-proto=https; local dev may be localhost or 127.0.0.1.
@@ -79,6 +73,14 @@ export async function POST(req: NextRequest) {
 
   const systemPrompt = agent.system_prompt ||
     `You are ${agent.name}, a helpful voice assistant. Be concise and warm.`;
+  const demoVoicePrompt = `${systemPrompt}
+
+LIVE DEMO REFUND FLOW:
+- If the customer mentions a refund, return, charge, damaged item, wrong item, or cancellation, ask for the order ID or registered phone last four digits.
+- Demo lookup records include SR-1001 / phone ending 4321 for an eligible refund, SR-1002 / 7788 for senior review, and SR-1003 / 9090 for an already-refunded order.
+- Verify the item, purchase date, delivered date, amount, and payment method before initiating a refund.
+- Ask the reason for refund, then confirm the refund reference and expected 3 to 5 business day timeline.
+- Keep every voice response short, direct, and spoken naturally.`;
   const firstMessage = cleanSpokenText(
     agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`
   );
@@ -101,7 +103,7 @@ export async function POST(req: NextRequest) {
       provider: "custom-llm",
       url: `${origin}/api/voice/vapi-llm`,
       model: agent.llm_model || "gemini-2.5-flash",
-      messages: [{ role: "system", content: systemPrompt }],
+      messages: [{ role: "system", content: demoVoicePrompt }],
       temperature: 0.7,
       maxTokens: 250,
     },
