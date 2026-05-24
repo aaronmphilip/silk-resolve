@@ -49,10 +49,6 @@ export async function getPlatformVoiceConfig() {
       voiceId: process.env.SILK_VOICE_ID ?? "",
       baseUrl: process.env.SILK_BASE_URL ?? "https://api.rumik.ai/v1",
     },
-    elevenlabs: {
-      apiKey:  process.env.ELEVENLABS_API_KEY  ?? "",
-      voiceId: process.env.ELEVENLABS_VOICE_ID ?? "EXAVITQu4vr4xnSDxMaL",
-    },
   };
 }
 
@@ -62,9 +58,8 @@ export async function getPlatformVoiceConfig() {
  */
 export function getVoiceProviderStatus() {
   return {
-    silkConfigured:       !!process.env.SILK_API_KEY,
-    elevenlabsConfigured: !!process.env.ELEVENLABS_API_KEY,
-    vapiConfigured:       !!process.env.VAPI_PRIVATE_KEY,
+    silkConfigured:  !!process.env.SILK_API_KEY,
+    vapiConfigured:  !!process.env.VAPI_PRIVATE_KEY,
   };
 }
 

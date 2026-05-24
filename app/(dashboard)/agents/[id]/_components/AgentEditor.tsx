@@ -87,9 +87,9 @@ function AdvancedRow({ label, children }: { label: string; children: React.React
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function AgentEditor({
-  initial, calls, silkConfigured, elevenlabsConfigured,
+  initial, calls, silkConfigured,
 }: {
-  initial: AgentRow; calls: Call[]; silkConfigured: boolean; elevenlabsConfigured: boolean;
+  initial: AgentRow; calls: Call[]; silkConfigured: boolean;
 }) {
   const [agent, setAgent] = useState<AgentRow>(initial);
   const [tab, setTab] = useState<Tab>("configure");
@@ -205,15 +205,12 @@ export default function AgentEditor({
                     className="w-48 bg-transparent text-[11px] font-mono text-[#f0ebe0] placeholder:text-[#f0ebe0]/20 focus:outline-none border-b border-[#f0ebe0]/10 focus:border-[#f0ebe0]/40 pb-0.5"
                   />
                 </div>
-                <div className="px-4 py-2.5 flex items-center gap-2 opacity-50">
-                  <div className={`w-1.5 h-1.5 rounded-full ${elevenlabsConfigured ? "bg-emerald-400" : "bg-[#f0ebe0]/20"}`} />
-                  <span className="text-xs text-[#f0ebe0]">ElevenLabs</span>
-                  <span className="text-[9px] font-mono border border-[#f0ebe0]/20 px-1.5 py-0.5 opacity-40">fallback</span>
-                </div>
-                <div className="px-4 py-2.5 flex items-center gap-2 opacity-25">
-                  <div className="w-1.5 h-1.5 rounded-full bg-[#f0ebe0]/20" />
+                <div className={`px-4 py-2.5 flex items-center gap-2 ${silkConfigured ? "opacity-25" : "opacity-60"}`}>
+                  <div className={`w-1.5 h-1.5 rounded-full ${!silkConfigured ? "bg-amber-400" : "bg-[#f0ebe0]/20"}`} />
                   <span className="text-xs font-mono text-[#f0ebe0]">Vapi PlayHT</span>
-                  <span className="text-[9px] font-mono border border-[#f0ebe0]/20 px-1.5 py-0.5">last resort</span>
+                  <span className="text-[9px] font-mono border border-[#f0ebe0]/20 px-1.5 py-0.5 opacity-60">
+                    {silkConfigured ? "inactive" : "active fallback"}
+                  </span>
                 </div>
               </div>
             </div>

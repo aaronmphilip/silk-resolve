@@ -221,7 +221,7 @@ export async function POST(req: NextRequest) {
       })();
     }
 
-    // Strip SILK tags — ElevenLabs handles prosody naturally, no SSML needed
+    // Strip SILK tags before sending to voice provider
     const cleanText = stripTags(agentText);
 
     return wantsStream ? streamText(cleanText) : jsonResponse(cleanText);

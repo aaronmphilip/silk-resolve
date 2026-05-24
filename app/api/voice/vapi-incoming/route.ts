@@ -164,7 +164,7 @@ export async function POST(req: NextRequest) {
     }, { onConflict: "call_sid", ignoreDuplicates: true });
 
     // ── 5. Voice config ───────────────────────────────────────────────────────
-    const { elevenlabs, silk } = await getPlatformVoiceConfig();
+    const { silk } = await getPlatformVoiceConfig();
 
     const vapiAssistant: Record<string, unknown> = {
       firstMessage,
@@ -200,21 +200,11 @@ export async function POST(req: NextRequest) {
       },
     };
 
-    // Voice priority: SILK → ElevenLabs → Vapi built-in
+    // Voice priority: SILK (Rumik) → Vapi built-in PlayHT
     if (silk.apiKey) {
       vapiAssistant.voice = {
         provider: "custom-voice",
         server:   { url: `${appUrl}/api/voice/silk-tts`, timeoutSeconds: 10 },
-      };
-    } else if (elevenlabs.apiKey && elevenlabs.voiceId) {
-      vapiAssistant.voice = {
-        provider:        "elevenlabs",
-        voiceId:         elevenlabs.voiceId,
-        model:           "eleven_turbo_v2",
-        stability:       0.5,
-        similarityBoost: 0.75,
-        style:           0.0,
-        useSpeakerBoost: true,
       };
     } else {
       vapiAssistant.voice = { provider: "playht", voiceId: "jennifer" };

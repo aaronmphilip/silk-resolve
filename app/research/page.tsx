@@ -392,7 +392,7 @@ export default function ResearchPage() {
               {[
                 { label: "Prosody Markup Language", desc: "Custom XML tags like <warm>, <apologetic_whisper>, <warm_closing> map directly to Polly SSML — no runtime latency added." },
                 { label: "Indian English Neural Voice", desc: "Polly.Aditi — a neural Indian English voice with full SSML support, optimised for the Indian market and trained on natural speech patterns." },
-                { label: "ElevenLabs Upgrade Path", desc: "Drop in an ElevenLabs API key and the platform automatically switches to ultra-low-latency neural TTS for more expressive voice output." },
+                { label: "SILK Voice by Rumik", desc: "Set SILK_API_KEY and the platform automatically switches to Rumik's ultra-low-latency neural voice model. Falls back to Vapi PlayHT when not configured." },
                 { label: "PEEK-driven Prosody", desc: "Tension level from PEEK directly influences which SILK tags the AI chooses. High tension → more apologetic_whisper. Resolution → warm_closing." },
               ].map((f) => (
                 <div key={f.label} className="border-l-2 border-black/10 pl-4">

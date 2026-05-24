@@ -592,13 +592,12 @@ export default function ScriptEditorPage({ params }: { params: { id: string } })
             <div className="border border-dashed border-black/20 px-5 py-5">
               <p className="text-[10px] font-mono opacity-40 uppercase tracking-widest mb-3">setup checklist</p>
               <ol className="space-y-2.5 text-xs font-mono opacity-50">
-                <li>1. Add your Vapi API key in <Link href="/admin/settings" className="underline">Admin → Platform Config</Link></li>
-                <li>2. Add your ElevenLabs key in Admin → Platform Config (for voice)</li>
-                <li>3. Sign up at <span className="opacity-70">vapi.ai</span> → Phone Numbers → Buy a number</li>
-                <li>4. In Vapi: set the phone number's <span className="opacity-70">Server URL</span> to the webhook URL above</li>
-                <li>5. Paste the phone number in the field above → click "assign number"</li>
-                <li>6. Activate this script — calls will now route to this agent</li>
-                <li className="opacity-30">Later: swap ElevenLabs for Rumik SILK voice model</li>
+                <li>1. Add VAPI_PRIVATE_KEY + VAPI_PUBLIC_KEY to your Vercel env vars</li>
+                <li>2. Sign up at <span className="opacity-70">vapi.ai</span> → Phone Numbers → Buy a number</li>
+                <li>3. In Vapi: set the phone number's <span className="opacity-70">Server URL</span> to the webhook URL above</li>
+                <li>4. Paste the phone number in the field above → click "assign number"</li>
+                <li>5. Activate this script — calls will now route to this agent</li>
+                <li className="opacity-60">Voice: SILK (Rumik) if SILK_API_KEY is set, else Vapi PlayHT (no extra key needed)</li>
               </ol>
             </div>
           </div>

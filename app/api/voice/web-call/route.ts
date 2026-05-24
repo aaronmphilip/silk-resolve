@@ -30,11 +30,11 @@ export async function POST(req: NextRequest, _ctx?: Ctx) {
 
   if (agentErr || !agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
 
-  const { vapi, elevenlabs } = await getPlatformVoiceConfig();
+  const { vapi, silk } = await getPlatformVoiceConfig();
 
   if (!vapi.privateKey) {
     return NextResponse.json(
-      { error: "Vapi private key not set — go to Admin → Settings and add your Vapi Private Key." },
+      { error: "Vapi private key not set — add VAPI_PRIVATE_KEY to your environment variables." },
       { status: 400 }
     );
   }
@@ -49,8 +49,9 @@ export async function POST(req: NextRequest, _ctx?: Ctx) {
   const firstMessage = agent.first_message ||
     `Hi, I'm ${agent.name}. How can I help you today?`;
 
-  const voice = elevenlabs.apiKey
-    ? { provider: "11labs", voiceId: agent.silk_voice_id || elevenlabs.voiceId || "EXAVITQu4vr4xnSDxMaL" }
+  // Voice priority: SILK (Rumik) → Vapi built-in PlayHT
+  const voice = silk.apiKey
+    ? { provider: "custom-voice", server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 10 } }
     : { provider: "playht", voiceId: "jennifer" };
 
   // Build the assistant config — same shape as before but sent to Vapi's REST API

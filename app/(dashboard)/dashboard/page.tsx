@@ -38,9 +38,9 @@ export default async function DashboardPage() {
                 {
                   num: "01", done: false,
                   label: "Add your API keys",
-                  hint: "Vapi + ElevenLabs in Admin → Settings. Takes 2 minutes.",
-                  href: "/admin/settings",
-                  cta: "go to settings →",
+                  hint: "Add VAPI_PRIVATE_KEY and XAI_API_KEY to your Vercel environment variables.",
+                  href: "/admin/tenants",
+                  cta: "go to admin →",
                 },
                 {
                   num: "02", done: false,

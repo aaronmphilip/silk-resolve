@@ -24,7 +24,7 @@ export default async function AgentDetailPage({ params }: PageProps) {
   if (!agentRaw) notFound();
 
   // Detect which voice providers are configured (reads env vars — sync)
-  const { silkConfigured, elevenlabsConfigured } = getVoiceProviderStatus();
+  const { silkConfigured } = getVoiceProviderStatus();
 
   // Normalise DB row → AgentEditor shape
   const initial = {
@@ -60,7 +60,6 @@ export default async function AgentDetailPage({ params }: PageProps) {
       initial={initial}
       calls={callsFromDb}
       silkConfigured={silkConfigured}
-      elevenlabsConfigured={elevenlabsConfigured}
     />
   );
 }

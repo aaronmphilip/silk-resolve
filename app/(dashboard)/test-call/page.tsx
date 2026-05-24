@@ -290,7 +290,7 @@ export default function TestCallPage() {
 
               <div className="border-t border-black/10 pt-4 text-left">
                 <p className="text-[10px] font-mono text-black/40 leading-relaxed">
-                  mic → Vapi STT → grok-4 → ElevenLabs → speaker
+                  mic → Vapi STT → grok-4 → SILK / PlayHT → speaker
                 </p>
               </div>
             </div>
@@ -337,7 +337,7 @@ export default function TestCallPage() {
                 {[
                   { label: "First message", desc: "Agent speaks immediately when call connects" },
                   { label: "PEEK",          desc: "Express frustration — tension score should rise" },
-                  { label: "Voice",         desc: "ElevenLabs TTS — or SILK when key is added" },
+                  { label: "Voice",         desc: "SILK voice (Rumik) if key set, else Vapi PlayHT" },
                   { label: "Escalation",    desc: "Push hard — agent should offer to escalate" },
                 ].map(item => (
                   <div key={item.label} className="flex items-start gap-3">
