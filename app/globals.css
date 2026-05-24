@@ -242,6 +242,31 @@ html.dark .react-flow__edge-text   { fill: #e8dece; }
   to { stroke-dashoffset: -10; }
 }
 
+/* ─── Select elements ───────────────────────────────────────── */
+/* Ensure native <select> dropdowns respect our theme */
+html.dark select {
+  color-scheme: dark;
+  color: #e8dece;
+  background-color: #111110;
+}
+html:not(.dark) select {
+  color-scheme: light;
+  color: #0a0908;
+  background-color: var(--bg);
+}
+
+/* ─── Input / textarea dark mode ────────────────────────────── */
+html.dark input:not([type="checkbox"]):not([type="radio"]),
+html.dark textarea {
+  color-scheme: dark;
+}
+
+/* ─── Focus ring ────────────────────────────────────────────── */
+:focus-visible {
+  outline: 1.5px solid currentColor;
+  outline-offset: 2px;
+}
+
 /* ─── Scrollbar ─────────────────────────────────────────────── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

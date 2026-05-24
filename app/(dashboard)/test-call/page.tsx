@@ -56,7 +56,7 @@ export default function TestCallPage() {
               <select
                 value={agentId}
                 onChange={e => setAgentId(e.target.value)}
-                className="w-full border-2 border-black bg-white px-3 py-2.5 text-sm font-mono appearance-none focus:outline-none pr-8"
+                className="w-full border-2 border-black bg-[var(--bg)] text-[var(--fg)] px-3 py-2.5 text-sm font-mono appearance-none focus:outline-none pr-8"
               >
                 {agents.map(a => (
                   <option key={a.id} value={a.id}>{a.name} — {a.status}</option>
@@ -68,8 +68,8 @@ export default function TestCallPage() {
         )}
 
         {agents.length === 0 && (
-          <div className="mb-6 border-2 border-amber-400 bg-amber-50 px-4 py-3">
-            <p className="text-xs font-mono text-amber-800">
+          <div className="mb-6 border-2 border-amber-400/60 bg-amber-400/10 px-4 py-3">
+            <p className="text-xs font-mono text-amber-600 dark:text-amber-400">
               No agents found — <a href="/agents/new" className="underline">create one first</a>.
             </p>
           </div>
@@ -114,10 +114,10 @@ export default function TestCallPage() {
 
               {/* Error */}
               {error && (
-                <div className="border-2 border-red-400 bg-red-50 px-3 py-3 text-left">
+                <div className="border-2 border-red-500/50 bg-red-500/10 px-3 py-3 text-left">
                   <div className="flex items-start gap-2">
-                    <AlertTriangle size={13} className="text-red-600 flex-shrink-0 mt-0.5" />
-                    <p className="text-xs font-mono text-red-700 leading-relaxed">{error}</p>
+                    <AlertTriangle size={13} className="text-red-500 flex-shrink-0 mt-0.5" />
+                    <p className="text-xs font-mono text-red-500 dark:text-red-400 leading-relaxed">{error}</p>
                   </div>
                 </div>
               )}
@@ -145,7 +145,7 @@ export default function TestCallPage() {
                     <button
                       onClick={toggleMute}
                       className={`w-full flex items-center justify-center gap-2 border-2 py-3 text-sm font-bold transition-colors ${
-                        muted ? "border-amber-400 text-amber-700 bg-amber-50" : "border-black hover:bg-black/5"
+                        muted ? "border-amber-400/60 text-amber-500 dark:text-amber-400 bg-amber-400/10" : "border-black hover:bg-black/5 dark:hover:bg-[#e8dece]/5"
                       }`}
                     >
                       {muted ? <MicOff size={14} /> : <Mic size={14} />}
@@ -153,7 +153,7 @@ export default function TestCallPage() {
                     </button>
                     <button
                       onClick={() => void endCall()}
-                      className="w-full flex items-center justify-center gap-2 border-2 border-red-500 text-red-600 py-3 text-sm font-bold hover:bg-red-50 transition-colors"
+                      className="w-full flex items-center justify-center gap-2 border-2 border-red-500/60 text-red-500 dark:text-red-400 py-3 text-sm font-bold hover:bg-red-500/10 transition-colors"
                     >
                       <PhoneOff size={14} /> end call
                     </button>
@@ -194,12 +194,14 @@ export default function TestCallPage() {
                   {transcript.map((msg, i) => (
                     <div key={i} className={`flex gap-3 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
                       <div className={`max-w-[80%] px-4 py-3 ${
-                        msg.role === "assistant" ? "bg-black/5 border-2 border-black/15" : "bg-black text-[#e8dece]"
+                        msg.role === "assistant"
+                          ? "bg-black/5 dark:bg-[#e8dece]/5 border-2 border-black/15 dark:border-[#e8dece]/15"
+                          : "bg-black dark:bg-[#e8dece] text-[#e8dece] dark:text-[#0a0a0a]"
                       }`}>
-                        <p className={`text-[10px] font-mono font-semibold mb-1.5 ${msg.role === "assistant" ? "text-black/40" : "text-[#e8dece]/60"}`}>
+                        <p className={`text-[10px] font-mono font-semibold mb-1.5 ${msg.role === "assistant" ? "text-black/40 dark:text-[#e8dece]/40" : "text-[#e8dece]/60 dark:text-[#0a0a0a]/60"}`}>
                           {msg.role === "assistant" ? "agent" : "you"}
                         </p>
-                        <p className={`text-sm leading-relaxed ${msg.role === "user" ? "text-[#e8dece]" : "text-black"}`}>
+                        <p className={`text-sm leading-relaxed ${msg.role === "user" ? "text-[#e8dece] dark:text-[#0a0a0a]" : "text-black dark:text-[#e8dece]"}`}>
                           {msg.text}
                         </p>
                       </div>

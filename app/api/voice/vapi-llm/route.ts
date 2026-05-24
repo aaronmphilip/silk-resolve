@@ -177,15 +177,18 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Load session in parallel — doesn't block prompt build ────────────────
-    const sessionPromise = callId
-      ? db
-          .from("voice_sessions")
-          .select("id, tension_level, status")
-          .eq("call_sid", callId)
-          .single()
-          .then(({ data }) => data)
-          .catch(() => null as null)
-      : Promise.resolve(null as null);
+    const sessionPromise: Promise<{ id: unknown; tension_level: unknown; status: unknown } | null> = callId
+      ? (async () => {
+          try {
+            const { data } = await db
+              .from("voice_sessions")
+              .select("id, tension_level, status")
+              .eq("call_sid", callId)
+              .single();
+            return data as { id: unknown; tension_level: unknown; status: unknown } | null;
+          } catch { return null; }
+        })()
+      : Promise.resolve(null);
 
     // Build prompt immediately with tension=0, update when session resolves
     const session = await sessionPromise;
@@ -236,15 +239,17 @@ export async function POST(req: NextRequest) {
 
     // ── DB update — fire and forget, never blocks response ───────────────────
     if (sessionId) {
-      void db
-        .from("voice_sessions")
-        .update({
-          tension_level: newTension,
-          status: shouldEscalate ? "escalated" : "active",
-        })
-        .eq("id", sessionId)
-        .then(() => {})
-        .catch(() => {});
+      void (async () => {
+        try {
+          await db
+            .from("voice_sessions")
+            .update({
+              tension_level: newTension,
+              status: shouldEscalate ? "escalated" : "active",
+            })
+            .eq("id", sessionId);
+        } catch { /* non-fatal */ }
+      })();
     }
 
     // ── Apply SILK tone prefix ────────────────────────────────────────────────

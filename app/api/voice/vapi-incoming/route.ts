@@ -124,15 +124,18 @@ export async function POST(req: NextRequest) {
     }
 
     // ── 2. MESH + voice config — parallel fetch ───────────────────────────────
-    const meshPromise = fromPhone
-      ? db.from("mesh_profiles")
-          .select("*")
-          .eq("phone", fromPhone)
-          .eq("tenant_id", agentRow.tenant_id)
-          .single()
-          .then(({ data }) => data as Record<string, unknown> | null)
-          .catch(() => null as null)
-      : Promise.resolve(null as null);
+    const meshPromise: Promise<Record<string, unknown> | null> = fromPhone
+      ? (async () => {
+          try {
+            const { data } = await db.from("mesh_profiles")
+              .select("*")
+              .eq("phone", fromPhone)
+              .eq("tenant_id", agentRow.tenant_id)
+              .single();
+            return data as Record<string, unknown> | null;
+          } catch { return null; }
+        })()
+      : Promise.resolve(null);
 
     const [meshRow] = await Promise.all([meshPromise]);
 
