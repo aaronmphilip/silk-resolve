@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
+import { stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -72,9 +73,18 @@ LIVE DEMO REFUND FLOW:
 - Verify the item, purchase date, delivered date, amount, and payment method before initiating a refund.
 - Ask the reason for refund, then confirm the refund reference and expected 3 to 5 business day timeline.
 - Keep every voice response short, direct, and spoken naturally.`;
+  const voicePrompt = `${demoVoicePrompt}
+
+VOICE EMOTION VARIABLES:
+- Every response is scored with tensionLevel, emotion, silkTone, arousal, valence, and voiceScore.
+- Start with a happy tone. Use neutral for lookup, sad or whisper for frustration, and excited when the issue is solved.
+- SILK muga tones are emitted as [happy], [neutral], [sad], [whisper], or [excited] before spoken text.`;
   const firstMessage = cleanSpokenText(
     agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`
   );
+  const spokenFirstMessage = silk.apiKey
+    ? withSilkTone("happy", firstMessage)
+    : stripVoiceMarkers(firstMessage);
 
   return NextResponse.json({
     name: agent.name,
@@ -82,12 +92,12 @@ LIVE DEMO REFUND FLOW:
       provider: "custom-llm",
       url: `${origin}/api/voice/vapi-llm`,
       model: agent.llm_model || "gemini-2.5-flash",
-      messages: [{ role: "system", content: demoVoicePrompt }],
+      messages: [{ role: "system", content: voicePrompt }],
       temperature: 0.7,
       maxTokens: 250,
     },
     voice,
-    firstMessage,
+    firstMessage: spokenFirstMessage,
     firstMessageMode: "assistant-speaks-first",
     firstMessageInterruptionsEnabled: false,
     customerJoinTimeoutSeconds: 60,

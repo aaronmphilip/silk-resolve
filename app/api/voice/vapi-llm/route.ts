@@ -13,6 +13,7 @@ import {
   type DemoVoiceReply,
 } from "@/lib/demo-refunds";
 import { stripTags } from "@/lib/twiml";
+import { stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -234,6 +235,12 @@ function appendSessionMessages(existing: unknown, userText: string, reply: DemoV
       action: reply.action,
       orderId: reply.orderId,
       resolution: reply.resolution,
+      silkTone: reply.silkTone,
+      emotion: reply.emotion,
+      arousal: reply.arousal,
+      valence: reply.valence,
+      voiceScore: reply.voiceScore,
+      voiceVariables: reply.voiceVariables,
     },
   });
 
@@ -267,8 +274,13 @@ async function persistSessionTurn(
   }
 }
 
-function withSaneVoiceText(text: string): string {
-  return stripTags(text).replace(/\s+/g, " ").trim();
+function shouldEmitSilkTone(): boolean {
+  return Boolean(process.env.SILK_API_KEY?.trim());
+}
+
+function withSaneVoiceText(reply: DemoVoiceReply): string {
+  const clean = stripVoiceMarkers(stripTags(reply.text)).replace(/\s+/g, " ").trim();
+  return shouldEmitSilkTone() ? withSilkTone(reply.silkTone, clean) : clean;
 }
 
 export async function POST(req: NextRequest) {
@@ -290,7 +302,7 @@ export async function POST(req: NextRequest) {
       toDemoMessages(messages)
     );
     const reply = buildDemoVoiceReply(demoMessages, session?.tension_level ?? 0);
-    const voiceText = withSaneVoiceText(reply.text);
+    const voiceText = withSaneVoiceText(reply);
 
     await persistSessionTurn(db, session, lastUserMessage(messages), reply);
 

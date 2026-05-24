@@ -37,7 +37,12 @@ export async function POST(req: NextRequest) {
     agent_id:       agent.id,
     caller_phone:   "web-call",
     platform_phone: "web",
-    messages:       [{ role: "agent", content: firstMessage, ts: new Date().toISOString() }],
+    messages:       [{
+      role: "agent",
+      content: firstMessage,
+      ts: new Date().toISOString(),
+      meta: { silkTone: "happy", emotion: "welcoming", voiceScore: 90 },
+    }],
     tension_level:  0,
     turn_count:     0,
     status:         "active",

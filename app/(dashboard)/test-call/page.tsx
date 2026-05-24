@@ -215,8 +215,8 @@ export default function TestCallPage() {
                 {[
                   { label: "First message", desc: "Agent speaks immediately when call connects" },
                   { label: "Refund DB",     desc: "Say refund, then SR-1001, confirm it, and say duplicate charge" },
+                  { label: "Tone shift",    desc: "Use angry words, then resolve it, and the SILK tone should change" },
                   { label: "Voice",         desc: "SILK voice (Rumik) if key set, else Vapi PlayHT" },
-                  { label: "Review path",   desc: "Use SR-1002 to show senior review instead of instant refund" },
                 ].map(item => (
                   <div key={item.label} className="flex items-start gap-3">
                     <span className="text-[10px] font-mono border-2 border-black/20 px-2 py-0.5 text-black/50 flex-shrink-0 mt-0.5">

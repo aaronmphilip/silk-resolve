@@ -1,4 +1,16 @@
+import type { SilkTone } from "./voice-emotion";
+
 export type DemoRefundState = "eligible" | "manual_review" | "already_refunded";
+export type DemoVoiceEmotion =
+  | "welcoming"
+  | "focused_lookup"
+  | "empathetic"
+  | "de_escalating"
+  | "concerned_review"
+  | "confident_resolution"
+  | "status_reassurance";
+
+export type DemoVoiceVariables = Record<string, string | number | boolean | null>;
 
 export interface DemoRefundOrder {
   orderId: string;
@@ -21,11 +33,22 @@ export interface DemoVoiceReply {
   text: string;
   intent: string;
   tensionLevel: number;
+  silkTone: SilkTone;
+  emotion: DemoVoiceEmotion;
+  arousal: number;
+  valence: number;
+  voiceScore: number;
+  voiceVariables: DemoVoiceVariables;
   status: "active" | "resolved" | "escalated";
   resolution?: string;
   orderId?: string;
   action?: "ask_issue" | "ask_order" | "confirm_order" | "ask_reason" | "refund_initiated" | "refund_status" | "manual_review";
 }
+
+type DemoVoiceReplyCore = Omit<
+  DemoVoiceReply,
+  "silkTone" | "emotion" | "arousal" | "valence" | "voiceScore" | "voiceVariables"
+>;
 
 export interface DemoChatMessage {
   role: string;
@@ -165,7 +188,7 @@ function shortIssueOnly(text: string): boolean {
   return /^(hi|hello|hey|help|my problem|problem|issue|i have a problem|i need help)$/i.test(text.trim());
 }
 
-export function buildDemoVoiceReply(messages: DemoChatMessage[], currentTension = 0): DemoVoiceReply {
+function buildDemoVoiceReplyCore(messages: DemoChatMessage[], currentTension = 0): DemoVoiceReplyCore {
   const userText = allUserText(messages);
   const assistantText = allAssistantText(messages);
   const lastUser = lastUserMessage(messages);
@@ -317,5 +340,108 @@ export function buildDemoVoiceReply(messages: DemoChatMessage[], currentTension 
     resolution: `refund_initiated:${order.orderId}:${order.refundReference}`,
     orderId: order.orderId,
     action: "refund_initiated",
+  };
+}
+
+function clampInt(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function inferTensionLevel(
+  messages: DemoChatMessage[],
+  reply: DemoVoiceReplyCore,
+  currentTension: number
+): number {
+  const userText = allUserText(messages);
+  const lastUser = lastUserMessage(messages);
+  let score = Math.max(currentTension, reply.tensionLevel);
+
+  if (isRefundIntent(userText)) score = Math.max(score, 3);
+  if (/\b(angry|furious|mad|terrible|horrible|useless|worst|complaint|manager|legal|court)\b/i.test(userText)) score += 3;
+  if (/\b(fraud|scam|cheated|stolen|social media|twitter|x.com|consumer court)\b/i.test(userText)) score += 4;
+  if (/\b(damaged|broken|defective|wrong item|charged twice|duplicate charge|not working|never arrived)\b/i.test(userText)) score += 1;
+  if (/[!]{2,}/.test(lastUser)) score += 1;
+  if (lastUser.length > 12 && lastUser === lastUser.toUpperCase()) score += 1;
+  if (/\b(thanks|thank you|great|perfect|okay|ok|fine|yes)\b/i.test(lastUser)) score -= 1;
+  if (reply.action === "manual_review") score = Math.max(score, 6);
+  if (reply.status === "resolved") score -= 1;
+
+  return clampInt(score, 0, 10);
+}
+
+function selectVoiceState(
+  reply: DemoVoiceReplyCore,
+  tensionLevel: number,
+  userText: string
+): Pick<DemoVoiceReply, "silkTone" | "emotion" | "arousal" | "valence" | "voiceScore"> {
+  let silkTone: SilkTone = "neutral";
+  let emotion: DemoVoiceEmotion = "focused_lookup";
+  let arousal = 4;
+  let valence = 5;
+
+  if (reply.action === "ask_issue" && !isRefundIntent(userText) && tensionLevel <= 2) {
+    silkTone = "happy";
+    emotion = "welcoming";
+    arousal = 4;
+    valence = 8;
+  } else if (reply.action === "refund_initiated") {
+    silkTone = "excited";
+    emotion = "confident_resolution";
+    arousal = 6;
+    valence = 9;
+  } else if (reply.action === "refund_status") {
+    silkTone = "happy";
+    emotion = "status_reassurance";
+    arousal = 4;
+    valence = 8;
+  } else if (reply.action === "manual_review" || reply.status === "escalated") {
+    silkTone = "sad";
+    emotion = "concerned_review";
+    arousal = 3;
+    valence = 3;
+  } else if (tensionLevel >= 8) {
+    silkTone = "whisper";
+    emotion = "de_escalating";
+    arousal = 2;
+    valence = 3;
+  } else if (tensionLevel >= 6) {
+    silkTone = "sad";
+    emotion = "empathetic";
+    arousal = 3;
+    valence = 4;
+  } else if (reply.action === "confirm_order" || reply.action === "ask_order" || reply.action === "ask_reason") {
+    silkTone = "neutral";
+    emotion = "focused_lookup";
+    arousal = 4;
+    valence = 6;
+  }
+
+  const voiceScore = clampInt((10 - tensionLevel) * 7 + valence * 3 + arousal * 2, 0, 100);
+  return { silkTone, emotion, arousal, valence, voiceScore };
+}
+
+export function buildDemoVoiceReply(messages: DemoChatMessage[], currentTension = 0): DemoVoiceReply {
+  const core = buildDemoVoiceReplyCore(messages, currentTension);
+  const userText = allUserText(messages);
+  const tensionLevel = inferTensionLevel(messages, core, currentTension);
+  const voice = selectVoiceState(core, tensionLevel, userText);
+
+  return {
+    ...core,
+    ...voice,
+    tensionLevel,
+    voiceVariables: {
+      customerIntent: core.intent,
+      action: core.action ?? "respond",
+      orderId: core.orderId ?? null,
+      resolution: core.resolution ?? null,
+      tensionLevel,
+      silkTone: voice.silkTone,
+      emotion: voice.emotion,
+      arousal: voice.arousal,
+      valence: voice.valence,
+      voiceScore: voice.voiceScore,
+      model: "muga",
+    },
   };
 }

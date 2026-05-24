@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { stripVoiceMarkers } from "@/lib/voice-emotion";
 
 export type WebVoiceCallState =
   | "idle"
@@ -133,10 +134,10 @@ function normalizeTranscriptRole(role: unknown): "user" | "assistant" {
 
 function getTranscriptText(message: Record<string, unknown>): string {
   const transcript = message.transcript;
-  if (typeof transcript === "string") return transcript.trim();
+  if (typeof transcript === "string") return stripVoiceMarkers(transcript);
 
   const text = message.text;
-  if (typeof text === "string") return text.trim();
+  if (typeof text === "string") return stripVoiceMarkers(text);
 
   return "";
 }

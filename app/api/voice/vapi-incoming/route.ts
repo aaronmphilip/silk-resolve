@@ -11,6 +11,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import { getPlatformVoiceConfig } from "@/lib/platform";
+import { withSilkTone } from "@/lib/voice-emotion";
 
 export const runtime = "nodejs";
 
@@ -55,6 +56,11 @@ function buildSystemPrompt(agent: Record<string, unknown>, meshContext: string):
     "- Demo lookup records include SR-1001 / phone ending 4321 for an eligible refund, SR-1002 / 7788 for senior review, and SR-1003 / 9090 for an already-refunded order.",
     "- Verify the item, purchase date, delivered date, amount, and payment method before initiating a refund.",
     "- Ask the reason for refund, then confirm the refund reference and expected 3 to 5 business day timeline.",
+    "",
+    "VOICE EMOTION VARIABLES:",
+    "- Every response is scored with tensionLevel, emotion, silkTone, arousal, valence, and voiceScore.",
+    "- Start with a happy tone. Use neutral for lookup, sad or whisper for frustration, and excited when the issue is solved.",
+    "- SILK muga tones are emitted as [happy], [neutral], [sad], [whisper], or [excited] before spoken text.",
     "",
     "RESPONSE FORMAT:",
     "- Keep responses to 1–3 SHORT sentences (spoken aloud over phone/browser)",
@@ -161,7 +167,12 @@ export async function POST(req: NextRequest) {
       caller_phone:    fromPhone || "web-call",
       platform_phone:  toPhone || "web",
       mesh_profile_id: meshRow?.id ?? null,
-      messages:        [{ role: "agent", content: firstMessage, ts: new Date().toISOString() }],
+      messages:        [{
+        role: "agent",
+        content: firstMessage,
+        ts: new Date().toISOString(),
+        meta: { silkTone: "happy", emotion: "welcoming", voiceScore: 90 },
+      }],
       tension_level:   0,
       turn_count:      0,
       status:          "active",
@@ -169,9 +180,10 @@ export async function POST(req: NextRequest) {
 
     // ── 5. Voice config ───────────────────────────────────────────────────────
     const { silk } = await getPlatformVoiceConfig();
+    const spokenFirstMessage = silk.apiKey ? withSilkTone("happy", firstMessage) : firstMessage;
 
     const vapiAssistant: Record<string, unknown> = {
-      firstMessage,
+      firstMessage: spokenFirstMessage,
       model: {
         provider:    "custom-llm",
         url:         `${appUrl}/api/voice/vapi-llm`,

@@ -9,6 +9,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { stripVoiceMarkers } from "@/lib/voice-emotion";
 
 export const runtime = "nodejs";
 
@@ -188,8 +189,8 @@ export async function POST(req: NextRequest) {
         empathy_score: empathyScore,
         ended_at:      session.ended_at ?? now,
         messages:      transcript.map((m) => ({
-          role:    m.role === "bot" ? "agent" : "customer",
-          content: m.message ?? m.content ?? "",
+          role:    ["bot", "assistant", "agent"].includes(m.role) ? "agent" : "customer",
+          content: stripVoiceMarkers(m.message ?? m.content ?? ""),
           time:    m.time,
         })),
       }).eq("call_sid", callId);
