@@ -1,53 +1,25 @@
 "use client";
-/**
- * Test Call page — same Daily.co-direct approach as TalkModal.
- * No @vapi-ai/web npm package. Daily.co loaded from CDN.
- */
 import { useState, useEffect, useRef } from "react";
 import { Mic, MicOff, Phone, PhoneOff, Loader2, Volume2, AlertTriangle, ChevronDown } from "lucide-react";
+import { useWebVoiceCall } from "@/lib/use-web-voice-call";
 
-type CallState = "idle" | "connecting" | "joining" | "active" | "ending" | "ended" | "error";
 interface Agent { id: string; name: string; status: string; }
-interface Transcript { role: "user" | "assistant"; text: string; }
-
-function loadDailySDK(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((window as any).Daily) { resolve(); return; }
-    const existing = document.getElementById("daily-sdk");
-    if (existing) { existing.addEventListener("load", () => resolve()); return; }
-    const script = document.createElement("script");
-    script.id = "daily-sdk";
-    script.src = "https://unpkg.com/@daily-co/daily-js@0.85.0/dist/daily.js";
-    script.crossOrigin = "anonymous";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Daily.co SDK"));
-    document.head.appendChild(script);
-  });
-}
-
-async function prepareMicrophone(): Promise<void> {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    throw new Error("Microphone access is not available in this browser.");
-  }
-
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-  stream.getTracks().forEach(track => track.stop());
-}
 
 export default function TestCallPage() {
-  const [state, setState]         = useState<CallState>("idle");
-  const [error, setError]         = useState("");
-  const [muted, setMuted]         = useState(false);
-  const [duration, setDuration]   = useState(0);
-  const [tension, setTension]     = useState(0);
-  const [transcript, setTranscript] = useState<Transcript[]>([]);
   const [agents, setAgents]       = useState<Agent[]>([]);
   const [agentId, setAgentId]     = useState("");
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const callRef  = useRef<any>(null);
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const {
+    state,
+    error,
+    muted,
+    duration,
+    tension,
+    transcript,
+    startCall,
+    endCall,
+    toggleMute,
+  } = useWebVoiceCall(agentId);
 
   useEffect(() => {
     fetch("/api/agents")
@@ -62,110 +34,6 @@ export default function TestCallPage() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [transcript]);
-
-  async function startCall() {
-    if (!agentId) { setError("Select an agent first"); return; }
-    setState("connecting");
-    setError("");
-    setTranscript([]);
-    setTension(0);
-    setDuration(0);
-
-    try {
-      // Step 1: Load Daily and get mic permission before Vapi starts its web-call join timer.
-      await loadDailySDK();
-      await prepareMicrophone();
-
-      // Step 2: Create Vapi web call server-side
-      const callRes = await fetch("/api/voice/web-call", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ agentId }),
-      });
-      if (!callRes.ok) {
-        const d = await callRes.json();
-        throw new Error(d.error ?? "Failed to create call");
-      }
-      const { roomUrl } = await callRes.json() as { callId: string; roomUrl: string };
-
-      // Step 3: Create call object and join
-      setState("joining");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const Daily = (window as any).Daily;
-      if (!Daily) throw new Error("Daily.co SDK failed to load");
-
-      const call = Daily.createCallObject({ audioSource: true, videoSource: false });
-      callRef.current = call;
-
-      // Step 4: Wire events
-      call.on("joined-meeting", () => {
-        setState("active");
-        const t0 = Date.now();
-        timerRef.current = setInterval(() => setDuration(Math.floor((Date.now() - t0) / 1000)), 1000);
-      });
-
-      call.on("left-meeting", () => {
-        setState("ended");
-        if (timerRef.current) clearInterval(timerRef.current);
-      });
-
-      call.on("error", (e: { errorMsg?: string }) => {
-        setError(e?.errorMsg ?? "Call error");
-        setState("error");
-        if (timerRef.current) clearInterval(timerRef.current);
-      });
-
-      call.on("app-message", (e: { data: string }) => {
-        if (!e?.data) return;
-        if (e.data === "listening") { setState("active"); return; }
-        try {
-          const msg = JSON.parse(e.data) as Record<string, unknown>;
-          if (msg.type === "transcript" && msg.transcriptType === "final") {
-            setTranscript(t => [...t, {
-              role: msg.role as "user" | "assistant",
-              text: msg.transcript as string,
-            }]);
-            if (msg.role === "user") setTension(t => Math.min(10, t + 0.4));
-          }
-          if (msg.type === "status-update" && msg.status === "ended") call.leave();
-          if (msg.type === "hang") call.leave();
-        } catch {}
-      });
-
-      // Step 5: Join
-      await call.join({ url: roomUrl });
-
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to start call");
-      setState("error");
-    }
-  }
-
-  async function endCall() {
-    setState("ending");
-    if (timerRef.current) clearInterval(timerRef.current);
-    try {
-      await callRef.current?.leave();
-      await callRef.current?.destroy();
-    } catch {}
-    setState("ended");
-  }
-
-  function toggleMute() {
-    if (!callRef.current) return;
-    const newMuted = !muted;
-    callRef.current.setLocalAudio(!newMuted);
-    setMuted(newMuted);
-  }
-
-  function reset() {
-    setState("idle");
-    setError("");
-    callRef.current = null;
-    setTranscript([]);
-    setTension(0);
-    setDuration(0);
-  }
 
   const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   const selectedAgent = agents.find(a => a.id === agentId);
@@ -258,7 +126,7 @@ export default function TestCallPage() {
               <div className="space-y-2">
                 {(state === "idle" || state === "ended" || state === "error") && (
                   <button
-                    onClick={state === "idle" ? startCall : reset}
+                    onClick={() => void startCall()}
                     disabled={!agentId}
                     className="w-full flex items-center justify-center gap-2 bg-black text-[#e8dece] py-3.5 text-sm font-bold hover:opacity-75 transition-opacity disabled:opacity-30"
                   >
@@ -284,7 +152,7 @@ export default function TestCallPage() {
                       {muted ? "unmute" : "mute"}
                     </button>
                     <button
-                      onClick={endCall}
+                      onClick={() => void endCall()}
                       className="w-full flex items-center justify-center gap-2 border-2 border-red-500 text-red-600 py-3 text-sm font-bold hover:bg-red-50 transition-colors"
                     >
                       <PhoneOff size={14} /> end call

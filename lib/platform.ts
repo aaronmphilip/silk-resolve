@@ -32,13 +32,27 @@ function svc() {
  * Defaults to Gemini if not set.
  */
 export async function getPlatformAIConfig(): Promise<{ provider: AIProvider; apiKey: string }> {
-  const provider = (process.env.AI_PROVIDER ?? "gemini") as AIProvider;
-  const apiKey =
-    provider === "gemini"    ? firstEnv("GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY") :
-    provider === "anthropic" ? firstEnv("ANTHROPIC_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY") :
-    provider === "openai"    ? firstEnv("OPENAI_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY") :
-    firstEnv("GEMINI_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY");
-  return { provider, apiKey };
+  const requested = (process.env.AI_PROVIDER ?? "gemini").trim().toLowerCase();
+  const validProviders: AIProvider[] = ["gemini", "anthropic", "openai"];
+  const requestedProvider = validProviders.includes(requested as AIProvider)
+    ? requested as AIProvider
+    : "gemini";
+
+  const keys: Record<AIProvider, string> = {
+    gemini:    env("GEMINI_API_KEY"),
+    anthropic: env("ANTHROPIC_API_KEY"),
+    openai:    env("OPENAI_API_KEY"),
+  };
+
+  if (keys[requestedProvider]) {
+    return { provider: requestedProvider, apiKey: keys[requestedProvider] };
+  }
+
+  const fallbackProvider = validProviders.find(provider => keys[provider]);
+  return {
+    provider: fallbackProvider ?? requestedProvider,
+    apiKey: fallbackProvider ? keys[fallbackProvider] : "",
+  };
 }
 
 /**

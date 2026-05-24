@@ -9,9 +9,11 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { getPlatformVoiceConfig } from "@/lib/platform";
+import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
 
 type Ctx = { params?: Record<string, string> };
+
+export const runtime = "nodejs";
 
 export async function POST(req: NextRequest, _ctx?: Ctx) {
   const supabase = createClient();
@@ -30,13 +32,28 @@ export async function POST(req: NextRequest, _ctx?: Ctx) {
 
   if (agentErr || !agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
 
-  const { vapi, silk } = await getPlatformVoiceConfig();
+  const [{ vapi, silk }, aiConfig] = await Promise.all([
+    getPlatformVoiceConfig(),
+    getPlatformAIConfig(),
+  ]);
   const webCallKey = vapi.publicKey;
 
   if (!webCallKey) {
     return NextResponse.json(
       { error: "Vapi web calls require VAPI_PUBLIC_KEY. /call/web rejects private/server keys." },
       { status: 400 }
+    );
+  }
+  if (vapi.privateKey && vapi.privateKey === webCallKey) {
+    return NextResponse.json(
+      { error: "Vapi public and private keys are identical. Web calls require VAPI_PUBLIC_KEY, not the private/server key." },
+      { status: 400 }
+    );
+  }
+  if (!aiConfig.apiKey) {
+    return NextResponse.json(
+      { error: "Voice AI is not configured. Add GEMINI_API_KEY, ANTHROPIC_API_KEY, or OPENAI_API_KEY before starting calls." },
+      { status: 500 }
     );
   }
 
@@ -84,7 +101,7 @@ export async function POST(req: NextRequest, _ctx?: Ctx) {
     serverUrl: `${origin}/api/voice/vapi-events`,
     serverMessages: ["end-of-call-report", "status-update", "tool-calls"],
     clientMessages: ["transcript", "hang", "speech-update", "metadata"],
-    metadata: { agentId: agent.id },
+    metadata: { agentId: agent.id, aiProvider: aiConfig.provider },
   };
 
   // Create the web call via Vapi REST API using the PUBLIC web key.
