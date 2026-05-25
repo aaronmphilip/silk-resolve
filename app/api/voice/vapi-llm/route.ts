@@ -120,11 +120,10 @@ async function streamGemini(
     return fallback("I'm here to help. What would you like to know?");
   }
 
-  // system_instruction anchors the agent's knowledge base on every single turn.
-  // This is how Gemini is designed to work — NOT as a text blob in contents[0].
-  const systemInstruction = systemContent
-    ? `${systemContent}\n\nVoice call rules: Reply in 1–3 spoken sentences. Plain speech only — no markdown, no bullets, no lists, no labels. Never say goodbye unless the caller says it first.`
-    : "You are a helpful voice assistant. Reply in 1–3 spoken sentences. Plain speech only.";
+  // system_instruction anchors the agent's full knowledge + voice rules on every turn.
+  // The system prompt from vapi-config already has the voice rules — use it as-is.
+  const systemInstruction = systemContent ||
+    "You are a helpful voice assistant. Reply in 1–3 spoken sentences. Plain speech only — no markdown, no lists.";
 
   const geminiStream = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?key=${apiKey}&alt=sse`,

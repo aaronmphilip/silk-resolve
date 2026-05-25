@@ -13,7 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
-import { silkSystemPromptBlock, withSilkTone, stripAll } from "@/lib/voice-emotion";
+import { withSilkTone, stripAll } from "@/lib/voice-emotion";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -87,16 +87,13 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
   const voicePrompt = `${basePrompt}
 
-${silkSystemPromptBlock()}
-
-CRITICAL VOICE RULES:
-- This is a spoken voice call. NEVER use markdown, bullet points, or lists.
-- Simple questions: 1–2 sentences. Substantive questions (plans, coverage, process): up to 3 sentences.
-- Natural speech only: contractions, spoken numbers, human rhythm.
-- Embed at most ONE prosody marker per response (<laugh>, <sigh>, <hmm>, <pause>, <breathe>).
-- Do NOT include [tone] prefix — the SILK engine adds it automatically.
-- If you don't know something specific to a customer's account, say "I'll connect you with a specialist who can pull that up — they'll call you back within 2 hours." Keep the conversation going.
-- NEVER say goodbye, bye, farewell, or end-of-call phrases unless the customer has explicitly said goodbye first.`;
+VOICE CALL RULES:
+- Reply in plain spoken sentences. NO markdown, bullets, headers, or lists — ever.
+- Short questions: 1–2 sentences. Detailed questions (pricing, process, coverage): 2–3 sentences.
+- Use natural contractions and spoken numbers (say "three hundred" not "300").
+- You may add ONE natural prosody cue inside your response: <laugh> for warmth, <hmm> for thinking, <sigh> for empathy, <pause> for emphasis, <breathe> before longer answers.
+- NEVER say goodbye or farewell unless the caller explicitly says goodbye first.
+- If you cannot answer something account-specific, say "I'll connect you with a specialist who can look that up — they'll reach out within 2 hours" and keep the conversation going.`;
 
   // ── First message ──────────────────────────────────────────────────────────
   const rawFirst = cleanSpokenText(
