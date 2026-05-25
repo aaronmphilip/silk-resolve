@@ -8,7 +8,8 @@
 import { NextRequest } from "next/server";
 import { stripAll, tensionToTone, withSilkTone } from "@/lib/voice-emotion";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
+export const maxDuration = 30;
 
 interface OAIMessage {
   role: "system" | "user" | "assistant";
