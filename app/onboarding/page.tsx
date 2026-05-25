@@ -47,14 +47,16 @@ export default function OnboardingPage() {
         .single();
 
       if (profile?.tenant_id) {
-        await supabase
+        const { error: tenantError } = await supabase
           .from("tenants")
           .update({
             name: company.name.trim(),
+            about: company.about.trim(),
             industry: company.industry,
-            default_language: company.language,
+            language: company.language,
           })
           .eq("id", profile.tenant_id);
+        if (tenantError) throw tenantError;
       }
 
       router.push("/dashboard");

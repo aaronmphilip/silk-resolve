@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
   // Always use service client — bypasses RLS for widget/public calls
   const { data: agent, error: agentErr } = await createServiceClient()
     .from("agents")
-    .select("id, tenant_id, name, status, system_prompt, first_message, llm_model, silk_voice_id")
+    .select("id, tenant_id, name, client, description, status, system_prompt, first_message, llm_model, silk_voice_id")
     .eq("id", agentId)
     .single();
 
@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
   const origin = `${proto}://${host}`;
 
   const baseVoicePrompt = agent.system_prompt ||
-    `You are ${agent.name}, a helpful voice assistant.`;
+    `You are ${agent.name}, a helpful voice assistant for ${agent.client || "this company"}. ${agent.description ? `The agent handles: ${agent.description}.` : ""} Be concise, accurate, and friendly.`;
   const voicePrompt = `${baseVoicePrompt}
 
 VOICE CALL RULES:

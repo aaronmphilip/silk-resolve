@@ -30,6 +30,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "no profile found" }, { status: 400 });
   }
 
+  const { data: tenant } = await supabase
+    .from("tenants")
+    .select("name")
+    .eq("id", profile.tenant_id)
+    .single();
+
   const body = await req.json();
 
   const { data, error } = await supabase
@@ -38,7 +44,7 @@ export async function POST(req: NextRequest) {
       id:              `agt-${crypto.randomUUID()}`,
       tenant_id:       profile.tenant_id,
       name:            body.name,
-      client:          body.client ?? "",
+      client:          body.client ?? tenant?.name ?? "",
       status:          body.status ?? "draft",
       node_count:      0,
       pillars:         body.pillars ?? ["PEEK", "MESH", "SILK"],

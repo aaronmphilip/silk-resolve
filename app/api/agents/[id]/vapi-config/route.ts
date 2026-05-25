@@ -47,7 +47,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   {
     const svcResult = await createServiceClient()
       .from("agents")
-      .select("id, name, status, system_prompt, first_message, llm_model")
+      .select("id, name, client, description, status, system_prompt, first_message, llm_model")
       .eq("id", id)
       .single();
     if (svcResult.data) {
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       // Fallback: anon key (works when migration 015 RLS policy is applied)
       const anonResult = await createClient()
         .from("agents")
-        .select("id, name, status, system_prompt, first_message, llm_model")
+        .select("id, name, client, description, status, system_prompt, first_message, llm_model")
         .eq("id", id)
         .single();
       agent = anonResult.data ?? null;
@@ -83,7 +83,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
   // ── System prompt ──────────────────────────────────────────────────────────
   const basePrompt = agent.system_prompt ||
-    `You are ${agent.name}, a helpful voice assistant. Be concise and friendly.`;
+    `You are ${agent.name}, a helpful voice assistant for ${agent.client || "this company"}. ${agent.description ? `The agent handles: ${agent.description}.` : ""} Be concise, accurate, and friendly.`;
 
   const voicePrompt = `${basePrompt}
 

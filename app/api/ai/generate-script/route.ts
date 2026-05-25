@@ -20,25 +20,49 @@ export async function POST(req: Request) {
     }, { status: 503 });
   }
 
-  const { company, industry, useCase, agentName, vibe, language, existingScript, refineMode } = await req.json();
+  const body = await req.json();
+  const { company, industry, useCase, agentName, vibe, language, existingScript, refineMode } = body;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("tenant_id")
+    .eq("id", user.id)
+    .single();
+
+  const { data: tenant } = profile?.tenant_id
+    ? await supabase
+        .from("tenants")
+        .select("name, industry, about, website, language")
+        .eq("id", profile.tenant_id)
+        .single()
+    : { data: null };
+
+  const companyName = (company || tenant?.name || "this company").trim();
+  const industryName = (industry || tenant?.industry || "customer support").trim();
+  const callLanguage = (language || tenant?.language || "English (en-IN)").trim();
+  const companyContext = [
+    tenant?.about ? `Company details: ${tenant.about}` : "",
+    tenant?.website ? `Website: ${tenant.website}` : "",
+  ].filter(Boolean).join("\n");
 
   const userPrompt = refineMode && existingScript
-    ? `Refine this agent script for ${industry} customer support at ${company || "this company"}.
+    ? `Refine this agent script for ${industryName} customer support at ${companyName}.
 Improve systemPrompt, linguisticNotes, escalationRules, noGoTopics. Keep same JSON structure.
 Current script: ${JSON.stringify(existingScript, null, 2)}`
     : `Generate a complete agent script:
-Company: ${company}
-Industry: ${industry}
+Company: ${companyName}
+Industry: ${industryName}
+${companyContext}
 Use case: ${useCase}
 Agent: ${agentName}
 Vibe: ${vibe} (protective=warm/empathetic, professional=formal/precise, casual=friendly/light)
-Language: ${language}
+Language: ${callLanguage}
 
 Return JSON:
 {
-  "systemPrompt": "400-600 word system prompt. Role, company context, top 5 ${industry} issues, emotional intelligence, PEEK awareness (tension_level/arousal), MESH context (emotional_debt/history), SILK prosody. Use {{preferred_address}} {{customer_name}} {{tension_level}} {{emotional_debt}}.",
+  "systemPrompt": "400-600 word system prompt. Role, company context, top 5 ${industryName} issues, emotional intelligence, PEEK awareness (tension_level/arousal), MESH context (emotional_debt/history), SILK prosody. Use {{preferred_address}} {{customer_name}} {{tension_level}} {{emotional_debt}}.",
   "companionVibe": "${vibe}",
-  "language": "${language}",
+  "language": "${callLanguage}",
   "preferredAddress": "appropriate honorific",
   "linguisticNotes": "3-5 tonal/code-switching rules",
   "tools": [
