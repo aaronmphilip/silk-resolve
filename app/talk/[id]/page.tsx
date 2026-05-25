@@ -14,7 +14,6 @@ export default async function PublicTalkPage({ params }: PageProps) {
     .from("agents")
     .select("id, name, status")
     .eq("id", id)
-    .in("status", ["live", "active"])
     .single();
 
   if (!agent) notFound();

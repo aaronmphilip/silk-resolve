@@ -30,24 +30,13 @@ export async function POST(req: NextRequest) {
   const { agentId, visitorId } = await req.json() as { agentId: string; visitorId?: string };
   if (!agentId) return NextResponse.json({ error: "agentId required" }, { status: 400 });
 
-  // Load agent
+  // Load agent — no status filter; the agent ID is the access control
   const db = user ? auth : createServiceClient();
-  let agentQuery = db
+  const { data: agent, error: agentErr } = await db
     .from("agents")
     .select("id, tenant_id, name, status, system_prompt, first_message, llm_model, silk_voice_id")
     .eq("id", agentId)
     .single();
-
-  if (!user) {
-    agentQuery = db
-      .from("agents")
-      .select("id, tenant_id, name, status, system_prompt, first_message, llm_model, silk_voice_id")
-      .eq("id", agentId)
-      .in("status", ["live", "active"])
-      .single();
-  }
-
-  const { data: agent, error: agentErr } = await agentQuery;
 
   if (agentErr || !agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
 
