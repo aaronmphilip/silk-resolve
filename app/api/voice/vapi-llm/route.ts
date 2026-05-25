@@ -272,7 +272,8 @@ async function callGemini(args: {
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as VapiReq;
   const messages = normalizeMessages(body.messages);
-  const model = body.model?.replace("gemini-2.5-flash", DEFAULT_MODEL) || DEFAULT_MODEL;
+  const requestedModel = body.model?.replace("gemini-2.5-flash", DEFAULT_MODEL) || DEFAULT_MODEL;
+  const model = requestedModel.startsWith("gemini-") ? requestedModel : DEFAULT_MODEL;
   const wantsStream = body.stream !== false;
   const { apiKey, silkEnabled } = getConfig();
 

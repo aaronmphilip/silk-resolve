@@ -109,7 +109,7 @@ VOICE CALL RULES:
       provider: "custom-llm",
       url: `${origin}/api/voice/vapi-llm`,
       timeoutSeconds: 10,
-      model: agent.llm_model?.replace("gemini-2.5-flash", "gemini-2.0-flash") || "gemini-2.0-flash",
+      model: "gemini-2.0-flash",
       messages: [{ role: "system", content: voicePrompt }],
       temperature: 0.25,
       maxTokens: 90,
