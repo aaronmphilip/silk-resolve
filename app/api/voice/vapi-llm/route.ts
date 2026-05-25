@@ -4,21 +4,29 @@
  * Custom LLM endpoint — Vapi sends the full conversation in OpenAI chat format.
  * Returns streaming SSE (OpenAI-compatible).
  *
- * Latency optimisations:
- *  - Module-level AI config cache (never re-reads env vars on hot path)
- *  - DB session load runs in parallel with prompt construction
- *  - gemini-2.0-flash for voice (2-3× faster than 2.5-flash, ~250-500ms)
- *  - Max tokens capped at 150 for concise voice responses
- *  - DB session update is fire-and-forget (never on the critical path)
+ * Pipeline:
+ *  1. Load session (tension, status) in parallel with prompt build
+ *  2. Call gemini-2.0-flash with compact PEEK + SILK prosody prompt
+ *  3. Parse: agentText, tensionLevel, intent, shouldEscalate
+ *  4. composeSilkUtterance() → [tone] <prosody> text
+ *  5. Fire-and-forget DB update (never on critical path)
+ *  6. Stream back to Vapi
+ *
+ * Latency budget: ~250–450ms (gemini-2.0-flash + parallel DB + fire-and-forget)
  */
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
-import { stripVoiceMarkers } from "@/lib/voice-emotion";
+import {
+  composeSilkUtterance,
+  silkSystemPromptBlock,
+  type CallIntent,
+  stripAll,
+} from "@/lib/voice-emotion";
 
 export const runtime = "nodejs";
 
-// ── Module-level singletons — initialised once per cold start ─────────────────
-let _aiConfig: { apiKey: string; provider: string } | null = null;
+// ── Module-level cache (one cold start per serverless instance) ──────────────
+let _aiConfig: { apiKey: string; provider: string; silkEnabled: boolean } | null = null;
 
 function getCachedAIConfig() {
   if (_aiConfig) return _aiConfig;
@@ -32,7 +40,8 @@ function getCachedAIConfig() {
     : process.env.OPENAI_API_KEY
     ? "openai"
     : "anthropic";
-  _aiConfig = { apiKey, provider };
+  const silkEnabled = !!(process.env.SILK_API_KEY?.trim());
+  _aiConfig = { apiKey, provider, silkEnabled };
   return _aiConfig;
 }
 
@@ -60,33 +69,35 @@ interface VapiLLMRequest {
   metadata?: { agentId?: string; callId?: string };
 }
 
-// ── SSE helpers ───────────────────────────────────────────────────────────────
+interface PeekResponse {
+  agentText: string;
+  tensionLevel: number;
+  shouldEscalate: boolean;
+  intent: CallIntent;
+}
+
+// ── SSE streaming ─────────────────────────────────────────────────────────────
 function streamText(text: string): Response {
   const encoder = new TextEncoder();
   const id = `chatcmpl-${Date.now()}`;
 
   const stream = new ReadableStream({
     start(controller) {
-      controller.enqueue(
-        encoder.encode(
-          `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { role: "assistant" }, index: 0, finish_reason: null }] })}\n\n`
-        )
-      );
-      // Stream in 3-word groups for natural pacing
-      const words = text.split(" ");
-      for (let i = 0; i < words.length; i += 3) {
-        const chunk = words.slice(i, i + 3).join(" ") + (i + 3 < words.length ? " " : "");
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { content: chunk }, index: 0, finish_reason: null }] })}\n\n`
-          )
-        );
+      const enqueue = (data: object) =>
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+
+      // Role header
+      enqueue({ id, object: "chat.completion.chunk", choices: [{ delta: { role: "assistant" }, index: 0, finish_reason: null }] });
+
+      // Stream in 4-word chunks — natural pacing for TTS
+      const words = text.split(" ").filter(Boolean);
+      for (let i = 0; i < words.length; i += 4) {
+        const chunk = words.slice(i, i + 4).join(" ") + (i + 4 < words.length ? " " : "");
+        enqueue({ id, object: "chat.completion.chunk", choices: [{ delta: { content: chunk }, index: 0, finish_reason: null }] });
       }
-      controller.enqueue(
-        encoder.encode(
-          `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: {}, index: 0, finish_reason: "stop" }] })}\n\n`
-        )
-      );
+
+      // Stop signal
+      enqueue({ id, object: "chat.completion.chunk", choices: [{ delta: {}, index: 0, finish_reason: "stop" }] });
       controller.enqueue(encoder.encode("data: [DONE]\n\n"));
       controller.close();
     },
@@ -111,7 +122,7 @@ function jsonResponse(text: string): Response {
   });
 }
 
-// ── Gemini 2.0 Flash call (fastest model for real-time voice) ─────────────────
+// ── Gemini 2.0 Flash (fastest model, ~250ms p50) ──────────────────────────────
 async function callGeminiFlash(apiKey: string, prompt: string): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
 
@@ -121,8 +132,8 @@ async function callGeminiFlash(apiKey: string, prompt: string): Promise<string> 
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
       generationConfig: {
-        maxOutputTokens: 150,
-        temperature: 0.25,
+        maxOutputTokens: 180,       // slightly more room for prosody markers
+        temperature: 0.3,           // slightly more creative for natural variance
         responseMimeType: "application/json",
       },
     }),
@@ -130,34 +141,68 @@ async function callGeminiFlash(apiKey: string, prompt: string): Promise<string> 
 
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
-    throw new Error(`Gemini error ${res.status}: ${errText.slice(0, 200)}`);
+    throw new Error(`Gemini ${res.status}: ${errText.slice(0, 200)}`);
   }
 
   const data = await res.json() as {
-    candidates: { content: { parts: { text: string }[] } }[];
+    candidates: Array<{ content: { parts: Array<{ text: string }> } }>;
   };
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
 }
 
-// ── PEEK prompt — compact for speed ──────────────────────────────────────────
-function buildPeekPrompt(messages: OpenAIMessage[], tensionLevel: number): string {
+// ── PEEK + SILK prompt ────────────────────────────────────────────────────────
+function buildPeekPrompt(
+  messages: OpenAIMessage[],
+  tension: number
+): string {
   const systemContent = messages.find((m) => m.role === "system")?.content ?? "";
-  // Last 3 exchanges only — reduces token count, speeds up inference
   const history = messages
     .filter((m) => m.role !== "system")
-    .slice(-6)
+    .slice(-6)  // last 3 exchanges only
     .map((m) => `${m.role === "user" ? "Customer" : "Agent"}: ${m.content}`)
     .join("\n");
   const lastUser = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
 
+  // Tension-band context hint for the LLM
+  const tensionHint =
+    tension <= 2   ? "caller is calm — you can be warm and natural" :
+    tension <= 4   ? "mild concern — stay friendly but focused" :
+    tension <= 6   ? "elevated tension — lead with empathy, be concrete" :
+    tension <= 8   ? "high tension — whisper-calm, every word counts" :
+                     "critical — offer to escalate immediately";
+
   return `${systemContent}
 
-Tension: ${tensionLevel.toFixed(1)}/10
+${silkSystemPromptBlock()}
 
-${history ? `Recent:\n${history}\n\n` : ""}Customer: "${lastUser}"
+Current tension: ${tension.toFixed(1)}/10 — ${tensionHint}
+${history ? `\nRecent:\n${history}` : ""}
 
-Respond as agent. JSON only:
-{"agentText":"1-2 spoken sentences","tensionLevel":<0-10>,"shouldEscalate":<bool>,"intent":"complaint|query|frustrated|satisfied|angry|confused|grateful"}`;
+Customer: "${lastUser}"
+
+Respond as agent. Return ONLY valid JSON:
+{
+  "agentText": "1-2 spoken sentences. Embed at most one <prosody_marker> naturally.",
+  "tensionLevel": <0.0-10.0>,
+  "shouldEscalate": <true|false>,
+  "intent": "complaint|query|frustrated|satisfied|angry|confused|grateful|neutral"
+}`;
+}
+
+// ── Parse LLM response ────────────────────────────────────────────────────────
+function parsePeekResponse(raw: string, fallbackTension: number): PeekResponse {
+  try {
+    const clean = raw.trim().replace(/^```json?\s*/im, "").replace(/\s*```$/m, "");
+    const parsed = JSON.parse(clean) as Partial<PeekResponse>;
+    return {
+      agentText:     typeof parsed.agentText === "string" ? parsed.agentText : "",
+      tensionLevel:  Math.min(10, Math.max(0, Number(parsed.tensionLevel ?? fallbackTension))),
+      shouldEscalate: !!parsed.shouldEscalate,
+      intent:        parsed.intent ?? "neutral",
+    };
+  } catch {
+    return { agentText: "", tensionLevel: fallbackTension, shouldEscalate: false, intent: "neutral" };
+  }
 }
 
 // ── Main handler ──────────────────────────────────────────────────────────────
@@ -167,17 +212,21 @@ export async function POST(req: NextRequest) {
   const { messages, stream: wantsStream = true, call, metadata } = body;
   const callId = call?.id ?? metadata?.callId ?? "";
 
+  const { apiKey, provider, silkEnabled } = getCachedAIConfig();
   const fallback = (text: string) =>
     wantsStream ? streamText(text) : jsonResponse(text);
 
-  try {
-    const { apiKey, provider } = getCachedAIConfig();
-    if (!apiKey) {
-      return fallback("I am having a technical issue right now. Please call back shortly.");
-    }
+  if (!apiKey) {
+    return fallback("I'm having a technical issue right now. Please call back shortly.");
+  }
 
-    // ── Load session in parallel — doesn't block prompt build ────────────────
-    const sessionPromise: Promise<{ id: unknown; tension_level: unknown; status: unknown } | null> = callId
+  try {
+    // ── Load session in parallel — never blocks prompt build ─────────────────
+    const sessionPromise: Promise<{
+      id: string;
+      tension_level: number;
+      status: string;
+    } | null> = callId
       ? (async () => {
           try {
             const { data } = await db
@@ -185,20 +234,19 @@ export async function POST(req: NextRequest) {
               .select("id, tension_level, status")
               .eq("call_sid", callId)
               .single();
-            return data as { id: unknown; tension_level: unknown; status: unknown } | null;
+            return data as { id: string; tension_level: number; status: string } | null;
           } catch { return null; }
         })()
       : Promise.resolve(null);
 
-    // Build prompt immediately with tension=0, update when session resolves
     const session = await sessionPromise;
-    const tensionLevel = (session?.tension_level as number | null) ?? 0;
-    const sessionId: string | null = (session?.id as string | undefined) ?? null;
+    const tension  = Number(session?.tension_level ?? 0);
+    const sessionId = session?.id ?? null;
 
-    const prompt = buildPeekPrompt(messages, tensionLevel);
-
-    // ── Call AI (gemini-2.0-flash or fallback) ────────────────────────────────
+    // ── Call AI ───────────────────────────────────────────────────────────────
+    const prompt = buildPeekPrompt(messages, tension);
     let raw = "";
+
     if (provider === "gemini") {
       raw = await callGeminiFlash(apiKey, prompt);
     } else {
@@ -208,62 +256,48 @@ export async function POST(req: NextRequest) {
         apiKey,
         system: "",
         user: prompt,
-        maxTokens: 150,
+        maxTokens: 180,
         jsonMode: true,
       });
     }
 
-    // ── Parse response ────────────────────────────────────────────────────────
-    let agentText = "I understand. Let me help you with that.";
-    let newTension = tensionLevel;
-    let shouldEscalate = false;
+    // ── Parse + compose SILK utterance ───────────────────────────────────────
+    const parsed = parsePeekResponse(raw, tension);
+    let { agentText, tensionLevel: newTension, shouldEscalate, intent } = parsed;
 
-    try {
-      const clean = raw.trim().replace(/^```json?\s*/im, "").replace(/\s*```$/m, "");
-      const parsed = JSON.parse(clean) as {
-        agentText?: string;
-        tensionLevel?: number;
-        shouldEscalate?: boolean;
-      };
-      agentText = parsed.agentText ?? agentText;
-      newTension = Math.min(10, Math.max(0, parsed.tensionLevel ?? tensionLevel));
-      shouldEscalate = !!parsed.shouldEscalate;
-
-      if (shouldEscalate) {
-        agentText =
-          "I completely understand. Let me connect you with a senior team member right away.";
-      }
-    } catch {
-      /* use defaults */
+    if (shouldEscalate) {
+      // Fixed escalation phrase — no prosody, just clarity
+      agentText = "I completely understand. <pause> Let me connect you with our senior team right now.";
+      newTension = Math.max(newTension, 8);
     }
 
-    // ── DB update — fire and forget, never blocks response ───────────────────
+    if (!agentText.trim()) {
+      agentText = "I understand. Let me help you with that.";
+    }
+
+    // composeSilkUtterance: adds [tone] prefix + prosody strategy
+    const finalUtterance = composeSilkUtterance(
+      agentText,
+      newTension,
+      intent,
+      silkEnabled
+    );
+
+    // ── DB update — fire and forget ──────────────────────────────────────────
     if (sessionId) {
       void (async () => {
         try {
-          await db
-            .from("voice_sessions")
-            .update({
-              tension_level: newTension,
-              status: shouldEscalate ? "escalated" : "active",
-            })
-            .eq("id", sessionId);
+          await db.from("voice_sessions").update({
+            tension_level: newTension,
+            status: shouldEscalate ? "escalated" : "active",
+          }).eq("id", sessionId);
         } catch { /* non-fatal */ }
       })();
     }
 
-    // ── Apply SILK tone prefix ────────────────────────────────────────────────
-    const cleanText = stripVoiceMarkers(agentText);
-    const tone =
-      newTension >= 7 ? "whisper" :
-      newTension >= 5 ? "sad" :
-      newTension >= 3 ? "neutral" : "happy";
-
-    return wantsStream
-      ? streamText(`[${tone}] ${cleanText}`)
-      : jsonResponse(`[${tone}] ${cleanText}`);
+    return wantsStream ? streamText(finalUtterance) : jsonResponse(finalUtterance);
   } catch (err) {
     console.error("[vapi-llm] error:", err);
-    return fallback("I am sorry, could you please repeat that?");
+    return fallback("I'm sorry, could you please repeat that?");
   }
 }

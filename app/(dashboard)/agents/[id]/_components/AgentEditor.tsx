@@ -38,6 +38,11 @@ interface AgentRow {
   empathy_score: number;
   resolved_rate: number;
   avg_handle_time: string;
+  // Call routing
+  call_direction: "inbound" | "outbound" | "both";
+  vapi_phone_number: string;
+  outbound_caller_id: string;
+  outbound_list_url: string;
 }
 
 interface AgentTool {
@@ -186,6 +191,69 @@ export default function AgentEditor({
 
         {showAdvanced && (
           <div className="border border-[#f0ebe0]/10 border-t-0 px-6 py-6 space-y-8">
+
+            {/* Call Direction */}
+            <div>
+              <SectionLabel>Call routing</SectionLabel>
+              <div className="space-y-4">
+                <AdvancedRow label="Direction">
+                  <div className="flex gap-2">
+                    {([
+                      { id: "inbound",  label: "Inbound",  desc: "Customer calls you" },
+                      { id: "outbound", label: "Outbound", desc: "Agent dials out" },
+                      { id: "both",     label: "Both",     desc: "Inbound + outbound" },
+                    ] as const).map(d => (
+                      <button key={d.id} type="button"
+                        onClick={() => set("call_direction")(d.id)}
+                        className={`flex-1 border px-3 py-2 text-left transition-all ${(agent.call_direction ?? "inbound") === d.id ? "border-[#f0ebe0]/40 bg-[#f0ebe0]/5" : "border-[#f0ebe0]/10 opacity-40 hover:opacity-70"}`}>
+                        <p className="text-[11px] font-bold text-[#f0ebe0]">{d.label}</p>
+                        <p className="text-[9px] text-[#f0ebe0]/40 mt-0.5">{d.desc}</p>
+                      </button>
+                    ))}
+                  </div>
+                </AdvancedRow>
+
+                {/* Inbound phone — shown for inbound/both */}
+                {(agent.call_direction === "inbound" || agent.call_direction === "both" || !agent.call_direction) && (
+                  <AdvancedRow label="Inbound Vapi phone number">
+                    <input
+                      value={agent.vapi_phone_number ?? ""}
+                      onChange={e => set("vapi_phone_number")(e.target.value)}
+                      placeholder="+91-22-4001-0000  (from Vapi dashboard)"
+                      className="w-full bg-transparent text-sm font-mono text-[#f0ebe0] placeholder:text-[#f0ebe0]/20 focus:outline-none border-b border-[#f0ebe0]/10 focus:border-[#f0ebe0]/40 pb-1"
+                    />
+                    <p className="text-[9px] text-[#f0ebe0]/25 mt-1.5">
+                      Webhook URL to set in Vapi → Phone Numbers:
+                      <span className="font-mono ml-1 text-[#f0ebe0]/40">{typeof window !== "undefined" ? window.location.origin : ""}/api/voice/vapi-incoming</span>
+                    </p>
+                  </AdvancedRow>
+                )}
+
+                {/* Outbound caller ID — shown for outbound/both */}
+                {(agent.call_direction === "outbound" || agent.call_direction === "both") && (
+                  <AdvancedRow label="Outbound caller ID">
+                    <input
+                      value={agent.outbound_caller_id ?? ""}
+                      onChange={e => set("outbound_caller_id")(e.target.value)}
+                      placeholder="+91-22-4001-0001  (verified in Vapi)"
+                      className="w-full bg-transparent text-sm font-mono text-[#f0ebe0] placeholder:text-[#f0ebe0]/20 focus:outline-none border-b border-[#f0ebe0]/10 focus:border-[#f0ebe0]/40 pb-1"
+                    />
+                  </AdvancedRow>
+                )}
+
+                {(agent.call_direction === "outbound" || agent.call_direction === "both") && (
+                  <AdvancedRow label="Contact list URL (optional)">
+                    <input
+                      value={agent.outbound_list_url ?? ""}
+                      onChange={e => set("outbound_list_url")(e.target.value)}
+                      placeholder="https://your-crm.com/api/contacts/list"
+                      className="w-full bg-transparent text-sm font-mono text-[#f0ebe0] placeholder:text-[#f0ebe0]/20 focus:outline-none border-b border-[#f0ebe0]/10 focus:border-[#f0ebe0]/40 pb-1"
+                    />
+                    <p className="text-[9px] text-[#f0ebe0]/25 mt-1.5">JSON endpoint returning a list of <span className="font-mono">{"{phone, name, metadata}"}</span> to dial.</p>
+                  </AdvancedRow>
+                )}
+              </div>
+            </div>
 
             {/* Voice */}
             <div>

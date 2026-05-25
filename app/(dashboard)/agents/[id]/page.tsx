@@ -54,6 +54,11 @@ export default async function AgentDetailPage({ params }: PageProps) {
     empathy_score:    agentRaw.empathy_score ?? 0,
     resolved_rate:    agentRaw.resolved_rate ?? 0,
     avg_handle_time:  agentRaw.avg_handle_time ?? "—",
+    // Call routing
+    call_direction:     agentRaw.call_direction ?? "inbound",
+    vapi_phone_number:  agentRaw.vapi_phone_number ?? "",
+    outbound_caller_id: agentRaw.outbound_caller_id ?? "",
+    outbound_list_url:  agentRaw.outbound_list_url ?? "",
   };
 
   return (

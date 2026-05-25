@@ -81,10 +81,19 @@ export default async function AgentsPage() {
                     <div>
                       <p className="font-semibold text-sm text-black">{agent.name}</p>
                       <p className="text-[11px] text-black/50 mt-0.5">{agent.client}</p>
-                      <div className="flex gap-1 mt-1.5">
-                        {["PEEK", "MESH", "SILK", "ACTION"].map(p => (
+                      <div className="flex gap-1 mt-1.5 flex-wrap">
+                        {["PEEK", "MESH", "SILK"].map(p => (
                           <span key={p} className="text-[8px] font-mono border border-black/30 px-1.5 py-0.5 text-black/50">{p}</span>
                         ))}
+                        <span className={`text-[8px] font-mono px-1.5 py-0.5 border ${
+                          (agent as { call_direction?: string }).call_direction === "outbound"
+                            ? "border-amber-400/40 text-amber-600 dark:text-amber-400"
+                            : (agent as { call_direction?: string }).call_direction === "both"
+                            ? "border-purple-400/40 text-purple-600 dark:text-purple-400"
+                            : "border-emerald-400/40 text-emerald-600 dark:text-emerald-400"
+                        }`}>
+                          {(agent as { call_direction?: string }).call_direction ?? "inbound"}
+                        </span>
                       </div>
                     </div>
                   </div>

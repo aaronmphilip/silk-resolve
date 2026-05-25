@@ -30,6 +30,7 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
     "linguistic_notes", "peek_threshold", "mesh_depth_days",
     "silk_voice_id", "agent_variables", "tools", "escalation_rules",
     "no_go_topics", "twilio_phone", "pillars",
+    "call_direction", "vapi_phone_number", "outbound_caller_id", "outbound_list_url",
   ];
 
   const patch: Record<string, unknown> = {};
