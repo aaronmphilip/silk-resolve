@@ -182,7 +182,8 @@ export async function POST(req: NextRequest) {
 
     // ── 5. Voice config ───────────────────────────────────────────────────────
     const { silk } = await getPlatformVoiceConfig();
-    const spokenFirstMessage = silk.apiKey ? withSilkTone("happy", firstMessage) : firstMessage;
+    const useSilkVoice = Boolean(silk.apiKey && silk.vapiEnabled);
+    const spokenFirstMessage = useSilkVoice ? withSilkTone("happy", firstMessage) : firstMessage;
 
     const vapiAssistant: Record<string, unknown> = {
       firstMessage: spokenFirstMessage,
@@ -219,10 +220,10 @@ export async function POST(req: NextRequest) {
     };
 
     // Voice priority: SILK (Rumik) → Vapi built-in PlayHT
-    if (silk.apiKey) {
+    if (useSilkVoice) {
       vapiAssistant.voice = {
         provider: "custom-voice",
-        server:   { url: `${appUrl}/api/voice/silk-tts`, timeoutSeconds: 20 },
+        server:   { url: `${appUrl}/api/voice/silk-tts`, timeoutSeconds: 30 },
       };
     } else {
       vapiAssistant.voice = { provider: "playht", voiceId: "jennifer" };

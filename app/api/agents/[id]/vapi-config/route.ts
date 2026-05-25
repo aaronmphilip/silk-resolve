@@ -73,10 +73,11 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const origin = deriveOrigin(req);
 
   // ── Voice provider ─────────────────────────────────────────────────────────
-  const voice = silk.apiKey
+  const useSilkVoice = Boolean(silk.apiKey && silk.vapiEnabled);
+  const voice = useSilkVoice
     ? {
         provider: "custom-voice",
-        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 12 },
+        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 30 },
         fallbackPlan: { voices: [{ provider: "playht", voiceId: "jennifer" }] },
       }
     : { provider: "playht", voiceId: "jennifer" };
@@ -99,7 +100,7 @@ VOICE CALL RULES:
   const rawFirst = cleanSpokenText(
     agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`
   );
-  const spokenFirstMessage = silk.apiKey
+  const spokenFirstMessage = useSilkVoice
     ? withSilkTone("happy", stripAll(rawFirst))
     : stripAll(rawFirst);
 

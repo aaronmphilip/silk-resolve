@@ -190,19 +190,27 @@ export async function POST(req: NextRequest) {
       const recordingUrl = message.artifact?.recordingUrl ?? null;
 
       // 1. Finalise session — include recording + summary when available
-      await db.from("voice_sessions").update({
+      const sessionUpdate = {
         status:         "ended",
         resolution:     outcome,
         empathy_score:  empathyScore,
         ended_at:       session.ended_at ?? now,
-        recording_url:  recordingUrl,
-        summary:        summary || null,
         messages:       transcript.map((m) => ({
           role:    ["bot", "assistant", "agent"].includes(m.role) ? "agent" : "customer",
           content: stripVoiceMarkers(m.message ?? m.content ?? ""),
           time:    m.time,
         })),
+      };
+
+      const { error: fullUpdateError } = await db.from("voice_sessions").update({
+        ...sessionUpdate,
+        recording_url:  recordingUrl,
+        summary:        summary || null,
       }).eq("call_sid", callId);
+
+      if (fullUpdateError) {
+        await db.from("voice_sessions").update(sessionUpdate).eq("call_sid", callId);
+      }
 
       // 2. Write analytics call record
       const { data: agent } = await db

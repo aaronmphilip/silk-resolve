@@ -23,6 +23,9 @@ const RUMIK_SAMPLE_RATE = 24000;
 const SUPPORTED_TARGET_RATES = new Set([8000, 16000, 22050, 24000, 44100]);
 
 type VoiceRequestBody = {
+  type?: string;
+  sampleRate?: number;
+  timestamp?: number;
   message?: {
     type?: string;
     text?: string;
@@ -50,7 +53,10 @@ interface WavData {
 function extractTextAndSampleRate(body: VoiceRequestBody) {
   const message = body.message;
   const text = typeof message?.text === "string" ? message.text : body.text;
-  const sampleRate = typeof message?.sampleRate === "number" ? message.sampleRate : RUMIK_SAMPLE_RATE;
+  const sampleRate =
+    typeof message?.sampleRate === "number" ? message.sampleRate :
+    typeof body.sampleRate === "number" ? body.sampleRate :
+    RUMIK_SAMPLE_RATE;
 
   return {
     text: (text ?? "").trim(),

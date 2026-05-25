@@ -68,6 +68,7 @@ export async function getPlatformVoiceConfig() {
     },
     silk: {
       apiKey: env("SILK_API_KEY"),
+      vapiEnabled: env("SILK_VAPI_VOICE").toLowerCase() === "true",
     },
   };
 }
@@ -79,6 +80,7 @@ export async function getPlatformVoiceConfig() {
 export function getVoiceProviderStatus() {
   return {
     silkConfigured:      !!env("SILK_API_KEY"),
+    silkVapiEnabled:     env("SILK_VAPI_VOICE").toLowerCase() === "true",
     vapiWebConfigured:   !!firstEnv("VAPI_PUBLIC_KEY", "NEXT_PUBLIC_VAPI_PUBLIC_KEY"),
     vapiServerConfigured: !!firstEnv("VAPI_PRIVATE_KEY", "VAPI_API_KEY"),
   };

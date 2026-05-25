@@ -34,7 +34,8 @@ const MAX_OUTPUT_TOKENS = 90;
 function getConfig() {
   return {
     apiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
-    silkEnabled: Boolean(process.env.SILK_API_KEY?.trim()),
+    silkEnabled: process.env.SILK_VAPI_VOICE?.trim().toLowerCase() === "true" &&
+      Boolean(process.env.SILK_API_KEY?.trim()),
   };
 }
 
@@ -85,6 +86,9 @@ function buildContents(messages: OAIMessage[]): GeminiTurn[] {
 
 function cleanPromptLine(line: string): string {
   return line
+    .replace(/â|â€”/g, "—")
+    .replace(/â/g, "–")
+    .replace(/â¹/g, "₹")
     .replace(/^[-*\d.)\s]+/, "")
     .replace(/\{\{\s*preferred_address\s*\}\}/gi, "you")
     .replace(/\{\{\s*customer_name\s*\}\}/gi, "you")
@@ -119,6 +123,37 @@ function compactAnswer(lines: string[], maxLines = 3): string {
     .join(" ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function speakable(text: string): string {
+  return text
+    .replace(/â|â€”/g, "—")
+    .replace(/â/g, "–")
+    .replace(/â¹/g, "₹")
+    .replace(/₹\s*([\d,]+)\s*\/\s*month/gi, "$1 rupees per month")
+    .replace(/₹\s*([\d,]+)/g, "$1 rupees")
+    .replace(/[—–]/g, ", ")
+    .replace(/\+/g, " plus ")
+    .replace(/\bOPD\b/g, "O P D")
+    .replace(/\bICU\b/g, "I C U")
+    .replace(/\bIRDAI\b/g, "I R D A I")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function planSummary(lines: string[]): string {
+  const plans = lines
+    .map((line) => line.split(/\s+(?:[—–-]|â€”)\s+/).map((part) => part.trim()).filter(Boolean))
+    .filter((parts) => parts.length >= 2)
+    .slice(0, 3)
+    .map((parts) => `${parts[0]} is ${parts[1]}`);
+
+  if (plans.length === 0) return "";
+  return `${plans.join(". ")}. Which plan should I compare for you?`;
+}
+
+function firstMatchingLine(lines: string[], pattern: RegExp): string {
+  return lines.find((line) => pattern.test(line)) ?? "";
 }
 
 function queryTokens(text: string): string[] {
@@ -174,27 +209,31 @@ function answerFromSystemPrompt(systemPrompt: string, userText: string): string 
   if (!systemPrompt.trim()) return "";
 
   if (/\b(plan|plans|price|pricing|cost|premium|monthly|cover|coverage|insured|policy)\b/.test(text)) {
-    const answer = compactAnswer(sectionLines(systemPrompt, /^plans\b/i), 4);
+    const lines = sectionLines(systemPrompt, /^plans\b/i);
+    const answer = planSummary(lines) || compactAnswer(lines, 2);
     if (answer) return answer;
   }
 
   if (/\b(claim|claims|cashless|reimbursement|hospital|pre-?auth|emergency)\b/.test(text)) {
-    const answer = compactAnswer(sectionLines(systemPrompt, /^claims?\s+process\b/i), 4);
+    const lines = sectionLines(systemPrompt, /^claims?\s+process\b/i);
+    const cashless = firstMatchingLine(lines, /\bcashless\b/i);
+    const reimbursement = firstMatchingLine(lines, /\breimbursement\b/i);
+    const answer = compactAnswer([cashless, reimbursement].filter(Boolean), 2) || compactAnswer(lines, 2);
     if (answer) return answer;
   }
 
   if (/\b(contact|phone|email|support|chat|call|number)\b/.test(text)) {
-    const answer = compactAnswer(sectionLines(systemPrompt, /^customer\s+support\b/i), 4);
+    const answer = compactAnswer(sectionLines(systemPrompt, /^customer\s+support\b/i), 2);
     if (answer) return answer;
   }
 
   if (/\b(who are you|company|about|what is|what do you|nova|brand)\b/.test(text)) {
-    const answer = compactAnswer(sectionLines(systemPrompt, /^about\b/i), 4);
+    const answer = compactAnswer(sectionLines(systemPrompt, /^about\b/i), 2);
     if (answer) return answer;
   }
 
   if (/\b(add family|family member|dependent|renew|pre-existing|preexisting|waiting period)\b/.test(text)) {
-    const answer = compactAnswer(sectionLines(systemPrompt, /^common\s+questions\b/i), 4);
+    const answer = compactAnswer(sectionLines(systemPrompt, /^common\s+questions\b/i), 2);
     if (answer) return answer;
   }
 
@@ -202,7 +241,7 @@ function answerFromSystemPrompt(systemPrompt: string, userText: string): string 
 }
 
 function voiceText(text: string, silkEnabled: boolean): string {
-  const clean = stripAll(text).replace(/\s+/g, " ").trim();
+  const clean = speakable(stripAll(text)).trim();
   if (!clean) return "I can help with that. Could you say the question again?";
   return silkEnabled ? withSilkTone(tensionToTone(0), clean) : clean;
 }
@@ -315,7 +354,7 @@ function streamGemini(args: {
       let buffer = "";
 
       function enqueue(text: string) {
-        const clean = text.replace(/\s+/g, " ");
+        const clean = speakable(text);
         if (!clean.trim()) return;
 
         if (!emittedText) {

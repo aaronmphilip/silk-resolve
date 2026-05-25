@@ -84,10 +84,11 @@ VOICE CALL RULES:
   );
 
   // Voice priority: SILK (Rumik) → Vapi built-in PlayHT
-  const voice = silk.apiKey
+  const useSilkVoice = Boolean(silk.apiKey && silk.vapiEnabled);
+  const voice = useSilkVoice
     ? {
         provider: "custom-voice",
-        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 12 },
+        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 30 },
         fallbackPlan: {
           voices: [{ provider: "playht", voiceId: "jennifer" }],
         },
@@ -107,7 +108,7 @@ VOICE CALL RULES:
       maxTokens: 80,
     },
     voice,
-    firstMessage: silk.apiKey ? withSilkTone("happy", firstMessage) : stripAll(firstMessage),
+    firstMessage: useSilkVoice ? withSilkTone("happy", firstMessage) : stripAll(firstMessage),
     firstMessageMode: "assistant-speaks-first",
     firstMessageInterruptionsEnabled: true,
     customerJoinTimeoutSeconds: 60,
