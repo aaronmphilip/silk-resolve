@@ -30,9 +30,8 @@ export async function POST(req: NextRequest) {
   const { agentId, visitorId } = await req.json() as { agentId: string; visitorId?: string };
   if (!agentId) return NextResponse.json({ error: "agentId required" }, { status: 400 });
 
-  // Load agent — no status filter; the agent ID is the access control
-  const db = user ? auth : createServiceClient();
-  const { data: agent, error: agentErr } = await db
+  // Always use service client — bypasses RLS for widget/public calls
+  const { data: agent, error: agentErr } = await createServiceClient()
     .from("agents")
     .select("id, tenant_id, name, status, system_prompt, first_message, llm_model, silk_voice_id")
     .eq("id", agentId)

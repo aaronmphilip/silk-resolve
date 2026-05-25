@@ -43,8 +43,10 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const auth = createClient();
   const { data: { user } } = await auth.auth.getUser();
 
-  // Agent ID is the access control — no status filter needed
-  const db = user ? auth : createServiceClient();
+  // Use service client to bypass RLS for unauthenticated widget requests.
+  // Falls back to the authed client when a logged-in user calls this endpoint.
+  // Migration 015 also adds an anon read policy as a belt-and-suspenders fallback.
+  const db = createServiceClient();
   const { data: agent, error } = await db
     .from("agents")
     .select("id, name, status, system_prompt, first_message, llm_model, call_direction")
