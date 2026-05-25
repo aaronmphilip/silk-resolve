@@ -126,17 +126,35 @@ function queryTokens(text: string): string[] {
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
-    .filter((token) => token.length >= 4 && !["what", "tell", "about", "your", "does", "have", "with"].includes(token));
+    .filter((token) => token.length >= 4 && ![
+      "what",
+      "tell",
+      "about",
+      "your",
+      "does",
+      "have",
+      "with",
+      "answer",
+      "short",
+      "sentence",
+      "please",
+      "could",
+      "would",
+      "people",
+    ].includes(token));
 }
 
 function scoredPromptAnswer(systemPrompt: string, userText: string): string {
   const tokens = queryTokens(userText);
   if (tokens.length === 0) return "";
 
-  const candidates = systemPrompt
+  const knowledgePrompt = systemPrompt.split(/\bVOICE CALL RULES:/i)[0] ?? systemPrompt;
+  const instructionLine = /^(you are|reply|short questions|detailed questions|use natural|you may add|never|if you cannot|be concise|no markdown|your role|voice call rules)\b/i;
+
+  const candidates = knowledgePrompt
     .split(/\r?\n/)
     .map(cleanPromptLine)
-    .filter((line) => line.length >= 18 && !/^never:?$/i.test(line) && !/^your role:?$/i.test(line));
+    .filter((line) => line.length >= 18 && !instructionLine.test(line));
 
   const scored = candidates
     .map((line) => ({
