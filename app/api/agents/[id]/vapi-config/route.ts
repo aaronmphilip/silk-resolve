@@ -47,7 +47,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   {
     const svcResult = await createServiceClient()
       .from("agents")
-      .select("id, name, status, system_prompt, first_message, llm_model, call_direction")
+      .select("id, name, status, system_prompt, first_message, llm_model")
       .eq("id", id)
       .single();
     if (svcResult.data) {
@@ -56,7 +56,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       // Fallback: anon key (works when migration 015 RLS policy is applied)
       const anonResult = await createClient()
         .from("agents")
-        .select("id, name, status, system_prompt, first_message, llm_model, call_direction")
+        .select("id, name, status, system_prompt, first_message, llm_model")
         .eq("id", id)
         .single();
       agent = anonResult.data ?? null;
@@ -147,7 +147,7 @@ CRITICAL VOICE RULES:
     metadata: {
       agentId: agent.id,
       aiProvider: aiConfig.provider,
-      callDirection: agent.call_direction ?? "inbound",
+      callDirection: (agent as { call_direction?: string }).call_direction ?? "inbound",
     },
   });
 }
