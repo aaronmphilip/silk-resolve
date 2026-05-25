@@ -8,7 +8,7 @@
 import TalkButton from "./TalkButton";
 
 // ── CHANGE THIS ──────────────────────────────────────────────────────────────
-const AGENT_ID = "REPLACE_WITH_YOUR_AGENT_ID";
+const AGENT_ID = "agt-856e6f5e-1851-4041-a4f5-9f5ee62c0793";
 // ────────────────────────────────────────────────────────────────────────────
 
 export const metadata = {
