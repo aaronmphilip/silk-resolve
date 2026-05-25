@@ -36,8 +36,17 @@
     position:  script.getAttribute('data-position')  || 'bottom-right',
     color:     script.getAttribute('data-color')      || '#0a0a0a',
     label:     script.getAttribute('data-label')      || script.getAttribute('data-greeting') || 'Talk to support',
+    voice:     normalizeVoice(script.getAttribute('data-voice') || script.getAttribute('data-voice-mode')),
     autoOpen:  script.getAttribute('data-auto-open')  === 'true',
   };
+
+  function normalizeVoice(value) {
+    return value === 'vapi' ? 'vapi' : 'silk';
+  }
+
+  function talkUrl(id) {
+    return origin + '/talk/' + encodeURIComponent(id) + '?voice=' + encodeURIComponent(cfg.voice);
+  }
 
   // Global API — populated once the DOM is ready
   window.SilkResolve = window.SilkResolve || {};
@@ -126,7 +135,7 @@
 
     // ── Iframe (the full PublicTalkClient lives here) ─────────────────────────
     var iframe = document.createElement('iframe');
-    iframe.src = origin + '/talk/' + encodeURIComponent(agentId);
+    iframe.src = talkUrl(agentId);
     iframe.style.cssText = 'flex:1;width:100%;border:none;display:block;';
     iframe.allow = 'microphone; autoplay; clipboard-write';
     iframe.setAttribute('allowfullscreen', '');
@@ -175,7 +184,7 @@
     window.SilkResolve.start = function (id) {
       if (id && id !== agentId) {
         // Different agent — update iframe src before opening
-        iframe.src = origin + '/talk/' + encodeURIComponent(id);
+        iframe.src = talkUrl(id);
       }
       open();
     };

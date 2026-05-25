@@ -18,6 +18,8 @@ export interface WebVoiceTranscript {
   ts: number;
 }
 
+export type WebVoiceMode = "silk" | "vapi";
+
 type VapiCtor = typeof import("@vapi-ai/web").default;
 type VapiInstance = InstanceType<VapiCtor>;
 
@@ -216,7 +218,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
-export function useWebVoiceCall(agentId: string) {
+export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk") {
   const [state, setState] = useState<WebVoiceCallState>("idle");
   const [error, setError] = useState("");
   const [muted, setMuted] = useState(false);
@@ -308,7 +310,7 @@ export function useWebVoiceCall(agentId: string) {
         Promise.all([
           loadVapiCtor(),
           fetchJson<TokenResponse>("/api/voice/vapi-token"),
-          fetchJson<AssistantConfig>(`/api/agents/${agentId}/vapi-config`),
+          fetchJson<AssistantConfig>(`/api/agents/${agentId}/vapi-config?voice=${encodeURIComponent(voiceMode)}`),
           preflightMicrophone(),
         ]),
         CONFIG_TIMEOUT_MS,
@@ -400,6 +402,7 @@ export function useWebVoiceCall(agentId: string) {
     registerCall,
     startTimer,
     stopTimer,
+    voiceMode,
   ]);
 
   const endCall = useCallback(async () => {

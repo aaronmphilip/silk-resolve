@@ -1,6 +1,8 @@
 "use client";
 
-export default function TalkButton() {
+import { PhoneCall } from "lucide-react";
+
+export default function TalkButton({ label = "Talk to support now" }: { label?: string }) {
   return (
     <button
       onClick={() => {
@@ -9,7 +11,8 @@ export default function TalkButton() {
       }}
       className="inline-flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-semibold px-7 py-3.5 rounded-full hover:opacity-80 transition-opacity"
     >
-      <span>🎙</span> Talk to support now
+      <PhoneCall aria-hidden="true" className="h-4 w-4" />
+      {label}
     </button>
   );
 }

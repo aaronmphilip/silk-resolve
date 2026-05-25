@@ -38,8 +38,13 @@ function cleanSpokenText(text: string): string {
     .trim();
 }
 
+function voiceMode(req: NextRequest): "silk" | "vapi" {
+  return req.nextUrl.searchParams.get("voice") === "vapi" ? "vapi" : "silk";
+}
+
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
+  const requestedVoice = voiceMode(req);
 
   // Try service client first (bypasses RLS). If SUPABASE_SERVICE_ROLE_KEY isn't
   // set in env, fall back to the anon client — migration 015 grants anon read.
@@ -73,7 +78,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const origin = deriveOrigin(req);
 
   // ── Voice provider ─────────────────────────────────────────────────────────
-  const useSilkVoice = Boolean(silk.apiKey && silk.vapiEnabled);
+  const useSilkVoice = requestedVoice === "silk" && Boolean(silk.apiKey && silk.vapiEnabled);
   const voice = useSilkVoice
     ? {
         provider: "custom-voice",
@@ -148,6 +153,7 @@ VOICE CALL RULES:
     metadata: {
       agentId: agent.id,
       aiProvider: aiConfig.provider,
+      voiceMode: useSilkVoice ? "silk-muga" : "vapi-native",
       callDirection: (agent as { call_direction?: string }).call_direction ?? "inbound",
     },
   });

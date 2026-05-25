@@ -2,11 +2,12 @@
 
 import { useEffect, useRef } from "react";
 import { Loader2, Mic, MicOff, Phone, PhoneOff, Volume2 } from "lucide-react";
-import { useWebVoiceCall, type WebVoiceCallState } from "@/lib/use-web-voice-call";
+import { useWebVoiceCall, type WebVoiceCallState, type WebVoiceMode } from "@/lib/use-web-voice-call";
 
 interface PublicTalkClientProps {
   agentId: string;
   agentName: string;
+  voiceMode: WebVoiceMode;
 }
 
 const stateLabel: Record<WebVoiceCallState, string> = {
@@ -23,7 +24,7 @@ function formatDuration(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export default function PublicTalkClient({ agentId, agentName }: PublicTalkClientProps) {
+export default function PublicTalkClient({ agentId, agentName, voiceMode }: PublicTalkClientProps) {
   const transcriptRef = useRef<HTMLDivElement>(null);
   const {
     state,
@@ -36,7 +37,7 @@ export default function PublicTalkClient({ agentId, agentName }: PublicTalkClien
     endCall,
     toggleMute,
     reset,
-  } = useWebVoiceCall(agentId);
+  } = useWebVoiceCall(agentId, voiceMode);
 
   useEffect(() => {
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: "smooth" });
@@ -58,6 +59,9 @@ export default function PublicTalkClient({ agentId, agentName }: PublicTalkClien
         <div className="min-w-0">
           <p className="text-[10px] font-mono text-[#f0ebe0]/35 uppercase tracking-widest">silk resolve</p>
           <h1 className="text-base font-bold truncate">{agentName}</h1>
+          <p className="text-[10px] font-mono text-[#f0ebe0]/35 uppercase tracking-widest mt-0.5">
+            {voiceMode === "silk" ? "SILK MUGA voice" : "Vapi native voice"}
+          </p>
         </div>
         <div className="flex items-center gap-2 border border-[#f0ebe0]/15 px-3 py-1.5">
           <span className={`w-2 h-2 rounded-full ${active ? "bg-emerald-400" : busy ? "bg-amber-400 animate-pulse" : "bg-[#f0ebe0]/25"}`} />
