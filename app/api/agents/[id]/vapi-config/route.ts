@@ -40,20 +40,30 @@ function cleanSpokenText(text: string): string {
 
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
-  const auth = createClient();
-  const { data: { user } } = await auth.auth.getUser();
 
-  // Use service client to bypass RLS for unauthenticated widget requests.
-  // Falls back to the authed client when a logged-in user calls this endpoint.
-  // Migration 015 also adds an anon read policy as a belt-and-suspenders fallback.
-  const db = createServiceClient();
-  const { data: agent, error } = await db
-    .from("agents")
-    .select("id, name, status, system_prompt, first_message, llm_model, call_direction")
-    .eq("id", id)
-    .single();
+  // Try service client first (bypasses RLS). If SUPABASE_SERVICE_ROLE_KEY isn't
+  // set in env, fall back to the anon client — migration 015 grants anon read.
+  let agent = null;
+  {
+    const svcResult = await createServiceClient()
+      .from("agents")
+      .select("id, name, status, system_prompt, first_message, llm_model, call_direction")
+      .eq("id", id)
+      .single();
+    if (svcResult.data) {
+      agent = svcResult.data;
+    } else {
+      // Fallback: anon key (works when migration 015 RLS policy is applied)
+      const anonResult = await createClient()
+        .from("agents")
+        .select("id, name, status, system_prompt, first_message, llm_model, call_direction")
+        .eq("id", id)
+        .single();
+      agent = anonResult.data ?? null;
+    }
+  }
 
-  if (error || !agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
+  if (!agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
 
   const [{ silk }, aiConfig] = await Promise.all([
     getPlatformVoiceConfig(),
