@@ -3,8 +3,9 @@
  * embedded on a real customer website.
  *
  * TO USE: replace AGENT_ID below with your actual agent ID
- * (go to /agents → click an agent → copy the ID from the URL).
+ * (go to /agents → click ··· on any agent → Copy agent ID).
  */
+import TalkButton from "./TalkButton";
 
 // ── CHANGE THIS ──────────────────────────────────────────────────────────────
 const AGENT_ID = "REPLACE_WITH_YOUR_AGENT_ID";
@@ -125,16 +126,7 @@ export default function FakeWebsite() {
           <p className="text-gray-500 text-sm max-w-sm mx-auto mb-7">
             Our AI support agent is live right now. Click the blue button in the bottom-right corner — no hold time, no forms.
           </p>
-          <button
-            onClick={() => {
-              if (typeof window !== "undefined" && (window as { SilkResolve?: { start: () => void } }).SilkResolve) {
-                (window as { SilkResolve?: { start: () => void } }).SilkResolve!.start();
-              }
-            }}
-            className="inline-flex items-center gap-2 bg-[#0a0a0a] text-white text-sm font-semibold px-7 py-3.5 rounded-full hover:opacity-80 transition-opacity"
-          >
-            <span>🎙</span> Talk to support now
-          </button>
+          <TalkButton />
         </section>
 
         {/* Footer */}
@@ -178,3 +170,4 @@ function WidgetScript({ agentId }: { agentId: string }) {
     <script dangerouslySetInnerHTML={{ __html: snippet }} />
   );
 }
+
