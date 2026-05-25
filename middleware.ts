@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PUBLIC_PATHS = ["/", "/use-cases", "/login", "/register", "/onboarding"];
+const PUBLIC_PATHS = ["/", "/use-cases", "/login", "/register", "/onboarding", "/fakewebsite", "/talk"];
 const REMOVED_MARKETING_PATHS = ["/features", "/pricing", "/docs", "/research"];
 
 export async function middleware(request: NextRequest) {
