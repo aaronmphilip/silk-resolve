@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
@@ -13,9 +13,6 @@ function cleanSpokenText(text: string): string {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = createClient();
-  const { data: { user } } = await auth.auth.getUser();
-
   const { agentId, callId, visitorId } = await req.json() as {
     agentId?: string;
     callId?: string;
@@ -24,23 +21,12 @@ export async function POST(req: NextRequest) {
   if (!agentId) return NextResponse.json({ error: "agentId required" }, { status: 400 });
   if (!callId) return NextResponse.json({ error: "callId required" }, { status: 400 });
 
-  const db = user ? auth : createServiceClient();
-  let agentQuery = db
+  const db = createServiceClient();
+  const { data: agent, error } = await db
     .from("agents")
     .select("id, tenant_id, status, first_message")
     .eq("id", agentId)
     .single();
-
-  if (!user) {
-    agentQuery = db
-      .from("agents")
-      .select("id, tenant_id, status, first_message")
-      .eq("id", agentId)
-      .in("status", ["live", "active"])
-      .single();
-  }
-
-  const { data: agent, error } = await agentQuery;
 
   if (error || !agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
 
@@ -53,8 +39,8 @@ export async function POST(req: NextRequest) {
     call_sid:       callId,
     tenant_id:      agent.tenant_id,
     agent_id:       agent.id,
-    caller_phone:   safeVisitorId ? `web:${safeVisitorId}` : user ? "web-dashboard" : "web-guest",
-    platform_phone: user ? "web-dashboard" : "web-public",
+    caller_phone:   safeVisitorId ? `web:${safeVisitorId}` : "web-guest",
+    platform_phone: "web-public",
     messages:       [{
       role: "agent",
       content: firstMessage,
