@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ assistant: {
         firstMessage: "Hello! No agents are currently configured. Please set up an agent in the dashboard.",
         model: { provider: "openai", model: "gpt-4o-mini", messages: [{ role: "system", content: "You are a helpful assistant." }] },
-        voice: { provider: "playht", voiceId: "jennifer" },
+        voice: { provider: "vapi", voiceId: "Neha" },
       }});
     }
 
@@ -226,7 +226,7 @@ export async function POST(req: NextRequest) {
         server:   { url: `${appUrl}/api/voice/silk-tts`, timeoutSeconds: 30 },
       };
     } else {
-      vapiAssistant.voice = { provider: "playht", voiceId: "jennifer" };
+      vapiAssistant.voice = { provider: "vapi", voiceId: "Neha" };
     }
 
     return NextResponse.json({ assistant: vapiAssistant });
@@ -236,7 +236,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ assistant: {
       firstMessage: "We're experiencing a technical issue. Please try again shortly.",
       model: { provider: "openai", model: "gpt-4o-mini", messages: [{ role: "system", content: "You are a helpful assistant." }] },
-      voice: { provider: "playht", voiceId: "jennifer" },
+      voice: { provider: "vapi", voiceId: "Neha" },
     }});
   }
 }

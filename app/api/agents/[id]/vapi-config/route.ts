@@ -78,9 +78,9 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     ? {
         provider: "custom-voice",
         server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 30 },
-        fallbackPlan: { voices: [{ provider: "playht", voiceId: "jennifer" }] },
+        fallbackPlan: { voices: [{ provider: "vapi", voiceId: "Neha" }] },
       }
-    : { provider: "playht", voiceId: "jennifer" };
+    : { provider: "vapi", voiceId: "Neha" };
 
   // ── System prompt ──────────────────────────────────────────────────────────
   const basePrompt = agent.system_prompt ||

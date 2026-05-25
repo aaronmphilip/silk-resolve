@@ -83,17 +83,17 @@ VOICE CALL RULES:
     agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`
   );
 
-  // Voice priority: SILK (Rumik) → Vapi built-in PlayHT
+  // Voice priority: optional SILK (Rumik) → Vapi native voice.
   const useSilkVoice = Boolean(silk.apiKey && silk.vapiEnabled);
   const voice = useSilkVoice
     ? {
         provider: "custom-voice",
         server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 30 },
         fallbackPlan: {
-          voices: [{ provider: "playht", voiceId: "jennifer" }],
+          voices: [{ provider: "vapi", voiceId: "Neha" }],
         },
       }
-    : { provider: "playht", voiceId: "jennifer" };
+    : { provider: "vapi", voiceId: "Neha" };
 
   // Build the assistant config — same shape as before but sent to Vapi's REST API
   const assistantConfig = {
