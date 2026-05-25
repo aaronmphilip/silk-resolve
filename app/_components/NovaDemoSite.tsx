@@ -1,7 +1,7 @@
 import TalkButton from "@/app/fakewebsite/TalkButton";
 import { NOVACARE_AGENT_ID, NOVACARE_FACTS, NOVACARE_PLANS } from "@/lib/novacare-knowledge";
 
-type VoiceMode = "silk" | "vapi";
+type VoiceMode = "silk" | "silk-stream" | "vapi";
 
 interface NovaDemoSiteProps {
   voiceMode: VoiceMode;
@@ -9,11 +9,19 @@ interface NovaDemoSiteProps {
 
 const copy = {
   silk: {
-    badge: "SILK MUGA voice assistant",
-    title: "NovaCare with SILK MUGA",
+    badge: "SILK MUGA REST voice assistant",
+    title: "NovaCare with MUGA REST",
     description:
-      "The same NovaCare support agent routed through Rumik SILK MUGA for expressive emotional voice. This is the branded voice demo.",
-    cta: "Talk to MUGA support",
+      "The same NovaCare support agent routed through Rumik SILK MUGA REST TTS. This waits for a WAV response before Vapi can speak.",
+    cta: "Talk to MUGA REST",
+    color: "#0055ff",
+  },
+  "silk-stream": {
+    badge: "SILK MUGA streaming voice assistant",
+    title: "NovaCare with MUGA streaming",
+    description:
+      "The same NovaCare support agent routed through Rumik's WebSocket streaming TTS. This streams raw PCM to Vapi as MUGA generates it.",
+    cta: "Talk to MUGA streaming",
     color: "#0055ff",
   },
   vapi: {
@@ -28,6 +36,8 @@ const copy = {
 
 export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
   const site = copy[voiceMode];
+  const compareHref = voiceMode === "vapi" ? "/nova-muga-stream" : "/nova-vapi";
+  const compareLabel = voiceMode === "vapi" ? "MUGA streaming" : "Vapi speed";
 
   return (
     <>
@@ -68,9 +78,14 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
             <a href="#voice" className="w-full sm:w-auto bg-[#0055ff] text-white text-sm font-semibold px-8 py-4 rounded-full hover:bg-blue-700 transition-colors">
               Start web call
             </a>
-            <a href={voiceMode === "silk" ? "/nova-vapi" : "/nova-muga"} className="w-full sm:w-auto border border-gray-200 text-sm font-semibold px-8 py-4 rounded-full hover:border-gray-400 transition-colors text-gray-700">
-              Compare {voiceMode === "silk" ? "Vapi speed" : "MUGA voice"}
+            <a href={compareHref} className="w-full sm:w-auto border border-gray-200 text-sm font-semibold px-8 py-4 rounded-full hover:border-gray-400 transition-colors text-gray-700">
+              Compare {compareLabel}
             </a>
+            {voiceMode === "silk" && (
+              <a href="/nova-muga-stream" className="w-full sm:w-auto border border-blue-100 bg-blue-50 text-sm font-semibold px-8 py-4 rounded-full hover:border-blue-200 transition-colors text-blue-700">
+                Try MUGA streaming
+              </a>
+            )}
           </div>
         </section>
 

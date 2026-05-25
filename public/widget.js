@@ -41,6 +41,7 @@
   };
 
   function normalizeVoice(value) {
+    if (value === 'silk-stream') return 'silk-stream';
     return value === 'vapi' ? 'vapi' : 'silk';
   }
 

@@ -11,7 +11,9 @@ interface PageProps {
 }
 
 function normalizeVoiceMode(value: string | undefined): WebVoiceMode {
-  return value === "vapi" ? "vapi" : "silk";
+  if (value === "vapi") return "vapi";
+  if (value === "silk-stream") return "silk-stream";
+  return "silk";
 }
 
 export default async function PublicTalkPage({ params, searchParams }: PageProps) {

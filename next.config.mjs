@@ -5,6 +5,7 @@ const nextConfig = {
   // Force Next.js to transpile these CJS packages through webpack
   // so EventEmitter and Daily.co load correctly in the browser bundle.
   transpilePackages: ["@vapi-ai/web", "@daily-co/daily-js"],
+  serverExternalPackages: ["ws"],
   // Suppress build-time warnings about missing env vars
   eslint: {
     ignoreDuringBuilds: true,

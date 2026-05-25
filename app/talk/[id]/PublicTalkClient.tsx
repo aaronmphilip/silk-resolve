@@ -20,6 +20,12 @@ const stateLabel: Record<WebVoiceCallState, string> = {
   error: "error",
 };
 
+const voiceLabel: Record<WebVoiceMode, string> = {
+  silk: "SILK MUGA REST voice",
+  "silk-stream": "SILK MUGA streaming voice",
+  vapi: "Vapi native voice",
+};
+
 function formatDuration(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
@@ -60,7 +66,7 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode }: Publ
           <p className="text-[10px] font-mono text-[#f0ebe0]/35 uppercase tracking-widest">silk resolve</p>
           <h1 className="text-base font-bold truncate">{agentName}</h1>
           <p className="text-[10px] font-mono text-[#f0ebe0]/35 uppercase tracking-widest mt-0.5">
-            {voiceMode === "silk" ? "SILK MUGA voice" : "Vapi native voice"}
+            {voiceLabel[voiceMode]}
           </p>
         </div>
         <div className="flex items-center gap-2 border border-[#f0ebe0]/15 px-3 py-1.5">

@@ -18,7 +18,7 @@ export interface WebVoiceTranscript {
   ts: number;
 }
 
-export type WebVoiceMode = "silk" | "vapi";
+export type WebVoiceMode = "silk" | "silk-stream" | "vapi";
 
 type VapiCtor = typeof import("@vapi-ai/web").default;
 type VapiInstance = InstanceType<VapiCtor>;

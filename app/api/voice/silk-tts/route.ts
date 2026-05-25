@@ -13,6 +13,7 @@
  *   raw PCM int16 little-endian mono at message.sampleRate
  */
 import { NextRequest, NextResponse } from "next/server";
+import WebSocket from "ws";
 import { getPlatformVoiceConfig } from "@/lib/platform";
 import { extractSilkTone, stripAll, stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
 
@@ -20,6 +21,8 @@ export const runtime = "nodejs";
 export const maxDuration = 45;
 
 const SILK_ENDPOINT = process.env.SILK_TTS_URL?.trim() || "https://silk-api.rumik.ai/v1/tts";
+const SILK_WS_CONNECT_ENDPOINT = process.env.SILK_TTS_WS_CONNECT_URL?.trim() ||
+  SILK_ENDPOINT.replace(/\/v1\/tts\/?$/, "/v1/tts/ws-connect");
 const RUMIK_SAMPLE_RATE = 24000;
 const SUPPORTED_TARGET_RATES = new Set([8000, 16000, 22050, 24000, 44100]);
 
@@ -134,31 +137,37 @@ function resamplePcm16Mono(input: Buffer, fromRate: number, toRate: number): Buf
   return output;
 }
 
+function buildRumikPayload(body: VoiceRequestBody, text: string): Record<string, unknown> {
+  const model = body.model || "muga";
+  const payload: Record<string, unknown> = {
+    model,
+    text: model === "muga" ? ensureMugaTone(text) : stripVoiceMarkers(text),
+    temperature: body.temperature ?? (model === "muga" ? 0.55 : undefined),
+    top_p: body.top_p ?? (model === "muga" ? 0.92 : undefined),
+    top_k: body.top_k,
+    repetition_penalty: body.repetition_penalty ?? (model === "muga" ? 1.15 : undefined),
+    max_new_tokens: body.max_new_tokens,
+  };
+
+  if (model === "mulberry") {
+    payload.description = body.description || "warm, calm, professional voice";
+    if (body.speaker) payload.speaker = body.speaker;
+    if (typeof body.f0_up_key === "number") payload.f0_up_key = body.f0_up_key;
+  }
+
+  for (const key of Object.keys(payload)) {
+    if (payload[key] == null) delete payload[key];
+  }
+
+  return payload;
+}
+
 async function callRumik(apiKey: string, body: VoiceRequestBody, text: string) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 42_000);
 
   try {
-    const model = body.model || "muga";
-    const payload: Record<string, unknown> = {
-      model,
-      text: model === "muga" ? ensureMugaTone(text) : stripVoiceMarkers(text),
-      temperature: body.temperature ?? (model === "muga" ? 0.55 : undefined),
-      top_p: body.top_p ?? (model === "muga" ? 0.92 : undefined),
-      top_k: body.top_k,
-      repetition_penalty: body.repetition_penalty ?? (model === "muga" ? 1.15 : undefined),
-      max_new_tokens: body.max_new_tokens,
-    };
-
-    if (model === "mulberry") {
-      payload.description = body.description || "warm, calm, professional voice";
-      if (body.speaker) payload.speaker = body.speaker;
-      if (typeof body.f0_up_key === "number") payload.f0_up_key = body.f0_up_key;
-    }
-
-    for (const key of Object.keys(payload)) {
-      if (payload[key] == null) delete payload[key];
-    }
+    const payload = buildRumikPayload(body, text);
 
     const silkRes = await fetch(SILK_ENDPOINT, {
       method: "POST",
@@ -185,6 +194,125 @@ async function callRumik(apiKey: string, body: VoiceRequestBody, text: string) {
   }
 }
 
+async function streamRumik(
+  apiKey: string,
+  body: VoiceRequestBody,
+  text: string
+): Promise<NextResponse | { error: string; status: 502 }> {
+  const payload = buildRumikPayload(body, text);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8_000);
+
+  try {
+    const connectRes = await fetch(SILK_WS_CONNECT_ENDPOINT, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ model: payload.model, text: payload.text }),
+      signal: controller.signal,
+    });
+
+    if (!connectRes.ok) {
+      const err = await connectRes.text().catch(() => "");
+      console.error("[silk-tts] rumik ws-connect error:", connectRes.status, err);
+      return { error: "SILK stream setup failed", status: 502 };
+    }
+
+    const session = await connectRes.json() as { ws_url?: string; token?: string };
+    if (!session.ws_url || !session.token) {
+      console.error("[silk-tts] rumik ws-connect missing ws_url/token");
+      return { error: "SILK stream setup failed", status: 502 };
+    }
+
+    const wsUrl = `${session.ws_url}?token=${encodeURIComponent(session.token)}`;
+    const stream = new ReadableStream<Uint8Array>({
+      start(streamController) {
+        let done = false;
+        const ws = new WebSocket(wsUrl);
+        const streamTimeout = setTimeout(() => {
+          if (!done) {
+            done = true;
+            ws.close();
+            streamController.error(new Error("SILK stream timed out"));
+          }
+        }, 42_000);
+
+        const closeCleanly = () => {
+          if (done) return;
+          done = true;
+          clearTimeout(streamTimeout);
+          streamController.close();
+          ws.close();
+        };
+
+        ws.on("open", () => {
+          ws.send(JSON.stringify(payload));
+        });
+
+        ws.on("message", (data, isBinary) => {
+          if (done) return;
+
+          if (isBinary) {
+            const chunk = Buffer.isBuffer(data)
+              ? data
+              : Array.isArray(data)
+                ? Buffer.concat(data)
+                : Buffer.from(data as ArrayBuffer);
+            if (chunk.length > 0) streamController.enqueue(new Uint8Array(chunk));
+            return;
+          }
+
+          const textFrame = data.toString("utf8");
+          try {
+            const event = JSON.parse(textFrame) as { type?: string; error?: string };
+            if (event.error) {
+              done = true;
+              clearTimeout(streamTimeout);
+              ws.close();
+              streamController.error(new Error(event.error));
+              return;
+            }
+            if (event.type === "done") closeCleanly();
+          } catch {
+            closeCleanly();
+          }
+        });
+
+        ws.on("error", (err) => {
+          if (done) return;
+          done = true;
+          clearTimeout(streamTimeout);
+          console.error("[silk-tts] rumik websocket error:", err);
+          streamController.error(err);
+        });
+
+        ws.on("close", () => {
+          if (!done) closeCleanly();
+        });
+      },
+      cancel() {},
+    });
+
+    return new NextResponse(stream, {
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Cache-Control": "no-store",
+        "X-Audio-Format": "pcm_s16le",
+        "X-Audio-Sample-Rate": String(RUMIK_SAMPLE_RATE),
+        "X-Audio-Channels": "1",
+        "X-Silk-Transport": "websocket",
+      },
+    });
+  } catch (err) {
+    console.error("[silk-tts] rumik stream setup error:", err);
+    return { error: "SILK stream unavailable", status: 502 };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function POST(req: NextRequest) {
   const { silk } = await getPlatformVoiceConfig();
 
@@ -203,6 +331,13 @@ export async function POST(req: NextRequest) {
   if (!text) return NextResponse.json({ error: "text required" }, { status: 400 });
   if (!SUPPORTED_TARGET_RATES.has(sampleRate)) {
     return NextResponse.json({ error: `Unsupported sampleRate ${sampleRate}` }, { status: 400 });
+  }
+
+  const wantsStream = req.nextUrl.searchParams.get("transport") === "ws";
+  if (wantsStream && sampleRate === RUMIK_SAMPLE_RATE && req.nextUrl.searchParams.get("format") !== "wav") {
+    const streamed = await streamRumik(silk.apiKey, body, text);
+    if (!("error" in streamed)) return streamed;
+    console.warn("[silk-tts] websocket stream failed before audio, falling back to REST:", streamed.error);
   }
 
   const rumik = await callRumik(silk.apiKey, body, text);

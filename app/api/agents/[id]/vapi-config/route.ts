@@ -38,8 +38,13 @@ function cleanSpokenText(text: string): string {
     .trim();
 }
 
-function voiceMode(req: NextRequest): "silk" | "vapi" {
-  return req.nextUrl.searchParams.get("voice") === "vapi" ? "vapi" : "silk";
+type VoiceMode = "silk" | "silk-stream" | "vapi";
+
+function voiceMode(req: NextRequest): VoiceMode {
+  const requested = req.nextUrl.searchParams.get("voice");
+  if (requested === "vapi") return "vapi";
+  if (requested === "silk-stream") return "silk-stream";
+  return "silk";
 }
 
 export async function GET(req: NextRequest, { params }: Ctx) {
@@ -78,11 +83,12 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const origin = deriveOrigin(req);
 
   // ── Voice provider ─────────────────────────────────────────────────────────
-  const useSilkVoice = requestedVoice === "silk" && Boolean(silk.apiKey && silk.vapiEnabled);
+  const useSilkVoice = requestedVoice !== "vapi" && Boolean(silk.apiKey && silk.vapiEnabled);
+  const silkTransport = requestedVoice === "silk-stream" ? "?transport=ws" : "";
   const voice = useSilkVoice
     ? {
         provider: "custom-voice",
-        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 45 },
+        server: { url: `${origin}/api/voice/silk-tts${silkTransport}`, timeoutSeconds: 45 },
         fallbackPlan: { voices: [{ provider: "vapi", voiceId: "Neha" }] },
       }
     : { provider: "vapi", voiceId: "Neha" };
@@ -154,7 +160,9 @@ VOICE CALL RULES:
     metadata: {
       agentId: agent.id,
       aiProvider: aiConfig.provider,
-      voiceMode: useSilkVoice ? "silk-muga" : "vapi-native",
+      voiceMode: useSilkVoice
+        ? requestedVoice === "silk-stream" ? "silk-muga-stream" : "silk-muga-rest"
+        : "vapi-native",
       callDirection: (agent as { call_direction?: string }).call_direction ?? "inbound",
     },
   });
