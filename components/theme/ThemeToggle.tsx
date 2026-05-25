@@ -10,12 +10,11 @@ export function ThemeToggle() {
     <button
       onClick={toggle}
       aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      className="flex items-center gap-2 text-xs font-mono transition-colors
+      className="flex items-center transition-colors p-1
         text-black/50 hover:text-black
         dark:text-[#e8dece]/50 dark:hover:text-[#e8dece]"
     >
-      {isDark ? <Sun size={11} /> : <Moon size={11} />}
-      <span className="hidden xl:inline">{isDark ? "light mode" : "dark mode"}</span>
+      {isDark ? <Sun size={12} /> : <Moon size={12} />}
     </button>
   );
 }

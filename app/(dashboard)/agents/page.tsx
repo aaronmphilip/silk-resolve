@@ -3,6 +3,7 @@ import { ArrowUpRight, Plus } from "lucide-react";
 import { getAgents } from "@/lib/dal";
 import { statusDot } from "@/lib/utils";
 import type { AgentStatus } from "@/lib/types";
+import AgentRowMenu from "./_components/AgentRowMenu";
 
 export const dynamic = "force-dynamic";
 
@@ -74,9 +75,11 @@ export default async function AgentsPage() {
               </div>
 
               {sorted.map((agent, i) => (
-                <Link key={agent.id} href={`/agents/${agent.id}`}
-                  className={`grid grid-cols-12 px-5 py-4 items-center hover:bg-black/5 transition-colors ${i < sorted.length - 1 ? "border-b border-black" : ""} ${agent.status === "draft" ? "opacity-60" : ""}`}>
-                  <div className="col-span-4 flex items-center gap-3">
+                <div key={agent.id} className={`relative grid grid-cols-12 px-5 py-4 items-center hover:bg-black/5 transition-colors ${i < sorted.length - 1 ? "border-b border-black" : ""} ${agent.status === "draft" ? "opacity-60" : ""}`}>
+                  {/* Full-row link underlay — menu sits above it */}
+                  <Link href={`/agents/${agent.id}`} className="absolute inset-0" aria-label={agent.name} />
+
+                  <div className="col-span-4 flex items-center gap-3 relative">
                     <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusDot(agent.status)}`} />
                     <div>
                       <p className="font-semibold text-sm text-black">{agent.name}</p>
@@ -97,20 +100,20 @@ export default async function AgentsPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="col-span-2 text-right">
+                  <div className="col-span-2 text-right relative">
                     <p className="text-sm font-mono text-black">{agent.stats.totalCalls > 0 ? agent.stats.totalCalls.toLocaleString() : "—"}</p>
                     <p className="text-[10px] text-black/40 font-mono">{agent.stats.callsToday > 0 ? `+${agent.stats.callsToday} today` : "no calls today"}</p>
                   </div>
-                  <div className="col-span-2 text-right">
+                  <div className="col-span-2 text-right relative">
                     <p className="text-sm font-mono text-black">{agent.stats.empathyScore > 0 ? `${agent.stats.empathyScore}%` : "—"}</p>
                   </div>
-                  <div className="col-span-2 text-right">
+                  <div className="col-span-2 text-right relative">
                     <p className="text-sm font-mono text-black">{agent.stats.resolvedRate > 0 ? `${agent.stats.resolvedRate}%` : "—"}</p>
                   </div>
-                  <div className="col-span-1 text-right">
+                  <div className="col-span-1 text-right relative">
                     <p className="text-sm font-mono text-black">{agent.stats.avgHandleTime}</p>
                   </div>
-                  <div className="col-span-1 flex justify-end">
+                  <div className="col-span-1 flex items-center justify-end gap-1 relative z-10">
                     <span className={`text-[10px] font-mono px-2 py-1 border font-semibold ${
                       agent.status === "live" ? "border-black bg-black text-[#e8dece]" :
                       agent.status === "paused" ? "border-black/40 text-black/60" :
@@ -118,17 +121,18 @@ export default async function AgentsPage() {
                     }`}>
                       {agent.status}
                     </span>
+                    <AgentRowMenu agentId={agent.id} />
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
 
             {/* Mobile cards */}
             <div className="sm:hidden space-y-3">
               {sorted.map((agent) => (
-                <Link key={agent.id} href={`/agents/${agent.id}`}
-                  className={`block border-2 border-black p-4 hover:bg-black/5 transition-colors ${agent.status === "draft" ? "opacity-60" : ""}`}>
-                  <div className="flex items-start justify-between gap-3">
+                <div key={agent.id} className={`relative border-2 border-black p-4 hover:bg-black/5 transition-colors ${agent.status === "draft" ? "opacity-60" : ""}`}>
+                  <Link href={`/agents/${agent.id}`} className="absolute inset-0" aria-label={agent.name} />
+                  <div className="flex items-start justify-between gap-3 relative">
                     <div className="flex items-start gap-3 min-w-0">
                       <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 mt-1.5 ${statusDot(agent.status)}`} />
                       <div className="min-w-0">
@@ -141,13 +145,16 @@ export default async function AgentsPage() {
                         </div>
                       </div>
                     </div>
-                    <span className={`text-[10px] font-mono px-2 py-1 border font-semibold flex-shrink-0 ${
-                      agent.status === "live" ? "border-black bg-black text-[#e8dece]" :
-                      agent.status === "paused" ? "border-black/40 text-black/60" :
-                      "border-black/20 text-black/40"
-                    }`}>
-                      {agent.status}
-                    </span>
+                    <div className="flex items-center gap-1 flex-shrink-0 z-10">
+                      <span className={`text-[10px] font-mono px-2 py-1 border font-semibold ${
+                        agent.status === "live" ? "border-black bg-black text-[#e8dece]" :
+                        agent.status === "paused" ? "border-black/40 text-black/60" :
+                        "border-black/20 text-black/40"
+                      }`}>
+                        {agent.status}
+                      </span>
+                      <AgentRowMenu agentId={agent.id} />
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-3 mt-4 pt-3 border-t border-black/10">
                     <div>
@@ -163,7 +170,7 @@ export default async function AgentsPage() {
                       <p className="text-sm font-bold text-black mt-0.5">{agent.stats.resolvedRate > 0 ? `${agent.stats.resolvedRate}%` : "—"}</p>
                     </div>
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           </>
