@@ -14,7 +14,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { getPlatformVoiceConfig } from "@/lib/platform";
-import { extractSilkTone, stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
+import { extractSilkTone, stripAll, stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -67,7 +67,7 @@ function extractTextAndSampleRate(body: VoiceRequestBody) {
 
 function ensureMugaTone(text: string): string {
   const { tone, text: clean } = extractSilkTone(text, "neutral");
-  return withSilkTone(tone, clean);
+  return withSilkTone(tone, stripAll(clean));
 }
 
 function parseWav(buffer: Buffer): WavData {
@@ -143,10 +143,10 @@ async function callRumik(apiKey: string, body: VoiceRequestBody, text: string) {
     const payload: Record<string, unknown> = {
       model,
       text: model === "muga" ? ensureMugaTone(text) : stripVoiceMarkers(text),
-      temperature: body.temperature,
-      top_p: body.top_p,
+      temperature: body.temperature ?? (model === "muga" ? 0.55 : undefined),
+      top_p: body.top_p ?? (model === "muga" ? 0.92 : undefined),
       top_k: body.top_k,
-      repetition_penalty: body.repetition_penalty,
+      repetition_penalty: body.repetition_penalty ?? (model === "muga" ? 1.15 : undefined),
       max_new_tokens: body.max_new_tokens,
     };
 

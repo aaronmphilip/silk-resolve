@@ -6,7 +6,8 @@
  * a deterministic answer from the agent's saved system prompt for company facts.
  */
 import { NextRequest } from "next/server";
-import { stripAll, tensionToTone, withSilkTone } from "@/lib/voice-emotion";
+import { stripAll, tensionToTone, withSilkTone, type SilkTone } from "@/lib/voice-emotion";
+import { answerNovaCareQuestion } from "@/lib/novacare-knowledge";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -33,13 +34,14 @@ const MAX_OUTPUT_TOKENS = 90;
 const OUT_OF_SCOPE_RESPONSE =
   "I don't have that information in this support script. I can help with NovaCare plans, claims, coverage, support, or network hospitals.";
 
-function getConfig() {
+function getConfig(req: NextRequest) {
   const silkDisabled = ["0", "false", "off", "no"].includes(
     process.env.SILK_VAPI_VOICE?.trim().toLowerCase() ?? ""
   );
+  const requestedVoice = req.nextUrl.searchParams.get("voice") === "vapi" ? "vapi" : "silk";
   return {
     apiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
-    silkEnabled: Boolean(process.env.SILK_API_KEY?.trim()) && !silkDisabled,
+    silkEnabled: requestedVoice === "silk" && Boolean(process.env.SILK_API_KEY?.trim()) && !silkDisabled,
   };
 }
 
@@ -145,6 +147,38 @@ function speakable(text: string): string {
     .trim();
 }
 
+function normalizeSpeechText(text: string): string {
+  return speakable(text)
+    .replace(/Ã¢Â€Â”|Ã¢â‚¬â€|â€”|—/g, ", ")
+    .replace(/Ã¢Â€Â“|â€“|–/g, ", ")
+    .replace(/Ã¢Â‚Â¹|â‚¹|₹/g, "Rs ")
+    .replace(/\bRs\.?\s*499\s*(?:\/\s*(?:month|mo)|per month)?/gi, "four hundred ninety nine rupees per month")
+    .replace(/\bRs\.?\s*899\s*(?:\/\s*(?:month|mo)|per month)?/gi, "eight hundred ninety nine rupees per month")
+    .replace(/\bRs\.?\s*1,?499\s*(?:\/\s*(?:month|mo)|per month)?/gi, "one thousand four hundred ninety nine rupees per month")
+    .replace(/\b499\s+rupees\s+per\s+month\b/gi, "four hundred ninety nine rupees per month")
+    .replace(/\b899\s+rupees\s+per\s+month\b/gi, "eight hundred ninety nine rupees per month")
+    .replace(/\b1,?499\s+rupees\s+per\s+month\b/gi, "one thousand four hundred ninety nine rupees per month")
+    .replace(/\b3\s*lakh\b/gi, "three lakh")
+    .replace(/\b5\s*lakh\b/gi, "five lakh")
+    .replace(/\b10\s*lakh\b/gi, "ten lakh")
+    .replace(/\b10,?000\+?\b/g, "over ten thousand")
+    .replace(/\b2\.4\s*million\b/gi, "two point four million")
+    .replace(/\b98\.2\s*%/g, "ninety eight point two percent")
+    .replace(/\b24\s*\/\s*7\b/g, "twenty four seven")
+    .replace(/\b30-day\b/gi, "thirty day")
+    .replace(/\b30\s+minutes\b/gi, "thirty minutes")
+    .replace(/\b7\s+working\s+days\b/gi, "seven working days")
+    .replace(/\b2-year\b/gi, "two year")
+    .replace(/\bOPD\b/g, "O P D")
+    .replace(/\bICU\b/g, "I C U")
+    .replace(/\bIRDAI\b/g, "I R D A I")
+    .replace(/\biOS\b/g, "i O S")
+    .replace(/support@novacare\.in/gi, "support at novacare dot in")
+    .replace(/1800-668-2273/g, "one eight zero zero, six six eight, two two seven three")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function planSummary(lines: string[]): string {
   const plans = lines
     .map((line) => line.split(/\s+(?:[—–-]|â€”)\s+/).map((part) => part.trim()).filter(Boolean))
@@ -212,6 +246,11 @@ function answerFromSystemPrompt(systemPrompt: string, userText: string): string 
   const text = userText.toLowerCase();
   if (!systemPrompt.trim()) return "";
 
+  if (/\bnovacare\b/i.test(systemPrompt)) {
+    const novaCareAnswer = answerNovaCareQuestion(userText);
+    if (novaCareAnswer) return novaCareAnswer;
+  }
+
   if (/\b(plan|plans|price|pricing|cost|premium|monthly|cover|coverage|insured|policy)\b/.test(text)) {
     const lines = sectionLines(systemPrompt, /^plans\b/i);
     const answer = planSummary(lines) || compactAnswer(lines, 2);
@@ -244,10 +283,51 @@ function answerFromSystemPrompt(systemPrompt: string, userText: string): string 
   return scoredPromptAnswer(systemPrompt, userText);
 }
 
-function voiceText(text: string, silkEnabled: boolean): string {
-  const clean = speakable(stripAll(text)).trim();
+function estimateTension(userText: string): number {
+  const text = userText.toLowerCase();
+  if (/\b(angry|furious|terrible|worst|useless|scam|fraud|cheated|complaint|cancel)\b/.test(text)) return 7;
+  if (/\b(frustrated|upset|not happy|problem|issue|wrong|again|repeat)\b/.test(text)) return 5;
+  if (/\b(confused|don't understand|dont understand|what do you mean|help)\b/.test(text)) return 3;
+  return 1;
+}
+
+function toneFor(userText: string, answer: string): SilkTone {
+  const text = userText.toLowerCase();
+  const response = answer.toLowerCase();
+  if (/\b(angry|furious|terrible|worst|scam|fraud|cheated)\b/.test(text)) return "sad";
+  if (/\b(frustrated|upset|problem|issue|wrong|not happy|complaint)\b/.test(text)) return "sad";
+  if (/\b(thanks|thank you|great|nice|good)\b/.test(text) || /\bapproved|covered|available|yes\b/.test(response)) return "happy";
+  if (/\b(compare|price|coverage|claim|hospital|network|how|what|which|again|repeat)\b/.test(text)) return "neutral";
+  return tensionToTone(estimateTension(userText));
+}
+
+function humanizeForVoice(answer: string, userText: string): string {
+  const clean = answer.trim();
+  const text = userText.toLowerCase();
+  if (!clean) return clean;
+
+  if (/\b(angry|furious|terrible|worst|scam|fraud|cheated|not happy|frustrated|upset)\b/.test(text)) {
+    if (/^(i understand|i get|that sounds|sorry)/i.test(clean)) return clean;
+    return `I understand. ${clean}`;
+  }
+
+  if (/\b(again|repeat|say that)\b/.test(text)) {
+    if (/^sure[,.]/i.test(clean)) return clean;
+    return `Sure. ${clean}`;
+  }
+
+  if (/\b(thanks|thank you)\b/.test(text)) {
+    return "Glad to help. What else would you like me to check?";
+  }
+
+  return clean;
+}
+
+function voiceText(text: string, silkEnabled: boolean, userText: string): string {
+  const clean = normalizeSpeechText(stripAll(text)).trim();
   if (!clean) return OUT_OF_SCOPE_RESPONSE;
-  return silkEnabled ? withSilkTone(tensionToTone(0), clean) : clean;
+  const human = humanizeForVoice(clean, userText);
+  return silkEnabled ? withSilkTone(toneFor(userText, human), human) : human;
 }
 
 function toSSE(text: string): Response {
@@ -294,8 +374,8 @@ function toJSON(text: string, model: string): Response {
   });
 }
 
-function reply(text: string, wantsStream: boolean, model: string, silkEnabled: boolean): Response {
-  const spoken = voiceText(text, silkEnabled);
+function reply(text: string, wantsStream: boolean, model: string, silkEnabled: boolean, userText: string): Response {
+  const spoken = voiceText(text, silkEnabled, userText);
   return wantsStream ? toSSE(spoken) : toJSON(spoken, model);
 }
 
@@ -346,8 +426,9 @@ function streamGemini(args: {
   contents: GeminiTurn[];
   fallback: string;
   silkEnabled: boolean;
+  userText: string;
 }): Response {
-  const { apiKey, model, systemContent, contents, fallback, silkEnabled } = args;
+  const { apiKey, model, systemContent, contents, fallback, silkEnabled, userText } = args;
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const id = `chatcmpl-${Date.now()}`;
@@ -358,12 +439,12 @@ function streamGemini(args: {
       let buffer = "";
 
       function enqueue(text: string) {
-        const clean = speakable(text);
+        const clean = normalizeSpeechText(text);
         if (!clean.trim()) return;
 
         if (!emittedText) {
           emittedText = true;
-          controller.enqueue(encoder.encode(sseChunk(id, { content: silkEnabled ? `[${tensionToTone(0)}] ${clean}` : clean }, null)));
+          controller.enqueue(encoder.encode(sseChunk(id, { content: silkEnabled ? withSilkTone(toneFor(userText, clean), clean) : clean }, null)));
           return;
         }
 
@@ -450,7 +531,7 @@ export async function POST(req: NextRequest) {
   const requestedModel = body.model?.replace("gemini-2.5-flash", DEFAULT_MODEL) || DEFAULT_MODEL;
   const model = requestedModel.startsWith("gemini-") ? requestedModel : DEFAULT_MODEL;
   const wantsStream = body.stream !== false;
-  const { apiKey, silkEnabled } = getConfig();
+  const { apiKey, silkEnabled } = getConfig(req);
 
   const systemContent = messages.find((message) => message.role === "system")?.content ?? "";
   const lastUser = lastUserText(messages);
@@ -459,7 +540,7 @@ export async function POST(req: NextRequest) {
   // Company/site knowledge should not wait on Gemini. This is the path that
   // fixes the fake website agent answering from the saved agent prompt.
   if (promptAnswer) {
-    return reply(promptAnswer, wantsStream, model, silkEnabled);
+    return reply(promptAnswer, wantsStream, model, silkEnabled, lastUser);
   }
 
   if (!apiKey) {
@@ -467,13 +548,14 @@ export async function POST(req: NextRequest) {
       promptAnswer || OUT_OF_SCOPE_RESPONSE,
       wantsStream,
       model,
-      silkEnabled
+      silkEnabled,
+      lastUser
     );
   }
 
   const contents = buildContents(messages);
   if (contents.length === 0) {
-    return reply("I'm here to help. What would you like to know?", wantsStream, model, silkEnabled);
+    return reply("I'm here to help. What would you like to know?", wantsStream, model, silkEnabled, lastUser);
   }
 
   if (wantsStream) {
@@ -484,19 +566,21 @@ export async function POST(req: NextRequest) {
       contents,
       fallback: promptAnswer,
       silkEnabled,
+      userText: lastUser,
     });
   }
 
   try {
     const text = await callGemini({ apiKey, model, systemContent, contents });
-    return reply(text || promptAnswer, wantsStream, model, silkEnabled);
+    return reply(text || promptAnswer, wantsStream, model, silkEnabled, lastUser);
   } catch (err) {
     console.error("[vapi-llm] upstream failed:", err);
     return reply(
       promptAnswer || OUT_OF_SCOPE_RESPONSE,
       wantsStream,
       model,
-      silkEnabled
+      silkEnabled,
+      lastUser
     );
   }
 }

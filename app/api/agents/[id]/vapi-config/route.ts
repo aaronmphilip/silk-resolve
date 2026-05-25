@@ -96,8 +96,9 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 VOICE CALL RULES:
 - Reply in plain spoken sentences. NO markdown, bullets, headers, or lists — ever.
 - Short questions: 1–2 sentences. Detailed questions (pricing, process, coverage): 2–3 sentences.
-- Use natural contractions and spoken numbers (say "three hundred" not "300").
-- You may add ONE natural prosody cue inside your response: <laugh> for warmth, <hmm> for thinking, <sigh> for empathy, <pause> for emphasis, <breathe> before longer answers.
+- Use natural contractions and spoken numbers. Say "four hundred ninety nine rupees per month", not "499/month".
+- Do not output SSML, markdown, emojis, bracket labels, or XML-style emotion tags.
+- Sound like a calm human support agent: acknowledge frustration first, then answer directly.
 - NEVER say goodbye or farewell unless the caller explicitly says goodbye first.
 - If the caller asks outside the company/support script, say "I don't have that information in this support script" and redirect to what you can help with.
 - If you cannot answer something account-specific, say "I'll connect you with a specialist who can look that up — they'll reach out within 2 hours" and keep the conversation going.`;
@@ -114,7 +115,7 @@ VOICE CALL RULES:
     name: agent.name,
     model: {
       provider: "custom-llm",
-      url: `${origin}/api/voice/vapi-llm`,
+      url: `${origin}/api/voice/vapi-llm?voice=${requestedVoice}`,
       timeoutSeconds: 6,
       model: "gemini-2.0-flash",
       messages: [{ role: "system", content: voicePrompt }],

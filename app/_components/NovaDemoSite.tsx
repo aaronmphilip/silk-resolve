@@ -1,6 +1,5 @@
 import TalkButton from "@/app/fakewebsite/TalkButton";
-
-const AGENT_ID = "agt-856e6f5e-1851-4041-a4f5-9f5ee62c0793";
+import { NOVACARE_AGENT_ID, NOVACARE_FACTS, NOVACARE_PLANS } from "@/lib/novacare-knowledge";
 
 type VoiceMode = "silk" | "vapi";
 
@@ -32,7 +31,7 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
 
   return (
     <>
-      <WidgetScript agentId={AGENT_ID} voiceMode={voiceMode} label={site.cta} color={site.color} />
+      <WidgetScript agentId={NOVACARE_AGENT_ID} voiceMode={voiceMode} label={site.cta} color={site.color} />
 
       <div className="min-h-screen bg-white text-[#111] font-sans">
         <nav className="sticky top-0 z-40 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
@@ -80,8 +79,8 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
             {[
               { val: "2.4M+", label: "Policies active" },
               { val: "98.2%", label: "Claims settled" },
-              { val: "< 4 min", label: "Avg claim time" },
-              { val: "24 / 7", label: "AI support" },
+              { val: "10k+", label: "Network hospitals" },
+              { val: "24 / 7", label: "AI + human support" },
             ].map(s => (
               <div key={s.label}>
                 <p className="text-2xl font-black">{s.val}</p>
@@ -95,15 +94,21 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
           <p className="text-[11px] font-bold uppercase tracking-widest text-[#0055ff] mb-3 text-center">NovaCare plans</p>
           <h2 className="text-3xl font-black text-center text-[#0a0a14] mb-10">Ask the agent to compare plans.</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            {[
-              { title: "Basic", price: "499/mo", desc: "Individual cover with 3 lakh sum insured and annual health check." },
-              { title: "Standard", price: "899/mo", desc: "Family cover for spouse and two children with OPD support." },
-              { title: "Premium", price: "1499/mo", desc: "Full family cover with OPD, critical illness, and international emergency support." },
-            ].map(plan => (
-              <div key={plan.title} className="border border-gray-100 rounded-xl p-6 hover:border-gray-200 hover:shadow-sm transition-all">
-                <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">{plan.title}</p>
-                <h3 className="font-black text-2xl text-[#0a0a14] mb-3">Rs {plan.price}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">{plan.desc}</p>
+            {NOVACARE_PLANS.map(plan => (
+              <div key={plan.name} className="border border-gray-100 rounded-xl p-6 hover:border-gray-200 hover:shadow-sm transition-all">
+                <p className="text-[11px] uppercase tracking-widest text-gray-400 mb-2">{plan.name.replace("NovaCare ", "")}</p>
+                <h3 className="font-black text-2xl text-[#0a0a14] mb-2">{plan.displayPrice}</h3>
+                <p className="text-sm text-gray-500 leading-relaxed mb-4">
+                  {plan.displaySumInsured} cover for {plan.audience}. {plan.waiting}.
+                </p>
+                <ul className="space-y-2">
+                  {plan.highlights.slice(0, 3).map(item => (
+                    <li key={item} className="text-xs text-gray-500 flex gap-2">
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[#0055ff] shrink-0" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ))}
           </div>
@@ -120,9 +125,10 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
             </div>
             <div className="grid grid-cols-1 gap-3 text-sm">
               {[
-                "Show e-card at a network hospital.",
-                "Hospital gets pre-auth in around thirty minutes.",
-                "Reimbursement claims are paid within seven working days.",
+                NOVACARE_FACTS.hospitals,
+                "Cashless pre-auth target time is 30 minutes after the hospital sends the admission request.",
+                "Reimbursement needs bills, discharge summary, prescriptions, and bank details in the NovaCare app.",
+                "Emergency support: 1800-668-2273, available 24/7.",
               ].map(item => (
                 <div key={item} className="border border-gray-200 bg-white px-4 py-3 rounded-lg text-gray-700">{item}</div>
               ))}
