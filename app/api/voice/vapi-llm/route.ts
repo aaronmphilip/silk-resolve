@@ -30,12 +30,16 @@ interface VapiReq {
 const GEMINI_TIMEOUT_MS = 5_500;
 const DEFAULT_MODEL = "gemini-2.0-flash";
 const MAX_OUTPUT_TOKENS = 90;
+const OUT_OF_SCOPE_RESPONSE =
+  "I don't have that information in this support script. I can help with NovaCare plans, claims, coverage, support, or network hospitals.";
 
 function getConfig() {
+  const silkDisabled = ["0", "false", "off", "no"].includes(
+    process.env.SILK_VAPI_VOICE?.trim().toLowerCase() ?? ""
+  );
   return {
     apiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
-    silkEnabled: process.env.SILK_VAPI_VOICE?.trim().toLowerCase() === "true" &&
-      Boolean(process.env.SILK_API_KEY?.trim()),
+    silkEnabled: Boolean(process.env.SILK_API_KEY?.trim()) && !silkDisabled,
   };
 }
 
@@ -242,7 +246,7 @@ function answerFromSystemPrompt(systemPrompt: string, userText: string): string 
 
 function voiceText(text: string, silkEnabled: boolean): string {
   const clean = speakable(stripAll(text)).trim();
-  if (!clean) return "I can help with that. Could you say the question again?";
+  if (!clean) return OUT_OF_SCOPE_RESPONSE;
   return silkEnabled ? withSilkTone(tensionToTone(0), clean) : clean;
 }
 
@@ -419,10 +423,10 @@ function streamGemini(args: {
           }
         }
 
-        if (!emittedText) enqueue(fallback || "I can help with that. Could you say the question again?");
+        if (!emittedText) enqueue(fallback || OUT_OF_SCOPE_RESPONSE);
       } catch (err) {
         console.error("[vapi-llm] Gemini stream failed:", err);
-        enqueue(fallback || "I can help with the company information I have. Could you ask that once more?");
+        enqueue(fallback || OUT_OF_SCOPE_RESPONSE);
       } finally {
         controller.enqueue(encoder.encode(sseChunk(id, {}, "stop")));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -460,7 +464,7 @@ export async function POST(req: NextRequest) {
 
   if (!apiKey) {
     return reply(
-      promptAnswer || "I can answer from the company information I have. Please ask about plans, claims, coverage, or support.",
+      promptAnswer || OUT_OF_SCOPE_RESPONSE,
       wantsStream,
       model,
       silkEnabled
@@ -489,7 +493,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[vapi-llm] upstream failed:", err);
     return reply(
-      promptAnswer || "I can help with the company information I have. Could you ask that once more, a little more specifically?",
+      promptAnswer || OUT_OF_SCOPE_RESPONSE,
       wantsStream,
       model,
       silkEnabled

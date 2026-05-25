@@ -17,6 +17,7 @@ import { getPlatformVoiceConfig } from "@/lib/platform";
 import { extractSilkTone, stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
 
 export const runtime = "nodejs";
+export const maxDuration = 45;
 
 const SILK_ENDPOINT = process.env.SILK_TTS_URL?.trim() || "https://silk-api.rumik.ai/v1/tts";
 const RUMIK_SAMPLE_RATE = 24000;
@@ -135,7 +136,7 @@ function resamplePcm16Mono(input: Buffer, fromRate: number, toRate: number): Buf
 
 async function callRumik(apiKey: string, body: VoiceRequestBody, text: string) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 11500);
+  const timeoutId = setTimeout(() => controller.abort(), 42_000);
 
   try {
     const model = body.model || "muga";

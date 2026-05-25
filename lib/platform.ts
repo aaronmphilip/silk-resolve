@@ -18,6 +18,10 @@ function firstEnv(...names: string[]): string {
   return "";
 }
 
+function isExplicitlyDisabled(name: string): boolean {
+  return ["0", "false", "off", "no"].includes(env(name).toLowerCase());
+}
+
 function svc() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -68,7 +72,7 @@ export async function getPlatformVoiceConfig() {
     },
     silk: {
       apiKey: env("SILK_API_KEY"),
-      vapiEnabled: env("SILK_VAPI_VOICE").toLowerCase() === "true",
+      vapiEnabled: !isExplicitlyDisabled("SILK_VAPI_VOICE"),
     },
   };
 }
@@ -80,7 +84,7 @@ export async function getPlatformVoiceConfig() {
 export function getVoiceProviderStatus() {
   return {
     silkConfigured:      !!env("SILK_API_KEY"),
-    silkVapiEnabled:     env("SILK_VAPI_VOICE").toLowerCase() === "true",
+    silkVapiEnabled:     !isExplicitlyDisabled("SILK_VAPI_VOICE"),
     vapiWebConfigured:   !!firstEnv("VAPI_PUBLIC_KEY", "NEXT_PUBLIC_VAPI_PUBLIC_KEY"),
     vapiServerConfigured: !!firstEnv("VAPI_PRIVATE_KEY", "VAPI_API_KEY"),
   };

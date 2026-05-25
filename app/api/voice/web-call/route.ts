@@ -78,6 +78,7 @@ VOICE CALL RULES:
 - Use natural contractions and spoken numbers (say "three hundred" not "300").
 - You may add ONE natural prosody cue inside your response: <laugh> for warmth, <hmm> for thinking, <sigh> for empathy, <pause> for emphasis, <breathe> before longer answers.
 - NEVER say goodbye or farewell unless the caller explicitly says goodbye first.
+- If the caller asks outside the company/support script, say "I don't have that information in this support script" and redirect to what you can help with.
 - If you cannot answer something account-specific, say "I'll connect you with a specialist who can look that up — they'll reach out within 2 hours" and keep the conversation going.`;
   const firstMessage = cleanSpokenText(
     agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`
@@ -88,7 +89,7 @@ VOICE CALL RULES:
   const voice = useSilkVoice
     ? {
         provider: "custom-voice",
-        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 30 },
+        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 45 },
         fallbackPlan: {
           voices: [{ provider: "vapi", voiceId: "Neha" }],
         },

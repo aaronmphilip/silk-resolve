@@ -67,6 +67,7 @@ function buildSystemPrompt(agent: Record<string, unknown>, meshContext: string):
     "- Never use bullet points, markdown, or special characters",
     "- Respond in the same language the customer uses",
     "- Sound warm and human, never robotic",
+    "- If the caller asks outside the company/support script, say you don't have that information and redirect to what you can help with",
     `- Preferred address for this caller: ${addr}`,
   ].filter(Boolean).join("\n");
 }
@@ -223,7 +224,7 @@ export async function POST(req: NextRequest) {
     if (useSilkVoice) {
       vapiAssistant.voice = {
         provider: "custom-voice",
-        server:   { url: `${appUrl}/api/voice/silk-tts`, timeoutSeconds: 30 },
+        server:   { url: `${appUrl}/api/voice/silk-tts`, timeoutSeconds: 45 },
       };
     } else {
       vapiAssistant.voice = { provider: "vapi", voiceId: "Neha" };
