@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
-import { stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
+import { stripAll, withSilkTone } from "@/lib/voice-emotion";
 
 export const runtime = "nodejs";
 
@@ -83,22 +83,8 @@ export async function POST(req: NextRequest) {
   const proto = forwardedProto || (isLocalHost ? "http" : "https");
   const origin = `${proto}://${host}`;
 
-  const systemPrompt = agent.system_prompt ||
-    `You are ${agent.name}, a helpful voice assistant. Be concise and warm.`;
-  const demoVoicePrompt = `${systemPrompt}
-
-LIVE DEMO REFUND FLOW:
-- If the customer mentions a refund, return, charge, damaged item, wrong item, or cancellation, ask for the order ID or registered phone last four digits.
-- Demo lookup records include SR-1001 / phone ending 4321 for an eligible refund, SR-1002 / 7788 for senior review, and SR-1003 / 9090 for an already-refunded order.
-- Verify the item, purchase date, delivered date, amount, and payment method before initiating a refund.
-- Ask the reason for refund, then confirm the refund reference and expected 3 to 5 business day timeline.
-- Keep every voice response short, direct, and spoken naturally.`;
-  const voicePrompt = `${demoVoicePrompt}
-
-VOICE EMOTION VARIABLES:
-- Every response is scored with tensionLevel, emotion, silkTone, arousal, valence, and voiceScore.
-- Start with a happy tone. Use neutral for lookup, sad or whisper for frustration, and excited when the issue is solved.
-- SILK muga tones are emitted as [happy], [neutral], [sad], [whisper], or [excited] before spoken text.`;
+  const voicePrompt = agent.system_prompt ||
+    `You are ${agent.name}, a helpful voice assistant. Keep every response short, direct, and spoken naturally — one or two sentences. Never use markdown, bullet points, or lists.`;
   const firstMessage = cleanSpokenText(
     agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`
   );
@@ -127,7 +113,7 @@ VOICE EMOTION VARIABLES:
       maxTokens: 180,
     },
     voice,
-    firstMessage: silk.apiKey ? withSilkTone("happy", firstMessage) : stripVoiceMarkers(firstMessage),
+    firstMessage: silk.apiKey ? withSilkTone("happy", firstMessage) : stripAll(firstMessage),
     firstMessageMode: "assistant-speaks-first",
     firstMessageInterruptionsEnabled: false,
     customerJoinTimeoutSeconds: 60,
