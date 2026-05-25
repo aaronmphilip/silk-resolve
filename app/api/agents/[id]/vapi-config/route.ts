@@ -109,11 +109,11 @@ CRITICAL VOICE RULES:
     model: {
       provider: "custom-llm",
       url: `${origin}/api/voice/vapi-llm`,
-      timeoutSeconds: 12,
+      timeoutSeconds: 10,
       model: agent.llm_model?.replace("gemini-2.5-flash", "gemini-2.0-flash") || "gemini-2.0-flash",
       messages: [{ role: "system", content: voicePrompt }],
-      temperature: 0.3,
-      maxTokens: 180,
+      temperature: 0.25,
+      maxTokens: 90,
     },
     voice,
     firstMessage: spokenFirstMessage,
@@ -126,11 +126,11 @@ CRITICAL VOICE RULES:
       provider: "deepgram",
       model: "nova-2",
       language: "en",
-      smartFormat: true,
+      smartFormat: false,  // disabling saves ~40ms per transcription
       numerals: true,
-      endpointing: 100,
+      endpointing: 300,    // was 100 — 300ms prevents premature cutoff ("repeat that")
     },
-    silenceTimeoutSeconds: 25,
+    silenceTimeoutSeconds: 30,
     maxDurationSeconds: 1800,
     backchannelingEnabled: false,
     clientMessages: [
