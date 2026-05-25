@@ -2,13 +2,12 @@
  * POST /api/voice/vapi-llm — true-streaming custom LLM for Vapi
  *
  * Architecture:
- *  - Gemini streaming API fires on first byte (~50-80ms TTFT)
+ *  - Gemini system_instruction anchors the agent's knowledge on every turn
+ *  - Conversation history passed as structured contents (user/model turns)
+ *  - Streaming API fires on first byte (~50-80ms TTFT)
  *  - Tokens piped directly to Vapi SSE — no wait for full response
- *  - Vapi starts TTS on the first natural sentence break
- *  - No JSON on the hot path — plain spoken text only
- *  - Tension/DB update runs async after stream closes (never on critical path)
- *
- * Perceived latency target: 300-500ms end-to-end (endpointing done → audio)
+ *  - Empty-response guard prevents Vapi from ending the call silently
+ *  - DB update runs async after stream closes (never on critical path)
  */
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
@@ -16,7 +15,7 @@ import { stripAll, withSilkTone, tensionToTone } from "@/lib/voice-emotion";
 
 export const runtime = "nodejs";
 
-// ── Module-level cache ────────────────────────────────────────────────────────
+// ── Module-level config cache ─────────────────────────────────────────────────
 let _cfg: { apiKey: string; provider: string; silkEnabled: boolean } | null = null;
 function cfg() {
   if (_cfg) return _cfg;
@@ -38,6 +37,7 @@ function svc() {
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface OAIMessage { role: "system" | "user" | "assistant"; content: string }
+interface GeminiTurn { role: "user" | "model"; parts: [{ text: string }] }
 interface VapiReq {
   messages: OAIMessage[];
   stream?: boolean;
@@ -45,23 +45,31 @@ interface VapiReq {
   metadata?: { agentId?: string };
 }
 
-// ── Prompt — ultra-minimal per-turn (~50 tokens) ──────────────────────────────
-// System prompt (in vapi-config) already has persona + SILK rules.
-// Here we only add context + last utterance. No JSON. Plain speech only.
-function buildPrompt(messages: OAIMessage[]): string {
-  const system = messages.find(m => m.role === "system")?.content ?? "";
-  const turns  = messages.filter(m => m.role !== "system").slice(-4);
-  const last   = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
+// ── Build Gemini-format conversation turns ────────────────────────────────────
+// Gemini requires: strict user/model alternation, starts with user, ends with user.
+// We take up to the last 8 non-system messages and enforce this contract.
+function buildGeminiContents(messages: OAIMessage[]): GeminiTurn[] {
+  const turns = messages
+    .filter(m => m.role !== "system")
+    .slice(-8);
 
-  const ctx = turns.length > 1
-    ? turns.slice(0, -1).map(m => `${m.role === "user" ? "C" : "A"}: ${m.content}`).join("\n") + "\n"
-    : "";
+  const contents: GeminiTurn[] = [];
+  for (const msg of turns) {
+    const role = msg.role === "assistant" ? "model" : "user";
+    // Merge consecutive same-role messages (Vapi can produce these in edge cases)
+    if (contents.length > 0 && contents[contents.length - 1].role === role) {
+      contents[contents.length - 1].parts[0].text += " " + msg.content;
+    } else {
+      contents.push({ role, parts: [{ text: msg.content }] });
+    }
+  }
 
-  return `${system}
+  // Strip leading model turns — Gemini requires user-first
+  while (contents.length > 0 && contents[0].role === "model") contents.shift();
+  // Strip trailing model turns — we need the user's last message to be last
+  while (contents.length > 0 && contents[contents.length - 1].role === "model") contents.pop();
 
-${ctx}C: ${last}
-
-Reply in 1-2 spoken sentences. Output spoken text only — no labels, no JSON.`;
+  return contents;
 }
 
 // ── SSE helpers ───────────────────────────────────────────────────────────────
@@ -98,20 +106,34 @@ function fallback(text: string): Response {
   });
 }
 
-// ── True Gemini streaming → Vapi SSE pipe ─────────────────────────────────────
+// ── Gemini streaming → Vapi SSE pipe ──────────────────────────────────────────
 async function streamGemini(
   apiKey: string,
-  prompt: string,
+  messages: OAIMessage[],
   silkEnabled: boolean,
   onComplete: (text: string) => void,
 ): Promise<Response> {
+  const systemContent = messages.find(m => m.role === "system")?.content ?? "";
+  const contents = buildGeminiContents(messages);
+
+  if (contents.length === 0) {
+    return fallback("I'm here to help. What would you like to know?");
+  }
+
+  // system_instruction anchors the agent's knowledge base on every single turn.
+  // This is how Gemini is designed to work — NOT as a text blob in contents[0].
+  const systemInstruction = systemContent
+    ? `${systemContent}\n\nVoice call rules: Reply in 1–3 spoken sentences. Plain speech only — no markdown, no bullets, no lists, no labels. Never say goodbye unless the caller says it first.`
+    : "You are a helpful voice assistant. Reply in 1–3 spoken sentences. Plain speech only.";
+
   const geminiStream = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:streamGenerateContent?key=${apiKey}&alt=sse`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+        system_instruction: { parts: [{ text: systemInstruction }] },
+        contents,
         generationConfig: {
           maxOutputTokens: 150,
           temperature: 0.2,
@@ -158,17 +180,15 @@ async function streamGemini(
 
             if (!token) continue;
 
-            // Send role header on first token
             if (!headerSent) {
               controller.enqueue(sseRole(id));
               headerSent = true;
             }
 
-            // Apply SILK tone prefix on first token if enabled
-            // (strip any LLM-generated markers first, then prepend correct tone)
+            // Apply SILK tone prefix on first token
             if (accumulated === "" && silkEnabled) {
-              const clean = stripAll(token);
-              const tone  = tensionToTone(0); // default calm; tension updated async
+              const clean    = stripAll(token);
+              const tone     = tensionToTone(0);
               const prefixed = withSilkTone(tone, clean);
               accumulated += prefixed;
               controller.enqueue(sseChunk(id, prefixed));
@@ -179,7 +199,7 @@ async function streamGemini(
           }
         }
 
-        // Flush remaining buffer
+        // Flush any remaining buffer
         if (buf.startsWith("data: ")) {
           try {
             const last = JSON.parse(buf.slice(6).trim()) as {
@@ -195,7 +215,7 @@ async function streamGemini(
         }
       } finally {
         if (!headerSent) controller.enqueue(sseRole(id));
-        // Never send an empty turn — Vapi ends the call if the assistant says nothing
+        // Guard: never let Vapi receive an empty assistant turn — it ends the call
         if (!accumulated) {
           const safe = "I'm here to help — could you say that again?";
           controller.enqueue(sseChunk(id, safe));
@@ -210,10 +230,10 @@ async function streamGemini(
 
   return new Response(readable, {
     headers: {
-      "Content-Type":  "text/event-stream",
-      "Cache-Control": "no-cache",
-      "Connection":    "keep-alive",
-      "X-Accel-Buffering": "no",  // disable nginx/proxy buffering
+      "Content-Type":      "text/event-stream",
+      "Cache-Control":     "no-cache",
+      "Connection":        "keep-alive",
+      "X-Accel-Buffering": "no",
     },
   });
 }
@@ -231,9 +251,11 @@ export async function POST(req: NextRequest) {
   if (provider !== "gemini") {
     try {
       const { callAI } = await import("@/lib/ai");
+      const system  = messages.find(m => m.role === "system")?.content ?? "";
+      const lastUser = [...messages].reverse().find(m => m.role === "user")?.content ?? "";
       const raw = await callAI({
         provider: provider as "openai" | "anthropic",
-        apiKey, system: "", user: buildPrompt(messages), maxTokens: 80, jsonMode: false,
+        apiKey, system, user: lastUser + "\n\nReply in 1-3 spoken sentences. Plain speech only.", maxTokens: 150, jsonMode: false,
       });
       return fallback(stripAll(raw.trim()));
     } catch {
@@ -242,9 +264,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const prompt = buildPrompt(messages);
-
-    // After stream completes, fire async DB update (never on critical path)
     function onComplete(spokenText: string) {
       if (!callId) return;
       void (async () => {
@@ -256,18 +275,14 @@ export async function POST(req: NextRequest) {
             .eq("call_sid", callId)
             .single();
           if (session?.id) {
-            await db.from("voice_sessions").update({
-              status: "active",
-            }).eq("id", session.id);
+            await db.from("voice_sessions").update({ status: "active" }).eq("id", session.id);
           }
         } catch { /* non-fatal */ }
       })();
-
-      // Log the spoken text length for debugging (remove in prod if noisy)
       void spokenText;
     }
 
-    return await streamGemini(apiKey, prompt, silkEnabled, onComplete);
+    return await streamGemini(apiKey, messages, silkEnabled, onComplete);
   } catch (err) {
     console.error("[vapi-llm]", err);
     return fallback("One moment — I'm with you.");
