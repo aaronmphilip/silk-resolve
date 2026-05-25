@@ -113,9 +113,8 @@ async function streamGemini(
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
-          maxOutputTokens: 80,
+          maxOutputTokens: 150,
           temperature: 0.2,
-          stopSequences: ["\n\n"],  // stop at double newline — keeps responses tight
         },
       }),
     }
@@ -196,6 +195,12 @@ async function streamGemini(
         }
       } finally {
         if (!headerSent) controller.enqueue(sseRole(id));
+        // Never send an empty turn — Vapi ends the call if the assistant says nothing
+        if (!accumulated) {
+          const safe = "I'm here to help — could you say that again?";
+          controller.enqueue(sseChunk(id, safe));
+          accumulated = safe;
+        }
         controller.enqueue(sseDone(id));
         controller.close();
         onComplete(accumulated);

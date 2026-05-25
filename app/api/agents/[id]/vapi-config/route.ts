@@ -91,10 +91,12 @@ ${silkSystemPromptBlock()}
 
 CRITICAL VOICE RULES:
 - This is a spoken voice call. NEVER use markdown, bullet points, or lists.
-- Keep every response to 1–2 spoken sentences (max 30 words).
+- Simple questions: 1–2 sentences. Substantive questions (plans, coverage, process): up to 3 sentences.
 - Natural speech only: contractions, spoken numbers, human rhythm.
 - Embed at most ONE prosody marker per response (<laugh>, <sigh>, <hmm>, <pause>, <breathe>).
-- Do NOT include [tone] prefix — the SILK engine adds it automatically.`;
+- Do NOT include [tone] prefix — the SILK engine adds it automatically.
+- If you don't know something specific to a customer's account, say "I'll connect you with a specialist who can pull that up — they'll call you back within 2 hours." Keep the conversation going.
+- NEVER say goodbye, bye, farewell, or end-of-call phrases unless the customer has explicitly said goodbye first.`;
 
   // ── First message ──────────────────────────────────────────────────────────
   const rawFirst = cleanSpokenText(

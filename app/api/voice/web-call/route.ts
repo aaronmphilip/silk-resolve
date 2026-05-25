@@ -71,8 +71,16 @@ export async function POST(req: NextRequest) {
   const proto = forwardedProto || (isLocalHost ? "http" : "https");
   const origin = `${proto}://${host}`;
 
-  const voicePrompt = agent.system_prompt ||
-    `You are ${agent.name}, a helpful voice assistant. Keep every response short, direct, and spoken naturally — one or two sentences. Never use markdown, bullet points, or lists.`;
+  const baseVoicePrompt = agent.system_prompt ||
+    `You are ${agent.name}, a helpful voice assistant.`;
+  const voicePrompt = `${baseVoicePrompt}
+
+CRITICAL VOICE RULES:
+- This is a spoken voice call. NEVER use markdown, bullet points, or lists.
+- Simple questions: 1–2 sentences. Substantive questions (plans, products, process): up to 3 sentences.
+- Natural speech only: contractions, spoken numbers, human rhythm.
+- If you don't know something specific to a customer's account, say "I'll connect you with a specialist who can pull that up — they'll call you back shortly." Keep the conversation going.
+- NEVER say goodbye, bye, farewell, or end-of-call phrases unless the customer has explicitly said goodbye first.`;
   const firstMessage = cleanSpokenText(
     agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`
   );
@@ -94,11 +102,11 @@ export async function POST(req: NextRequest) {
     model: {
       provider: "custom-llm",
       url: `${origin}/api/voice/vapi-llm`,
-      timeoutSeconds: 8,
-      model: agent.llm_model || "gemini-2.5-flash",
+      timeoutSeconds: 10,
+      model: agent.llm_model?.replace("gemini-2.5-flash", "gemini-2.0-flash") || "gemini-2.0-flash",
       messages: [{ role: "system", content: voicePrompt }],
       temperature: 0.2,
-      maxTokens: 180,
+      maxTokens: 150,
     },
     voice,
     firstMessage: silk.apiKey ? withSilkTone("happy", firstMessage) : stripAll(firstMessage),
