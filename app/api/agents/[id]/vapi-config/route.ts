@@ -43,12 +43,14 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const auth = createClient();
   const { data: { user } } = await auth.auth.getUser();
 
+  // Agent ID is the access control — no status filter needed
   const db = user ? auth : createServiceClient();
-  const agentQuery = user
-    ? db.from("agents").select("id, name, status, system_prompt, first_message, llm_model, call_direction").eq("id", id).single()
-    : db.from("agents").select("id, name, status, system_prompt, first_message, llm_model, call_direction").eq("id", id).in("status", ["live", "active"]).single();
+  const { data: agent, error } = await db
+    .from("agents")
+    .select("id, name, status, system_prompt, first_message, llm_model, call_direction")
+    .eq("id", id)
+    .single();
 
-  const { data: agent, error } = await agentQuery;
   if (error || !agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
 
   const [{ silk }, aiConfig] = await Promise.all([
