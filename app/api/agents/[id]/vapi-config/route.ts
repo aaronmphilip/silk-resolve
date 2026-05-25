@@ -76,7 +76,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const voice = silk.apiKey
     ? {
         provider: "custom-voice",
-        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 20 },
+        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 12 },
         fallbackPlan: { voices: [{ provider: "playht", voiceId: "jennifer" }] },
       }
     : { provider: "playht", voiceId: "jennifer" };
@@ -108,11 +108,11 @@ VOICE CALL RULES:
     model: {
       provider: "custom-llm",
       url: `${origin}/api/voice/vapi-llm`,
-      timeoutSeconds: 10,
+      timeoutSeconds: 6,
       model: "gemini-2.0-flash",
       messages: [{ role: "system", content: voicePrompt }],
       temperature: 0.25,
-      maxTokens: 90,
+      maxTokens: 80,
     },
     voice,
     firstMessage: spokenFirstMessage,
@@ -127,9 +127,9 @@ VOICE CALL RULES:
       language: "en",
       smartFormat: false,  // disabling saves ~40ms per transcription
       numerals: true,
-      endpointing: 300,    // was 100 — 300ms prevents premature cutoff ("repeat that")
+      endpointing: 160,
     },
-    silenceTimeoutSeconds: 30,
+    silenceTimeoutSeconds: 18,
     maxDurationSeconds: 1800,
     backchannelingEnabled: false,
     clientMessages: [

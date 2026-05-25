@@ -27,8 +27,9 @@ interface VapiReq {
   stream?: boolean;
 }
 
-const GEMINI_TIMEOUT_MS = 6_500;
+const GEMINI_TIMEOUT_MS = 5_500;
 const DEFAULT_MODEL = "gemini-2.0-flash";
+const MAX_OUTPUT_TOKENS = 90;
 
 function getConfig() {
   return {
@@ -207,6 +208,14 @@ function toSSE(text: string): Response {
   });
 }
 
+function sseChunk(id: string, delta: Record<string, string>, finishReason: string | null): string {
+  return `data: ${JSON.stringify({
+    id,
+    object: "chat.completion.chunk",
+    choices: [{ delta, index: 0, finish_reason: finishReason }],
+  })}\n\n`;
+}
+
 function toJSON(text: string, model: string): Response {
   return Response.json({
     id: `chatcmpl-${Date.now()}`,
@@ -243,14 +252,14 @@ async function callGemini(args: {
       headers: { "Content-Type": "application/json" },
       signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
       body: JSON.stringify({
-        system_instruction: {
+        systemInstruction: {
           parts: [{
             text: systemContent ||
               "You are a helpful voice assistant. Reply in 1 to 3 plain spoken sentences. No markdown.",
           }],
         },
         contents,
-        generationConfig: { maxOutputTokens: 150, temperature: 0.2 },
+        generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.2 },
       }),
     }
   );
@@ -269,6 +278,111 @@ async function callGemini(args: {
   return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
 }
 
+function streamGemini(args: {
+  apiKey: string;
+  model: string;
+  systemContent: string;
+  contents: GeminiTurn[];
+  fallback: string;
+  silkEnabled: boolean;
+}): Response {
+  const { apiKey, model, systemContent, contents, fallback, silkEnabled } = args;
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const id = `chatcmpl-${Date.now()}`;
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let emittedText = false;
+      let buffer = "";
+
+      function enqueue(text: string) {
+        const clean = text.replace(/\s+/g, " ");
+        if (!clean.trim()) return;
+
+        if (!emittedText) {
+          emittedText = true;
+          controller.enqueue(encoder.encode(sseChunk(id, { content: silkEnabled ? `[${tensionToTone(0)}] ${clean}` : clean }, null)));
+          return;
+        }
+
+        controller.enqueue(encoder.encode(sseChunk(id, { content: clean }, null)));
+      }
+
+      try {
+        controller.enqueue(encoder.encode(sseChunk(id, { role: "assistant" }, null)));
+
+        const response = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${apiKey}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [{
+                  text: systemContent ||
+                    "You are a helpful voice assistant. Reply in 1 to 2 plain spoken sentences. No markdown.",
+                }],
+              },
+              contents,
+              generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.2 },
+            }),
+          }
+        );
+
+        if (!response.ok || !response.body) {
+          const err = await response.text().catch(() => "");
+          throw new Error(`Gemini stream HTTP ${response.status}: ${err.slice(0, 160)}`);
+        }
+
+        const reader = response.body.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split(/\r?\n/);
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data:")) continue;
+            const payload = line.slice(5).trim();
+            if (!payload || payload === "[DONE]") continue;
+
+            try {
+              const data = JSON.parse(payload) as {
+                candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+              };
+              const text = data.candidates?.[0]?.content?.parts
+                ?.map((part) => part.text ?? "")
+                .join("") ?? "";
+              enqueue(text);
+            } catch {}
+          }
+        }
+
+        if (!emittedText) enqueue(fallback || "I can help with that. Could you say the question again?");
+      } catch (err) {
+        console.error("[vapi-llm] Gemini stream failed:", err);
+        enqueue(fallback || "I can help with the company information I have. Could you ask that once more?");
+      } finally {
+        controller.enqueue(encoder.encode(sseChunk(id, {}, "stop")));
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as VapiReq;
   const messages = normalizeMessages(body.messages);
@@ -283,7 +397,7 @@ export async function POST(req: NextRequest) {
 
   // Company/site knowledge should not wait on Gemini. This is the path that
   // fixes the fake website agent answering from the saved agent prompt.
-  if (promptAnswer && /\b(plan|price|claim|coverage|company|support|contact|hospital|policy|who|what|how)\b/i.test(lastUser)) {
+  if (promptAnswer) {
     return reply(promptAnswer, wantsStream, model, silkEnabled);
   }
 
@@ -299,6 +413,17 @@ export async function POST(req: NextRequest) {
   const contents = buildContents(messages);
   if (contents.length === 0) {
     return reply("I'm here to help. What would you like to know?", wantsStream, model, silkEnabled);
+  }
+
+  if (wantsStream) {
+    return streamGemini({
+      apiKey,
+      model,
+      systemContent,
+      contents,
+      fallback: promptAnswer,
+      silkEnabled,
+    });
   }
 
   try {

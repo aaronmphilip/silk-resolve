@@ -129,7 +129,7 @@ function resamplePcm16Mono(input: Buffer, fromRate: number, toRate: number): Buf
 
 async function callRumik(apiKey: string, body: VoiceRequestBody, text: string) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 18500);
+  const timeoutId = setTimeout(() => controller.abort(), 11500);
 
   try {
     const model = body.model || "muga";
