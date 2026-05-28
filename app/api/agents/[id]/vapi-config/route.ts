@@ -126,7 +126,7 @@ VOICE CALL RULES:
       provider: "custom-llm",
       url: `${origin}/api/voice/vapi-llm?voice=${requestedVoice}`,
       timeoutSeconds: 6,
-      model: "gemini-2.0-flash",
+      model: process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash",
       messages: [{ role: "system", content: voicePrompt }],
       temperature: 0.25,
       maxTokens: 80,
@@ -149,6 +149,9 @@ VOICE CALL RULES:
     silenceTimeoutSeconds: 18,
     maxDurationSeconds: 1800,
     backchannelingEnabled: false,
+    // Vapi waits this long after the caller stops before the agent replies.
+    // Default is 0.4s; 0.2s shaves perceived reply latency without clipping speech.
+    startSpeakingPlan: { waitSeconds: 0.2 },
     clientMessages: [
       "assistant.speechStarted",
       "transcript",

@@ -29,8 +29,21 @@ interface VapiReq {
 }
 
 const GEMINI_TIMEOUT_MS = 5_500;
-const DEFAULT_MODEL = "gemini-2.0-flash";
+// gemini-2.0-flash has NO "thinking" stage → lowest first-token latency for voice.
+// Override with GEMINI_MODEL if you set a 2.5/3 key (we disable thinking below).
+const DEFAULT_MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
 const MAX_OUTPUT_TOKENS = 90;
+
+// Gemini 2.5/3 models "think" before answering by default, adding 2–4s of dead
+// air before the first token — fatal for a voice call. thinkingBudget:0 disables
+// it so replies stream immediately. 2.0-flash has no thinking stage, so we skip it.
+function geminiGenerationConfig(model: string): Record<string, unknown> {
+  const config: Record<string, unknown> = { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.2 };
+  if (/gemini-(?:2\.5|3)/i.test(model)) {
+    config.thinkingConfig = { thinkingBudget: 0 };
+  }
+  return config;
+}
 const OUT_OF_SCOPE_RESPONSE =
   "I don't have that information in this support script. I can help with NovaCare plans, claims, coverage, support, or network hospitals.";
 
@@ -400,7 +413,7 @@ async function callGemini(args: {
           }],
         },
         contents,
-        generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.2 },
+        generationConfig: geminiGenerationConfig(model),
       }),
     }
   );
@@ -491,7 +504,7 @@ function streamGemini(args: {
                 }],
               },
               contents,
-              generationConfig: { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.2 },
+              generationConfig: geminiGenerationConfig(model),
             }),
           }
         );
@@ -557,8 +570,9 @@ function streamGemini(args: {
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as VapiReq;
   const messages = normalizeMessages(body.messages);
-  const requestedModel = body.model?.replace("gemini-2.5-flash", DEFAULT_MODEL) || DEFAULT_MODEL;
-  const model = requestedModel.startsWith("gemini-") ? requestedModel : DEFAULT_MODEL;
+  // The server picks the model from env (GEMINI_MODEL), not the client request —
+  // this guarantees the thinking-disable config matches the model we actually call.
+  const model = DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.0-flash";
   const wantsStream = body.stream !== false;
   const { apiKey, silkEnabled } = getConfig(req);
 
