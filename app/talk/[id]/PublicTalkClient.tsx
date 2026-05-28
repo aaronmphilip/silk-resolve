@@ -39,6 +39,7 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode }: Publ
     duration,
     tension,
     transcript,
+    interim,
     startCall,
     endCall,
     toggleMute,
@@ -47,7 +48,7 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode }: Publ
 
   useEffect(() => {
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: "smooth" });
-  }, [transcript]);
+  }, [transcript, interim]);
 
   const busy = state === "connecting" || state === "joining" || state === "ending";
   const active = state === "active";
@@ -86,7 +87,7 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode }: Publ
       </section>
 
       <section ref={transcriptRef} className="flex-1 overflow-y-auto px-4 py-5 space-y-3">
-        {transcript.length === 0 ? (
+        {transcript.length === 0 && !interim ? (
           <div className="h-full min-h-72 flex items-center justify-center text-center">
             <div>
               <Volume2 size={22} className="mx-auto mb-3 text-[#f0ebe0]/15" />
@@ -96,20 +97,38 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode }: Publ
             </div>
           </div>
         ) : (
-          transcript.map((message, index) => (
-            <div key={`${message.ts}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[86%] px-4 py-3 border ${
-                message.role === "user"
-                  ? "bg-[#f0ebe0] text-[#0a0a0a] border-[#f0ebe0]"
-                  : "bg-[#f0ebe0]/5 text-[#f0ebe0] border-[#f0ebe0]/12"
-              }`}>
-                <p className={`text-[9px] font-mono mb-1 ${message.role === "user" ? "text-[#0a0a0a]/45" : "text-[#f0ebe0]/35"}`}>
-                  {message.role === "user" ? "you" : "agent"}
-                </p>
-                <p className="text-sm leading-relaxed">{message.text}</p>
+          <>
+            {transcript.map((message, index) => (
+              <div key={`${message.ts}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[86%] px-4 py-3 border ${
+                  message.role === "user"
+                    ? "bg-[#f0ebe0] text-[#0a0a0a] border-[#f0ebe0]"
+                    : "bg-[#f0ebe0]/5 text-[#f0ebe0] border-[#f0ebe0]/12"
+                }`}>
+                  <p className={`text-[9px] font-mono mb-1 ${message.role === "user" ? "text-[#0a0a0a]/45" : "text-[#f0ebe0]/35"}`}>
+                    {message.role === "user" ? "you" : "agent"}
+                  </p>
+                  <p className="text-sm leading-relaxed">{message.text}</p>
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+
+            {interim && interim.text && (
+              <div className={`flex ${interim.role === "user" ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[86%] px-4 py-3 border border-dashed ${
+                  interim.role === "user"
+                    ? "bg-[#f0ebe0]/10 text-[#f0ebe0]/75 border-[#f0ebe0]/30"
+                    : "bg-[#f0ebe0]/[0.03] text-[#f0ebe0]/55 border-[#f0ebe0]/12"
+                }`}>
+                  <p className={`text-[9px] font-mono mb-1 flex items-center gap-1.5 ${interim.role === "user" ? "text-[#f0ebe0]/45" : "text-[#f0ebe0]/30"}`}>
+                    {interim.role === "user" ? "you" : "agent"}
+                    <span className="inline-block w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+                  </p>
+                  <p className="text-sm leading-relaxed italic">{interim.text}</p>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {error && (

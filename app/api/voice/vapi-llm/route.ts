@@ -436,19 +436,42 @@ function streamGemini(args: {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let emittedText = false;
-      let buffer = "";
+      let buffer = "";   // SSE line buffer
+      let pending = "";  // raw model text not yet emitted as a complete sentence
+      const startedAt = Date.now();
+      let firstChunkAt = 0;
 
-      function enqueue(text: string) {
-        const clean = normalizeSpeechText(text);
+      // Emit one speakable segment. We normalize a COMPLETE sentence at a time:
+      // normalizing per raw token stripped inter-token spaces and merged words
+      // ("four" + " hundred" -> "fourhundred") and broke multi-word number fixes.
+      function emitSegment(raw: string) {
+        const clean = normalizeSpeechText(raw);
         if (!clean.trim()) return;
 
         if (!emittedText) {
           emittedText = true;
+          firstChunkAt = Date.now();
           controller.enqueue(encoder.encode(sseChunk(id, { content: silkEnabled ? withSilkTone(toneFor(userText, clean), clean) : clean }, null)));
           return;
         }
 
-        controller.enqueue(encoder.encode(sseChunk(id, { content: clean }, null)));
+        // Lead with a space so concatenated deltas keep sentence separation.
+        controller.enqueue(encoder.encode(sseChunk(id, { content: ` ${clean}` }, null)));
+      }
+
+      // Flush every COMPLETE sentence in `pending`. A sentence counts as complete
+      // only once trailing whitespace has arrived, so we never split "3.5" or an
+      // abbreviation mid-number. `force` flushes the trailing remainder at stream end.
+      function flushPending(force: boolean) {
+        let match: RegExpMatchArray | null;
+        while ((match = pending.match(/^[\s\S]*?[.!?]+\s/))) {
+          emitSegment(match[0]);
+          pending = pending.slice(match[0].length);
+        }
+        if (force && pending.trim()) {
+          emitSegment(pending);
+          pending = "";
+        }
       }
 
       try {
@@ -499,15 +522,21 @@ function streamGemini(args: {
               const text = data.candidates?.[0]?.content?.parts
                 ?.map((part) => part.text ?? "")
                 .join("") ?? "";
-              enqueue(text);
+              if (text) {
+                pending += text;
+                flushPending(false);
+              }
             } catch {}
           }
         }
 
-        if (!emittedText) enqueue(fallback || OUT_OF_SCOPE_RESPONSE);
+        flushPending(true);
+        if (!emittedText) emitSegment(fallback || OUT_OF_SCOPE_RESPONSE);
+        console.log(`[vapi-llm] gemini stream first-chunk=${firstChunkAt ? firstChunkAt - startedAt : -1}ms total=${Date.now() - startedAt}ms`);
       } catch (err) {
         console.error("[vapi-llm] Gemini stream failed:", err);
-        enqueue(fallback || OUT_OF_SCOPE_RESPONSE);
+        flushPending(true);
+        if (!emittedText) emitSegment(fallback || OUT_OF_SCOPE_RESPONSE);
       } finally {
         controller.enqueue(encoder.encode(sseChunk(id, {}, "stop")));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));

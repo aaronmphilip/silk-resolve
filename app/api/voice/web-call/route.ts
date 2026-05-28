@@ -89,7 +89,7 @@ VOICE CALL RULES:
   const voice = useSilkVoice
     ? {
         provider: "custom-voice",
-        server: { url: `${origin}/api/voice/silk-tts`, timeoutSeconds: 45 },
+        server: { url: `${origin}/api/voice/silk-tts?transport=ws`, timeoutSeconds: 45 },
         fallbackPlan: {
           voices: [{ provider: "vapi", voiceId: "Neha" }],
         },

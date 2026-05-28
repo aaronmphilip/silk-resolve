@@ -137,6 +137,65 @@ function resamplePcm16Mono(input: Buffer, fromRate: number, toRate: number): Buf
   return output;
 }
 
+/**
+ * Streaming linear resampler for PCM16 mono.
+ *
+ * The REST resampler above works on a whole buffer at once. For the WebSocket
+ * path we get audio in arbitrary-sized frames, so we keep phase across calls
+ * (prev sample, fractional output position, odd-byte carry) — that means no
+ * clicks or pitch drift at frame boundaries. Identity (zero-copy) when rates
+ * already match, which is the common 24 kHz web-call case.
+ */
+function makeStreamResampler(fromRate: number, toRate: number) {
+  if (fromRate === toRate) {
+    return { push: (chunk: Buffer) => chunk };
+  }
+
+  const step = fromRate / toRate; // input samples consumed per output sample
+  let carry: number | null = null; // leftover odd byte split across frames
+  let prev = 0;
+  let havePrev = false;
+  let nextT = 0; // next output position, in input-sample units
+  let i = 0;     // global index of the next incoming input sample
+
+  return {
+    push(chunk: Buffer): Buffer {
+      let input = chunk;
+      if (carry !== null) {
+        input = Buffer.concat([Buffer.from([carry]), chunk]);
+        carry = null;
+      }
+      if (input.length % 2 === 1) {
+        carry = input[input.length - 1];
+        input = input.subarray(0, input.length - 1);
+      }
+
+      const n = input.length >> 1;
+      if (n === 0) return Buffer.alloc(0);
+
+      const out: number[] = [];
+      for (let s = 0; s < n; s++) {
+        const cur = input.readInt16LE(s << 1);
+        if (!havePrev) { prev = cur; havePrev = true; i = 1; continue; }
+        while (nextT < i) {
+          const frac = nextT - (i - 1);
+          out.push(prev + (cur - prev) * frac);
+          nextT += step;
+        }
+        prev = cur;
+        i++;
+      }
+
+      const buf = Buffer.allocUnsafe(out.length << 1);
+      for (let k = 0; k < out.length; k++) {
+        const v = Math.round(out[k]);
+        buf.writeInt16LE(v < -32768 ? -32768 : v > 32767 ? 32767 : v, k << 1);
+      }
+      return buf;
+    },
+  };
+}
+
 function buildRumikPayload(body: VoiceRequestBody, text: string): Record<string, unknown> {
   const model = body.model || "muga";
   const payload: Record<string, unknown> = {
@@ -197,11 +256,13 @@ async function callRumik(apiKey: string, body: VoiceRequestBody, text: string) {
 async function streamRumik(
   apiKey: string,
   body: VoiceRequestBody,
-  text: string
+  text: string,
+  targetRate: number
 ): Promise<NextResponse | { error: string; status: 502 }> {
   const payload = buildRumikPayload(body, text);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8_000);
+  const setupStart = Date.now();
 
   try {
     const connectRes = await fetch(SILK_WS_CONNECT_ENDPOINT, {
@@ -226,10 +287,13 @@ async function streamRumik(
       return { error: "SILK stream setup failed", status: 502 };
     }
 
+    console.log(`[silk-tts] rumik ws-connect ready in ${Date.now() - setupStart}ms`);
     const wsUrl = `${session.ws_url}?token=${encodeURIComponent(session.token)}`;
     const stream = new ReadableStream<Uint8Array>({
       start(streamController) {
         let done = false;
+        let firstFrameLogged = false;
+        const resampler = makeStreamResampler(RUMIK_SAMPLE_RATE, targetRate);
         const ws = new WebSocket(wsUrl);
         const streamTimeout = setTimeout(() => {
           if (!done) {
@@ -255,12 +319,19 @@ async function streamRumik(
           if (done) return;
 
           if (isBinary) {
+            if (!firstFrameLogged) {
+              firstFrameLogged = true;
+              console.log(`[silk-tts] rumik first audio frame in ${Date.now() - setupStart}ms`);
+            }
             const chunk = Buffer.isBuffer(data)
               ? data
               : Array.isArray(data)
                 ? Buffer.concat(data)
                 : Buffer.from(data as ArrayBuffer);
-            if (chunk.length > 0) streamController.enqueue(new Uint8Array(chunk));
+            if (chunk.length > 0) {
+              const out = resampler.push(chunk);
+              if (out.length > 0) streamController.enqueue(new Uint8Array(out));
+            }
             return;
           }
 
@@ -300,7 +371,7 @@ async function streamRumik(
         "Content-Type": "application/octet-stream",
         "Cache-Control": "no-store",
         "X-Audio-Format": "pcm_s16le",
-        "X-Audio-Sample-Rate": String(RUMIK_SAMPLE_RATE),
+        "X-Audio-Sample-Rate": String(targetRate),
         "X-Audio-Channels": "1",
         "X-Silk-Transport": "websocket",
       },
@@ -333,9 +404,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Unsupported sampleRate ${sampleRate}` }, { status: 400 });
   }
 
+  // WebSocket streaming is the realtime path: Rumik MUGA audio is piped to Vapi
+  // as it is generated (resampled on the fly to whatever rate Vapi asked for),
+  // so speech starts on the first frame instead of waiting for the whole WAV.
+  // Any setup failure falls through to the buffered REST path below.
   const wantsStream = req.nextUrl.searchParams.get("transport") === "ws";
-  if (wantsStream && sampleRate === RUMIK_SAMPLE_RATE && req.nextUrl.searchParams.get("format") !== "wav") {
-    const streamed = await streamRumik(silk.apiKey, body, text);
+  if (wantsStream && req.nextUrl.searchParams.get("format") !== "wav") {
+    const streamed = await streamRumik(silk.apiKey, body, text, sampleRate);
     if (!("error" in streamed)) return streamed;
     console.warn("[silk-tts] websocket stream failed before audio, falling back to REST:", streamed.error);
   }

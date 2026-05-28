@@ -218,6 +218,27 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+// Prefer a value already in flight from prewarm(); if it's missing or the
+// prewarm fetch rejected (e.g. user was briefly offline on mount), fall back to
+// a fresh fetch so a stale failure never permanently blocks Start call.
+async function cachedOrFetch<T>(cached: Promise<T> | undefined, fresh: () => Promise<T>): Promise<T> {
+  if (cached) {
+    try {
+      return await cached;
+    } catch {
+      /* fall through to a fresh attempt */
+    }
+  }
+  return fresh();
+}
+
+interface PrewarmCache {
+  key: string;
+  vapi: Promise<VapiCtor>;
+  token: Promise<TokenResponse>;
+  assistant: Promise<AssistantConfig>;
+}
+
 export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk") {
   const [state, setState] = useState<WebVoiceCallState>("idle");
   const [error, setError] = useState("");
@@ -225,12 +246,20 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const [duration, setDuration] = useState(0);
   const [tension, setTension] = useState(0);
   const [transcript, setTranscript] = useState<WebVoiceTranscript[]>([]);
+  // Live caption for the turn currently being spoken — updated on every partial
+  // transcript and cleared the moment the final arrives. This is what makes text
+  // appear in front of the user in realtime instead of only after each turn.
+  const [interim, setInterim] = useState<{ role: "user" | "assistant"; text: string } | null>(null);
 
   const mountedRef = useRef(true);
   const vapiRef = useRef<VapiInstance | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const runIdRef = useRef(0);
   const registeredCallIdsRef = useRef(new Set<string>());
+  // Promises kicked off on mount so the heavy work (SDK import, token + assistant
+  // config fetches) is already done by the time the user taps Start call. The
+  // click then only needs the mic prompt + vapi.start() — that's the instant join.
+  const prewarmRef = useRef<PrewarmCache | null>(null);
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -283,8 +312,31 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const finishCall = useCallback(async (nextState: WebVoiceCallState = "ended") => {
     if (nextState === "ended") setState("ending");
     await cleanupCall();
-    if (mountedRef.current) setState(nextState);
+    if (mountedRef.current) {
+      setInterim(null);
+      setState(nextState);
+    }
   }, [cleanupCall]);
+
+  const prewarm = useCallback(() => {
+    if (!agentId || typeof window === "undefined") return;
+    const key = `${agentId}::${voiceMode}`;
+    if (prewarmRef.current?.key === key) return; // already warming/warm for this combo
+
+    prewarmRef.current = {
+      key,
+      vapi: loadVapiCtor(),
+      token: fetchJson<TokenResponse>("/api/voice/vapi-token"),
+      assistant: fetchJson<AssistantConfig>(
+        `/api/agents/${agentId}/vapi-config?voice=${encodeURIComponent(voiceMode)}`
+      ),
+    };
+    // Swallow rejections now so React/browser don't flag unhandled rejections;
+    // startCall still awaits these and falls back to a fresh fetch on failure.
+    prewarmRef.current.vapi.catch(() => {});
+    prewarmRef.current.token.catch(() => {});
+    prewarmRef.current.assistant.catch(() => {});
+  }, [agentId, voiceMode]);
 
   const startCall = useCallback(async () => {
     if (!agentId) {
@@ -302,15 +354,21 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     setState("connecting");
     setError("");
     setTranscript([]);
+    setInterim(null);
     setTension(0);
     setDuration(0);
+
+    const key = `${agentId}::${voiceMode}`;
+    const warm = prewarmRef.current?.key === key ? prewarmRef.current : null;
 
     try {
       const [Vapi, token, assistant] = await withTimeout(
         Promise.all([
-          loadVapiCtor(),
-          fetchJson<TokenResponse>("/api/voice/vapi-token"),
-          fetchJson<AssistantConfig>(`/api/agents/${agentId}/vapi-config?voice=${encodeURIComponent(voiceMode)}`),
+          cachedOrFetch(warm?.vapi, loadVapiCtor),
+          cachedOrFetch(warm?.token, () => fetchJson<TokenResponse>("/api/voice/vapi-token")),
+          cachedOrFetch(warm?.assistant, () =>
+            fetchJson<AssistantConfig>(`/api/agents/${agentId}/vapi-config?voice=${encodeURIComponent(voiceMode)}`)
+          ),
           preflightMicrophone(),
         ]),
         CONFIG_TIMEOUT_MS,
@@ -360,12 +418,20 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         if (!mountedRef.current || runId !== runIdRef.current || !message) return;
 
         const msg = message as Record<string, unknown>;
-        if (msg.type === "transcript" && msg.transcriptType === "final") {
+        if (msg.type === "transcript") {
           const text = getTranscriptText(msg);
           if (!text) return;
 
           const role = normalizeTranscriptRole(msg.role);
+
+          // Partials stream in as the speaker talks — show them live, don't commit.
+          if (msg.transcriptType !== "final") {
+            setInterim({ role, text });
+            return;
+          }
+
           const ts = Date.now();
+          setInterim(null);
           setTranscript(lines => appendTranscriptLine(lines, role, text, ts));
           if (role === "user") setTension(value => Math.min(10, value + 0.4));
         }
@@ -433,6 +499,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     setState("idle");
     setError("");
     setTranscript([]);
+    setInterim(null);
     setTension(0);
     setDuration(0);
   }, [cleanupCall]);
@@ -445,6 +512,12 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     vapi.setMuted(nextMuted);
     setMuted(nextMuted);
   }, [muted]);
+
+  // Kick off the heavy startup work as soon as the talk screen mounts (and again
+  // if the agent/voice changes) so Start call is an instant join, not a 1–2s wait.
+  useEffect(() => {
+    prewarm();
+  }, [prewarm]);
 
   useEffect(() => {
     return () => {
@@ -461,6 +534,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     duration,
     tension,
     transcript,
+    interim,
     startCall,
     endCall,
     reset,

@@ -1,0 +1,31 @@
+# Keep-warm: pings /api/voice/warm so the voice lambdas (vapi-llm, silk-tts)
+# never cold-start on the first turn of a call. The warm endpoint fans out with
+# GETs that return 405 — it never calls Gemini or Rumik, so this stays free.
+#
+# COST NOTE: GitHub Actions is FREE & UNLIMITED on PUBLIC repos. On a PRIVATE
+# repo it bills Actions minutes (rounded up to 1 min/run). The default account
+# spending limit is $0, so it can never charge you money — it just stops after
+# the monthly free minutes are used. If this repo is private and you want a
+# truly unlimited free pinger, use cron-job.org instead (see SETUP.md notes)
+# and you can delete this workflow.
+name: keep-warm
+
+on:
+  schedule:
+    - cron: "*/5 * * * *" # every 5 minutes (GitHub's minimum interval)
+  workflow_dispatch: {} # lets you run it once manually from the Actions tab
+
+concurrency:
+  group: keep-warm
+  cancel-in-progress: true
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ping warm endpoint
+        run: |
+          URL="${{ vars.WARM_URL || 'https://silk-resolve.vercel.app/api/voice/warm' }}"
+          echo "Pinging $URL"
+          curl -fsS --max-time 30 "$URL" || echo "warm ping failed (non-fatal)"

@@ -224,7 +224,7 @@ export async function POST(req: NextRequest) {
     if (useSilkVoice) {
       vapiAssistant.voice = {
         provider: "custom-voice",
-        server:   { url: `${appUrl}/api/voice/silk-tts`, timeoutSeconds: 45 },
+        server:   { url: `${appUrl}/api/voice/silk-tts?transport=ws`, timeoutSeconds: 45 },
       };
     } else {
       vapiAssistant.voice = { provider: "vapi", voiceId: "Neha" };

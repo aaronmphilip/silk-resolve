@@ -84,7 +84,10 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
   // ── Voice provider ─────────────────────────────────────────────────────────
   const useSilkVoice = requestedVoice !== "vapi" && Boolean(silk.apiKey && silk.vapiEnabled);
-  const silkTransport = requestedVoice === "silk-stream" ? "?transport=ws" : "";
+  // Always stream Rumik MUGA over WebSocket (realtime). silk-tts resamples on the
+  // fly and falls back to buffered REST internally if the stream can't be set up,
+  // so there's no downside to defaulting every SILK call to the streaming path.
+  const silkTransport = useSilkVoice ? "?transport=ws" : "";
   const voice = useSilkVoice
     ? {
         provider: "custom-voice",
