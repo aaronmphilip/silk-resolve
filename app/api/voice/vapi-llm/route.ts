@@ -29,11 +29,11 @@ interface VapiReq {
 }
 
 const GEMINI_TIMEOUT_MS = 5_500;
-// Default to gemini-2.5-flash: it's the model the free tier grants quota for on
-// this account (gemini-2.0-flash returns 429 "limit: 0"), and geminiGenerationConfig()
-// disables its "thinking" stage so first-token latency stays low for voice.
-// Override via GEMINI_MODEL if your account's free quota is on a different model.
-const DEFAULT_MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+// Default to gemini-2.5-flash-lite: the fastest FREE model on this account —
+// measured ~800ms server-side TTFT vs ~1.2s (2.5-flash) and ~1.65s (flash-latest);
+// 2.0-flash is 429 "limit: 0". geminiGenerationConfig() disables its thinking stage
+// so first-token latency stays low for voice. Override via GEMINI_MODEL if needed.
+const DEFAULT_MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite";
 const MAX_OUTPUT_TOKENS = 90;
 
 // Gemini 2.5/3 models "think" before answering by default, adding 2–4s of dead
@@ -585,63 +585,11 @@ function streamGemini(args: {
 }
 
 export async function POST(req: NextRequest) {
-  // TEMPORARY: ?debug=stream&model=<name> measures Gemini's server-side time-to-
-  // first-token (from this bom1 lambda) + quota status, to pick the fastest free
-  // model. Remove once the model is finalized.
-  if (req.nextUrl.searchParams.get("debug") === "stream") {
-    const key = process.env.GEMINI_API_KEY?.trim() ?? "";
-    const m = req.nextUrl.searchParams.get("model")?.trim() || DEFAULT_MODEL;
-    if (!key) return Response.json({ debug: "stream", error: "no key" });
-    const t0 = Date.now();
-    try {
-      const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:streamGenerateContent?alt=sse&key=${key}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
-          body: JSON.stringify({
-            systemInstruction: { parts: [{ text: "You are a friendly support agent. Reply in 2 short spoken sentences." }] },
-            contents: [{ role: "user", parts: [{ text: "In two sentences, what should I do if my flight gets delayed?" }] }],
-            generationConfig: geminiGenerationConfig(m),
-          }),
-        }
-      );
-      if (!r.ok || !r.body) {
-        const e = await r.text().catch(() => "");
-        return Response.json({ debug: "stream", model: m, httpStatus: r.status, ok: false, body: e.slice(0, 200) });
-      }
-      const reader = r.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "", ttft = 0, full = "";
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split(/\r?\n/);
-        buf = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.startsWith("data:")) continue;
-          const p = line.slice(5).trim();
-          if (!p || p === "[DONE]") continue;
-          try {
-            const data = JSON.parse(p) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-            const t = data.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
-            if (t) { if (!ttft) ttft = Date.now() - t0; full += t; }
-          } catch {}
-        }
-      }
-      return Response.json({ debug: "stream", model: m, ok: true, serverTtftMs: ttft, serverTotalMs: Date.now() - t0, sample: full.slice(0, 120) });
-    } catch (err) {
-      return Response.json({ debug: "stream", model: m, error: err instanceof Error ? err.message : String(err), elapsedMs: Date.now() - t0 });
-    }
-  }
-
   const body = (await req.json().catch(() => ({}))) as VapiReq;
   const messages = normalizeMessages(body.messages);
   // The server picks the model from env (GEMINI_MODEL), not the client request —
   // this guarantees the thinking-disable config matches the model we actually call.
-  const model = DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.5-flash";
+  const model = DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.5-flash-lite";
   const wantsStream = body.stream !== false;
   const { apiKey, silkEnabled } = getConfig(req);
 

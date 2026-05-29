@@ -126,7 +126,7 @@ VOICE CALL RULES:
       provider: "custom-llm",
       url: `${origin}/api/voice/vapi-llm?voice=${requestedVoice}`,
       timeoutSeconds: 6,
-      model: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash",
+      model: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
       messages: [{ role: "system", content: voicePrompt }],
       temperature: 0.25,
       maxTokens: 80,
