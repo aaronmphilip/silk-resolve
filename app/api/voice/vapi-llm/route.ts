@@ -568,6 +568,32 @@ function streamGemini(args: {
 }
 
 export async function POST(req: NextRequest) {
+  // TEMPORARY diagnostic: GET the real Gemini error without exposing the key.
+  // Hit POST /api/voice/vapi-llm?debug=1 — returns key presence/length + Google's
+  // raw response. Remove this block once the key is confirmed working.
+  if (req.nextUrl.searchParams.get("debug") === "1") {
+    const key = process.env.GEMINI_API_KEY?.trim() ?? "";
+    const dbgModel = DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.0-flash";
+    if (!key) {
+      return Response.json({ debug: true, keyPresent: false, keyLength: 0, model: dbgModel, note: "GEMINI_API_KEY is empty/missing in this deployment's env." });
+    }
+    try {
+      const r = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(dbgModel)}:generateContent?key=${key}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
+          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: "Reply with the single word OK." }] }], generationConfig: geminiGenerationConfig(dbgModel) }),
+        }
+      );
+      const text = await r.text();
+      return Response.json({ debug: true, keyPresent: true, keyLength: key.length, model: dbgModel, httpStatus: r.status, ok: r.ok, body: text.slice(0, 500) });
+    } catch (err) {
+      return Response.json({ debug: true, keyPresent: true, keyLength: key.length, model: dbgModel, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
   const body = (await req.json().catch(() => ({}))) as VapiReq;
   const messages = normalizeMessages(body.messages);
   // The server picks the model from env (GEMINI_MODEL), not the client request —
