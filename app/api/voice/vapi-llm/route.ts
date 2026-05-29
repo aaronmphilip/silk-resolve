@@ -478,6 +478,21 @@ function streamGemini(args: {
       // only once trailing whitespace has arrived, so we never split "3.5" or an
       // abbreviation mid-number. `force` flushes the trailing remainder at stream end.
       function flushPending(force: boolean) {
+        // The FIRST chunk should leave for TTS as early as possible so the agent
+        // starts speaking sooner. Emit on the first complete sentence, else the
+        // first clause break (>=15 chars), else once ~40 chars have built up —
+        // whichever comes first. Later chunks stay sentence-buffered for smoother
+        // prosody and to keep multi-word number normalization intact.
+        if (!emittedText) {
+          const early =
+            pending.match(/^[\s\S]*?[.!?]+\s/) ||
+            pending.match(/^[\s\S]{15,}?[,;:—–]\s/) ||
+            pending.match(/^[\s\S]{40,}?\s/);
+          if (early) {
+            emitSegment(early[0]);
+            pending = pending.slice(early[0].length);
+          }
+        }
         let match: RegExpMatchArray | null;
         while ((match = pending.match(/^[\s\S]*?[.!?]+\s/))) {
           emitSegment(match[0]);
