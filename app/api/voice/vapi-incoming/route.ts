@@ -191,10 +191,10 @@ export async function POST(req: NextRequest) {
       model: {
         provider:    "custom-llm",
         url:         `${appUrl}/api/voice/vapi-llm`,
-        model:       "silk-resolve-v1",
+        model:       process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash",
         messages:    [{ role: "system", content: buildSystemPrompt(agentRow, meshContext) }],
         temperature: 0.7,
-        maxTokens:   200,
+        maxTokens:   120,
         // Pass agent context so vapi-llm can look up session
         metadata: { agentId: String(agentRow.id), callId },
       },
@@ -205,6 +205,18 @@ export async function POST(req: NextRequest) {
       maxDurationSeconds:     1800,
       backgroundSound:        "off",
       backchannelingEnabled:  false,
+      // Match the website's fast turn-taking on phone calls too: Deepgram nova-2
+      // with tight endpointing + a short pre-reply wait (Vapi default is 0.4s).
+      // NOTE: pins phone STT to English — adjust `language` if you take non-EN calls.
+      transcriber: {
+        provider:    "deepgram",
+        model:       "nova-2",
+        language:    "en",
+        smartFormat: false,
+        numerals:    true,
+        endpointing: 160,
+      },
+      startSpeakingPlan: { waitSeconds: 0.2 },
       analysisPlan: {
         summaryPrompt:            "Summarise this call in 2 sentences: issue raised, outcome, and customer sentiment.",
         successEvaluationPrompt:  "Did the agent resolve the customer's issue? yes/no with brief reason.",

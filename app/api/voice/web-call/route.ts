@@ -103,7 +103,7 @@ VOICE CALL RULES:
       provider: "custom-llm",
       url: `${origin}/api/voice/vapi-llm`,
       timeoutSeconds: 6,
-      model: "gemini-2.0-flash",
+      model: process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash",
       messages: [{ role: "system", content: voicePrompt }],
       temperature: 0.2,
       maxTokens: 80,
@@ -124,6 +124,8 @@ VOICE CALL RULES:
       endpointing: 160,
     },
     silenceTimeoutSeconds: 18,
+    // Vapi waits this long after the caller stops before replying (default 0.4s).
+    startSpeakingPlan: { waitSeconds: 0.2 },
     serverUrl: `${origin}/api/voice/vapi-events`,
     serverMessages: ["end-of-call-report", "status-update", "tool-calls"],
     clientMessages: ["transcript", "hang", "speech-update", "metadata"],
