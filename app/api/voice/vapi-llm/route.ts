@@ -577,6 +577,10 @@ export async function POST(req: NextRequest) {
     if (!key) {
       return Response.json({ debug: true, keyPresent: false, keyLength: 0, model: dbgModel, note: "GEMINI_API_KEY is empty/missing in this deployment's env." });
     }
+    // Non-reversible fingerprint so we can tell if the DEPLOYED key value actually
+    // changed between redeploys, without ever revealing the key itself.
+    const { createHash } = await import("crypto");
+    const keyFingerprint = createHash("sha256").update(key).digest("hex").slice(0, 12);
     try {
       const r = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(dbgModel)}:generateContent?key=${key}`,
@@ -588,9 +592,9 @@ export async function POST(req: NextRequest) {
         }
       );
       const text = await r.text();
-      return Response.json({ debug: true, keyPresent: true, keyLength: key.length, model: dbgModel, httpStatus: r.status, ok: r.ok, body: text.slice(0, 500) });
+      return Response.json({ debug: true, keyPresent: true, keyLength: key.length, keyFingerprint, model: dbgModel, httpStatus: r.status, ok: r.ok, body: text.slice(0, 500) });
     } catch (err) {
-      return Response.json({ debug: true, keyPresent: true, keyLength: key.length, model: dbgModel, error: err instanceof Error ? err.message : String(err) });
+      return Response.json({ debug: true, keyPresent: true, keyLength: key.length, keyFingerprint, model: dbgModel, error: err instanceof Error ? err.message : String(err) });
     }
   }
 
