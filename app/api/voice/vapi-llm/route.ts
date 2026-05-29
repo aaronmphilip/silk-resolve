@@ -573,7 +573,9 @@ export async function POST(req: NextRequest) {
   // raw response. Remove this block once the key is confirmed working.
   if (req.nextUrl.searchParams.get("debug") === "1") {
     const key = process.env.GEMINI_API_KEY?.trim() ?? "";
-    const dbgModel = DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.0-flash";
+    // Allow ?debug=1&model=<name> to probe any model with the same key, so we can
+    // find one that still has free-tier quota.
+    const dbgModel = req.nextUrl.searchParams.get("model")?.trim() || (DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.0-flash");
     if (!key) {
       return Response.json({ debug: true, keyPresent: false, keyLength: 0, model: dbgModel, note: "GEMINI_API_KEY is empty/missing in this deployment's env." });
     }
