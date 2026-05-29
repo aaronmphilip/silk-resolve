@@ -29,9 +29,11 @@ interface VapiReq {
 }
 
 const GEMINI_TIMEOUT_MS = 5_500;
-// gemini-2.0-flash has NO "thinking" stage → lowest first-token latency for voice.
-// Override with GEMINI_MODEL if you set a 2.5/3 key (we disable thinking below).
-const DEFAULT_MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+// Default to gemini-2.5-flash: it's the model the free tier grants quota for on
+// this account (gemini-2.0-flash returns 429 "limit: 0"), and geminiGenerationConfig()
+// disables its "thinking" stage so first-token latency stays low for voice.
+// Override via GEMINI_MODEL if your account's free quota is on a different model.
+const DEFAULT_MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
 const MAX_OUTPUT_TOKENS = 90;
 
 // Gemini 2.5/3 models "think" before answering by default, adding 2–4s of dead
@@ -568,43 +570,11 @@ function streamGemini(args: {
 }
 
 export async function POST(req: NextRequest) {
-  // TEMPORARY diagnostic: GET the real Gemini error without exposing the key.
-  // Hit POST /api/voice/vapi-llm?debug=1 — returns key presence/length + Google's
-  // raw response. Remove this block once the key is confirmed working.
-  if (req.nextUrl.searchParams.get("debug") === "1") {
-    const key = process.env.GEMINI_API_KEY?.trim() ?? "";
-    // Allow ?debug=1&model=<name> to probe any model with the same key, so we can
-    // find one that still has free-tier quota.
-    const dbgModel = req.nextUrl.searchParams.get("model")?.trim() || (DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.0-flash");
-    if (!key) {
-      return Response.json({ debug: true, keyPresent: false, keyLength: 0, model: dbgModel, note: "GEMINI_API_KEY is empty/missing in this deployment's env." });
-    }
-    // Non-reversible fingerprint so we can tell if the DEPLOYED key value actually
-    // changed between redeploys, without ever revealing the key itself.
-    const { createHash } = await import("crypto");
-    const keyFingerprint = createHash("sha256").update(key).digest("hex").slice(0, 12);
-    try {
-      const r = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(dbgModel)}:generateContent?key=${key}`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
-          body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: "Reply with the single word OK." }] }], generationConfig: geminiGenerationConfig(dbgModel) }),
-        }
-      );
-      const text = await r.text();
-      return Response.json({ debug: true, keyPresent: true, keyLength: key.length, keyFingerprint, model: dbgModel, httpStatus: r.status, ok: r.ok, body: text.slice(0, 500) });
-    } catch (err) {
-      return Response.json({ debug: true, keyPresent: true, keyLength: key.length, keyFingerprint, model: dbgModel, error: err instanceof Error ? err.message : String(err) });
-    }
-  }
-
   const body = (await req.json().catch(() => ({}))) as VapiReq;
   const messages = normalizeMessages(body.messages);
   // The server picks the model from env (GEMINI_MODEL), not the client request —
   // this guarantees the thinking-disable config matches the model we actually call.
-  const model = DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.0-flash";
+  const model = DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.5-flash";
   const wantsStream = body.stream !== false;
   const { apiKey, silkEnabled } = getConfig(req);
 

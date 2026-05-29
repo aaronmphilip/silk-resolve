@@ -191,7 +191,7 @@ export async function POST(req: NextRequest) {
       model: {
         provider:    "custom-llm",
         url:         `${appUrl}/api/voice/vapi-llm`,
-        model:       process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash",
+        model:       process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash",
         messages:    [{ role: "system", content: buildSystemPrompt(agentRow, meshContext) }],
         temperature: 0.7,
         maxTokens:   120,
