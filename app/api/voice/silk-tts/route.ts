@@ -391,6 +391,71 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "SILK not configured" }, { status: 404 });
   }
 
+  // TEMPORARY: ?debug=rumik splits Rumik latency into ws-connect time vs time-to-
+  // first-audio-frame, and shows where the socket is hosted — to see if the ~3.5s
+  // is our integration (slow connect) or Rumik's model. ?notext=1 connects without
+  // text (lightweight handshake) to test sending text only over the socket.
+  if (req.nextUrl.searchParams.get("debug") === "rumik") {
+    const noText = req.nextUrl.searchParams.get("notext") === "1";
+    const payload = buildRumikPayload({}, "I can help you with that today.");
+    const t0 = Date.now();
+    try {
+      const connectRes = await fetch(SILK_WS_CONNECT_ENDPOINT, {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${silk.apiKey}`, "Content-Type": "application/json" },
+        body: JSON.stringify(noText ? { model: payload.model } : { model: payload.model, text: payload.text }),
+      });
+      const connectMs = Date.now() - t0;
+      if (!connectRes.ok) {
+        const e = await connectRes.text().catch(() => "");
+        return NextResponse.json({ debug: "rumik", noText, connectMs, connectStatus: connectRes.status, error: e.slice(0, 200) });
+      }
+      const session = await connectRes.json() as { ws_url?: string; token?: string };
+      if (!session.ws_url || !session.token) {
+        return NextResponse.json({ debug: "rumik", noText, connectMs, error: "missing ws_url/token", raw: JSON.stringify(session).slice(0, 200) });
+      }
+      const wsUrl = `${session.ws_url}?token=${encodeURIComponent(session.token)}`;
+      const wsResult = await new Promise<{ firstFrameMs: number; frames: number; bytes: number; reason: string }>((resolve) => {
+        let firstFrameMs = 0, frames = 0, bytes = 0, settled = false;
+        const ws = new WebSocket(wsUrl);
+        const to = setTimeout(() => finish("timeout"), 20_000);
+        function finish(reason: string) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(to);
+          try { ws.close(); } catch {}
+          resolve({ firstFrameMs, frames, bytes, reason });
+        }
+        ws.on("open", () => ws.send(JSON.stringify(payload)));
+        ws.on("message", (data, isBinary) => {
+          if (isBinary) {
+            if (!firstFrameMs) firstFrameMs = Date.now() - t0;
+            frames++;
+            const buf = Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer);
+            bytes += buf.length;
+            if (frames >= 3) finish("got-frames");
+          } else {
+            try {
+              const ev = JSON.parse(data.toString("utf8")) as { type?: string; error?: string };
+              if (ev.error) finish("err:" + ev.error);
+              else if (ev.type === "done") finish("done");
+            } catch {}
+          }
+        });
+        ws.on("error", (err) => finish("wserr:" + (err instanceof Error ? err.message : String(err))));
+        ws.on("close", () => finish("closed"));
+      });
+      return NextResponse.json({
+        debug: "rumik", noText, model: payload.model,
+        connectMs, firstFrameMs: wsResult.firstFrameMs, totalMs: Date.now() - t0,
+        frames: wsResult.frames, bytes: wsResult.bytes, reason: wsResult.reason,
+        wsHost: session.ws_url,
+      });
+    } catch (err) {
+      return NextResponse.json({ debug: "rumik", error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
   let body: VoiceRequestBody;
   try {
     body = await req.json() as VoiceRequestBody;
