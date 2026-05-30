@@ -124,8 +124,8 @@ VOICE CALL RULES:
       endpointing: 160,
     },
     silenceTimeoutSeconds: 18,
-    // Vapi waits this long after the caller stops before replying (default 0.4s).
-    startSpeakingPlan: { waitSeconds: 0.2 },
+    // Do not add extra delay after transcription; MUGA synthesis is the bottleneck.
+    startSpeakingPlan: { waitSeconds: 0 },
     serverUrl: `${origin}/api/voice/vapi-events`,
     serverMessages: ["end-of-call-report", "status-update", "tool-calls"],
     clientMessages: ["transcript", "hang", "speech-update", "metadata"],

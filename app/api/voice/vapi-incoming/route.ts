@@ -216,7 +216,7 @@ export async function POST(req: NextRequest) {
         numerals:    true,
         endpointing: 160,
       },
-      startSpeakingPlan: { waitSeconds: 0.2 },
+      startSpeakingPlan: { waitSeconds: 0 },
       analysisPlan: {
         summaryPrompt:            "Summarise this call in 2 sentences: issue raised, outcome, and customer sentiment.",
         successEvaluationPrompt:  "Did the agent resolve the customer's issue? yes/no with brief reason.",

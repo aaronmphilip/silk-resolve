@@ -25,6 +25,8 @@ const SILK_WS_CONNECT_ENDPOINT = process.env.SILK_TTS_WS_CONNECT_URL?.trim() ||
   SILK_ENDPOINT.replace(/\/v1\/tts\/?$/, "/v1/tts/ws-connect");
 const RUMIK_SAMPLE_RATE = 24000;
 const SUPPORTED_TARGET_RATES = new Set([8000, 16000, 22050, 24000, 44100]);
+const REUSABLE_WS_IDLE_MS = 55_000;
+const WARM_TEXT = "[neutral] Voice stream ready.";
 
 type VoiceRequestBody = {
   type?: string;
@@ -53,6 +55,17 @@ interface WavData {
   channels: number;
   bitsPerSample: number;
 }
+
+interface ReusableRumikSocket {
+  ws: WebSocket;
+  busy: boolean;
+  createdAt: number;
+  lastUsedAt: number;
+  closeTimer?: ReturnType<typeof setTimeout>;
+}
+
+let reusableRumikSocket: ReusableRumikSocket | null = null;
+let reusableRumikConnecting: Promise<ReusableRumikSocket> | null = null;
 
 function extractTextAndSampleRate(body: VoiceRequestBody) {
   const message = body.message;
@@ -221,6 +234,104 @@ function buildRumikPayload(body: VoiceRequestBody, text: string): Record<string,
   return payload;
 }
 
+function isOpenReusableSocket(socket: ReusableRumikSocket | null): socket is ReusableRumikSocket {
+  return Boolean(socket && socket.ws.readyState === WebSocket.OPEN);
+}
+
+function clearReusableSocket(socket = reusableRumikSocket) {
+  if (socket?.closeTimer) clearTimeout(socket.closeTimer);
+  if (socket?.ws.readyState === WebSocket.OPEN || socket?.ws.readyState === WebSocket.CONNECTING) {
+    socket.ws.close();
+  }
+  if (socket === reusableRumikSocket) reusableRumikSocket = null;
+}
+
+function scheduleReusableSocketClose(socket: ReusableRumikSocket) {
+  if (socket.closeTimer) clearTimeout(socket.closeTimer);
+  socket.closeTimer = setTimeout(() => {
+    if (!socket.busy && Date.now() - socket.lastUsedAt >= REUSABLE_WS_IDLE_MS) {
+      clearReusableSocket(socket);
+    }
+  }, REUSABLE_WS_IDLE_MS);
+}
+
+async function createReusableRumikSocket(apiKey: string, seedText: string): Promise<ReusableRumikSocket> {
+  const payload = { model: "muga", text: ensureMugaTone(seedText || WARM_TEXT) };
+  const setupStart = Date.now();
+
+  const connectRes = await fetch(SILK_WS_CONNECT_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(8_000),
+  });
+
+  if (!connectRes.ok) {
+    const err = await connectRes.text().catch(() => "");
+    throw new Error(`Rumik ws-connect ${connectRes.status}: ${err.slice(0, 120)}`);
+  }
+
+  const session = await connectRes.json() as { ws_url?: string; token?: string };
+  if (!session.ws_url || !session.token) {
+    throw new Error("Rumik ws-connect missing ws_url/token");
+  }
+
+  const ws = new WebSocket(`${session.ws_url}?token=${encodeURIComponent(session.token)}`);
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Rumik websocket open timed out")), 8_000);
+    ws.once("open", () => {
+      clearTimeout(timeout);
+      resolve();
+    });
+    ws.once("error", (err) => {
+      clearTimeout(timeout);
+      reject(err);
+    });
+  });
+
+  const socket: ReusableRumikSocket = {
+    ws,
+    busy: false,
+    createdAt: Date.now(),
+    lastUsedAt: Date.now(),
+  };
+
+  ws.on("close", () => {
+    if (reusableRumikSocket === socket) reusableRumikSocket = null;
+  });
+  ws.on("error", (err) => {
+    console.error("[silk-tts] reusable rumik websocket error:", err);
+    clearReusableSocket(socket);
+  });
+
+  console.log(`[silk-tts] reusable rumik websocket ready in ${Date.now() - setupStart}ms`);
+  scheduleReusableSocketClose(socket);
+  return socket;
+}
+
+async function getReusableRumikSocket(apiKey: string, seedText: string): Promise<ReusableRumikSocket> {
+  if (isOpenReusableSocket(reusableRumikSocket)) {
+    return reusableRumikSocket;
+  }
+
+  reusableRumikSocket = null;
+  if (!reusableRumikConnecting) {
+    reusableRumikConnecting = createReusableRumikSocket(apiKey, seedText)
+      .then((socket) => {
+        reusableRumikSocket = socket;
+        return socket;
+      })
+      .finally(() => {
+        reusableRumikConnecting = null;
+      });
+  }
+
+  return reusableRumikConnecting;
+}
+
 async function callRumik(apiKey: string, body: VoiceRequestBody, text: string) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 42_000);
@@ -384,6 +495,140 @@ async function streamRumik(
   }
 }
 
+async function streamRumikReusable(
+  apiKey: string,
+  body: VoiceRequestBody,
+  text: string,
+  targetRate: number
+): Promise<NextResponse | { skipped: true } | { error: string; status: 502 }> {
+  let socket: ReusableRumikSocket;
+  try {
+    socket = await getReusableRumikSocket(apiKey, text);
+  } catch (err) {
+    console.error("[silk-tts] reusable websocket setup failed:", err);
+    return { error: "SILK stream setup failed", status: 502 };
+  }
+
+  if (!isOpenReusableSocket(socket) || socket.busy) {
+    return { skipped: true };
+  }
+
+  socket.busy = true;
+  socket.lastUsedAt = Date.now();
+  if (socket.closeTimer) clearTimeout(socket.closeTimer);
+
+  const payload = buildRumikPayload(body, text);
+  const setupStart = Date.now();
+  const resampler = makeStreamResampler(RUMIK_SAMPLE_RATE, targetRate);
+  const ws = socket.ws;
+
+  const stream = new ReadableStream<Uint8Array>({
+    start(streamController) {
+      let done = false;
+      let firstFrameLogged = false;
+
+      const cleanup = () => {
+        ws.off("message", onMessage);
+        ws.off("error", onError);
+        ws.off("close", onClose);
+        socket.busy = false;
+        socket.lastUsedAt = Date.now();
+        if (isOpenReusableSocket(socket)) {
+          scheduleReusableSocketClose(socket);
+        }
+      };
+
+      const streamTimeout = setTimeout(() => {
+        if (!done) {
+          done = true;
+          cleanup();
+          clearReusableSocket(socket);
+          streamController.error(new Error("SILK stream timed out"));
+        }
+      }, 42_000);
+
+      const closeCleanly = () => {
+        if (done) return;
+        done = true;
+        clearTimeout(streamTimeout);
+        cleanup();
+        streamController.close();
+      };
+
+      const fail = (err: Error) => {
+        if (done) return;
+        done = true;
+        clearTimeout(streamTimeout);
+        cleanup();
+        clearReusableSocket(socket);
+        streamController.error(err);
+      };
+
+      function onMessage(data: WebSocket.RawData, isBinary: boolean) {
+        if (done) return;
+
+        if (isBinary) {
+          if (!firstFrameLogged) {
+            firstFrameLogged = true;
+            console.log(`[silk-tts] reusable rumik first audio frame in ${Date.now() - setupStart}ms`);
+          }
+          const chunk = Buffer.isBuffer(data)
+            ? data
+            : Array.isArray(data)
+              ? Buffer.concat(data)
+              : Buffer.from(data as ArrayBuffer);
+          if (chunk.length > 0) {
+            const out = resampler.push(chunk);
+            if (out.length > 0) streamController.enqueue(new Uint8Array(out));
+          }
+          return;
+        }
+
+        try {
+          const event = JSON.parse(data.toString("utf8")) as { type?: string; error?: string | boolean };
+          if (event.error) {
+            fail(new Error("SILK stream failed"));
+            return;
+          }
+          if (event.type === "done") closeCleanly();
+        } catch {
+          closeCleanly();
+        }
+      }
+
+      function onError(err: Error) {
+        console.error("[silk-tts] reusable rumik websocket error:", err);
+        fail(err);
+      }
+
+      function onClose() {
+        if (!done) fail(new Error("SILK stream closed"));
+      }
+
+      ws.on("message", onMessage);
+      ws.on("error", onError);
+      ws.on("close", onClose);
+      ws.send(JSON.stringify(payload));
+    },
+    cancel() {
+      socket.busy = false;
+      socket.lastUsedAt = Date.now();
+      scheduleReusableSocketClose(socket);
+    },
+  });
+
+  return new NextResponse(stream, {
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Cache-Control": "no-store",
+      "X-Audio-Format": "pcm_s16le",
+      "X-Audio-Sample-Rate": String(targetRate),
+      "X-Audio-Channels": "1",
+      "X-Silk-Transport": "websocket-reuse",
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   const { silk } = await getPlatformVoiceConfig();
 
@@ -410,6 +655,12 @@ export async function POST(req: NextRequest) {
   // Any setup failure falls through to the buffered REST path below.
   const wantsStream = req.nextUrl.searchParams.get("transport") === "ws";
   if (wantsStream && req.nextUrl.searchParams.get("format") !== "wav") {
+    const reusable = await streamRumikReusable(silk.apiKey, body, text, sampleRate);
+    if (!("skipped" in reusable) && !("error" in reusable)) return reusable;
+    if ("error" in reusable) {
+      console.warn("[silk-tts] reusable stream failed before audio, falling back to fresh stream:", reusable.error);
+    }
+
     const streamed = await streamRumik(silk.apiKey, body, text, sampleRate);
     if (!("error" in streamed)) return streamed;
     console.warn("[silk-tts] websocket stream failed before audio, falling back to REST:", streamed.error);
@@ -445,5 +696,29 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[silk-tts] audio conversion error:", err);
     return NextResponse.json({ error: "SILK audio conversion failed" }, { status: 502 });
+  }
+}
+
+export async function GET() {
+  const { silk } = await getPlatformVoiceConfig();
+  if (!silk.apiKey) {
+    return NextResponse.json({ error: "SILK not configured" }, { status: 404 });
+  }
+
+  const startedAt = Date.now();
+  try {
+    const socket = await getReusableRumikSocket(silk.apiKey, WARM_TEXT);
+    return NextResponse.json(
+      {
+        ok: true,
+        reusable: isOpenReusableSocket(socket),
+        busy: socket.busy,
+        warmedMs: Date.now() - startedAt,
+      },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  } catch (err) {
+    console.error("[silk-tts] reusable warm failed:", err);
+    return NextResponse.json({ error: "SILK warm failed" }, { status: 502 });
   }
 }

@@ -149,9 +149,9 @@ VOICE CALL RULES:
     silenceTimeoutSeconds: 18,
     maxDurationSeconds: 1800,
     backchannelingEnabled: false,
-    // Vapi waits this long after the caller stops before the agent replies.
-    // Default is 0.4s; 0.2s shaves perceived reply latency without clipping speech.
-    startSpeakingPlan: { waitSeconds: 0.2 },
+    // Vapi's default extra wait is 0.4s. MUGA already has enough synth latency,
+    // so do not add another delay after the caller stops.
+    startSpeakingPlan: { waitSeconds: 0 },
     clientMessages: [
       "assistant.speechStarted",
       "transcript",
