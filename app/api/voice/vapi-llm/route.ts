@@ -345,11 +345,36 @@ function voiceText(text: string, silkEnabled: boolean, userText: string): string
   return silkEnabled ? withSilkTone(toneFor(userText, human), human) : human;
 }
 
-function toSSE(text: string): Response {
+function fastLeadFor(userText: string, answer: string): string {
+  const cleanAnswer = stripAll(answer).trim();
+  if (!cleanAnswer) return "";
+  if (/^(sure|yes|no|okay|ok|glad|i understand|i can help|let me)\b[,.!]?/i.test(cleanAnswer)) return "";
+
+  const text = userText.toLowerCase();
+  if (/\b(thanks|thank you)\b/.test(text)) return "";
+  if (/\b(angry|furious|terrible|worst|scam|fraud|cheated|not happy|frustrated|upset|complaint)\b/.test(text)) {
+    return "I understand.";
+  }
+  return "Sure.";
+}
+
+function splitTonePrefix(text: string): { prefix: string; rest: string } {
+  const match = text.match(/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]\s*/i);
+  if (!match) return { prefix: "", rest: text };
+  return { prefix: match[0].trim() + " ", rest: text.slice(match[0].length).trim() };
+}
+
+function toSSE(text: string, fastLead = ""): Response {
   const id = `chatcmpl-${Date.now()}`;
+  const { prefix, rest } = splitTonePrefix(text);
   const lines = [
     `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { role: "assistant" }, index: 0, finish_reason: null }] })}`,
-    `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { content: text }, index: 0, finish_reason: null }] })}`,
+    ...(fastLead ? [
+      `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { content: `${prefix}${fastLead}` }, index: 0, finish_reason: null }] })}`,
+      ...(rest ? [`data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { content: ` ${rest}` }, index: 0, finish_reason: null }] })}`] : []),
+    ] : [
+      `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { content: text }, index: 0, finish_reason: null }] })}`,
+    ]),
     `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: {}, index: 0, finish_reason: "stop" }] })}`,
     "data: [DONE]",
     "",
@@ -391,7 +416,7 @@ function toJSON(text: string, model: string): Response {
 
 function reply(text: string, wantsStream: boolean, model: string, silkEnabled: boolean, userText: string): Response {
   const spoken = voiceText(text, silkEnabled, userText);
-  return wantsStream ? toSSE(spoken) : toJSON(spoken, model);
+  return wantsStream ? toSSE(spoken, silkEnabled ? fastLeadFor(userText, spoken) : "") : toJSON(spoken, model);
 }
 
 async function callGemini(args: {
@@ -451,6 +476,7 @@ function streamGemini(args: {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let emittedText = false;
+      let emittedAnswerText = false;
       let buffer = "";   // SSE line buffer
       let pending = "";  // raw model text not yet emitted as a complete sentence
       const startedAt = Date.now();
@@ -459,9 +485,10 @@ function streamGemini(args: {
       // Emit one speakable segment. We normalize a COMPLETE sentence at a time:
       // normalizing per raw token stripped inter-token spaces and merged words
       // ("four" + " hundred" -> "fourhundred") and broke multi-word number fixes.
-      function emitSegment(raw: string) {
+      function emitSegment(raw: string, isLead = false) {
         const clean = normalizeSpeechText(raw);
         if (!clean.trim()) return;
+        if (!isLead) emittedAnswerText = true;
 
         if (!emittedText) {
           emittedText = true;
@@ -483,7 +510,7 @@ function streamGemini(args: {
         // first clause break (>=15 chars), else once ~40 chars have built up —
         // whichever comes first. Later chunks stay sentence-buffered for smoother
         // prosody and to keep multi-word number normalization intact.
-        if (!emittedText) {
+        if (!emittedAnswerText) {
           const early =
             pending.match(/^[\s\S]*?[.!?]+\s/) ||
             pending.match(/^[\s\S]{15,}?[,;:—–]\s/) ||
@@ -506,6 +533,8 @@ function streamGemini(args: {
 
       try {
         controller.enqueue(encoder.encode(sseChunk(id, { role: "assistant" }, null)));
+        const lead = silkEnabled ? fastLeadFor(userText, "response") : "";
+        if (lead) emitSegment(lead, true);
 
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${apiKey}`,
@@ -561,12 +590,12 @@ function streamGemini(args: {
         }
 
         flushPending(true);
-        if (!emittedText) emitSegment(fallback || OUT_OF_SCOPE_RESPONSE);
+        if (!emittedAnswerText) emitSegment(fallback || OUT_OF_SCOPE_RESPONSE);
         console.log(`[vapi-llm] gemini stream first-chunk=${firstChunkAt ? firstChunkAt - startedAt : -1}ms total=${Date.now() - startedAt}ms`);
       } catch (err) {
         console.error("[vapi-llm] Gemini stream failed:", err);
         flushPending(true);
-        if (!emittedText) emitSegment(fallback || OUT_OF_SCOPE_RESPONSE);
+        if (!emittedAnswerText) emitSegment(fallback || OUT_OF_SCOPE_RESPONSE);
       } finally {
         controller.enqueue(encoder.encode(sseChunk(id, {}, "stop")));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));

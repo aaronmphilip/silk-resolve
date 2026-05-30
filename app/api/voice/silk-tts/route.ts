@@ -25,7 +25,7 @@ const SILK_WS_CONNECT_ENDPOINT = process.env.SILK_TTS_WS_CONNECT_URL?.trim() ||
   SILK_ENDPOINT.replace(/\/v1\/tts\/?$/, "/v1/tts/ws-connect");
 const RUMIK_SAMPLE_RATE = 24000;
 const SUPPORTED_TARGET_RATES = new Set([8000, 16000, 22050, 24000, 44100]);
-const REUSABLE_WS_IDLE_MS = 55_000;
+const REUSABLE_WS_IDLE_MS = 5 * 60_000;
 const WARM_TEXT = "[neutral] Voice stream ready.";
 
 type VoiceRequestBody = {

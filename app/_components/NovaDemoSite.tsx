@@ -197,6 +197,10 @@ function WarmMugaSocketScript() {
   } else {
     warm();
   }
+
+  window.setInterval(function() {
+    if (!document.hidden) warm();
+  }, 45000);
 })();
 `.trim();
 
