@@ -14,6 +14,8 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import WebSocket from "ws";
+import { readFileSync } from "fs";
+import path from "path";
 import { getPlatformVoiceConfig } from "@/lib/platform";
 import { extractSilkTone, stripAll, stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
 
@@ -27,6 +29,7 @@ const RUMIK_SAMPLE_RATE = 24000;
 const SUPPORTED_TARGET_RATES = new Set([8000, 16000, 22050, 24000, 44100]);
 const REUSABLE_WS_IDLE_MS = 5 * 60_000;
 const WARM_TEXT = "[neutral] Voice stream ready.";
+const FAST_LEAD_AUDIO_PATH = path.join(process.cwd(), "public", "audio", "muga-got-it-24k.pcm");
 
 type VoiceRequestBody = {
   type?: string;
@@ -66,6 +69,7 @@ interface ReusableRumikSocket {
 
 let reusableRumikSocket: ReusableRumikSocket | null = null;
 let reusableRumikConnecting: Promise<ReusableRumikSocket> | null = null;
+let fastLeadAudio: Buffer | null = null;
 
 function extractTextAndSampleRate(body: VoiceRequestBody) {
   const message = body.message;
@@ -84,6 +88,24 @@ function extractTextAndSampleRate(body: VoiceRequestBody) {
 function ensureMugaTone(text: string): string {
   const { tone, text: clean } = extractSilkTone(text, "neutral");
   return withSilkTone(tone, stripAll(clean));
+}
+
+function isFastLeadText(text: string): boolean {
+  return stripAll(text)
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim() === "got it";
+}
+
+function getFastLeadAudio(targetRate: number): Buffer | null {
+  try {
+    fastLeadAudio ??= readFileSync(FAST_LEAD_AUDIO_PATH);
+    return resamplePcm16Mono(fastLeadAudio, RUMIK_SAMPLE_RATE, targetRate);
+  } catch (err) {
+    console.error("[silk-tts] fast lead audio unavailable:", err);
+    return null;
+  }
 }
 
 function parseWav(buffer: Buffer): WavData {
@@ -655,6 +677,22 @@ export async function POST(req: NextRequest) {
   // Any setup failure falls through to the buffered REST path below.
   const wantsStream = req.nextUrl.searchParams.get("transport") === "ws";
   if (wantsStream && req.nextUrl.searchParams.get("format") !== "wav") {
+    if (isFastLeadText(text)) {
+      const pcm = getFastLeadAudio(sampleRate);
+      if (pcm) {
+        return new NextResponse(new Uint8Array(pcm), {
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Cache-Control": "no-store",
+            "X-Audio-Format": "pcm_s16le",
+            "X-Audio-Sample-Rate": String(sampleRate),
+            "X-Audio-Channels": "1",
+            "X-Silk-Transport": "cached-muga-lead",
+          },
+        });
+      }
+    }
+
     const reusable = await streamRumikReusable(silk.apiKey, body, text, sampleRate);
     if (!("skipped" in reusable) && !("error" in reusable)) return reusable;
     if ("error" in reusable) {
