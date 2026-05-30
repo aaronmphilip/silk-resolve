@@ -14,8 +14,6 @@ import { getPlatformVoiceConfig } from "@/lib/platform";
 import { withSilkTone } from "@/lib/voice-emotion";
 
 export const runtime = "nodejs";
-const SILK_FAST_FALLBACK_MS = 100;
-const SILK_FAST_TIMEOUT_SECONDS = 1.1;
 
 function svc() {
   return createClient(
@@ -218,7 +216,7 @@ export async function POST(req: NextRequest) {
         numerals:    true,
         endpointing: 160,
       },
-      startSpeakingPlan: { waitSeconds: 0 },
+      startSpeakingPlan: { waitSeconds: 0.2 },
       analysisPlan: {
         summaryPrompt:            "Summarise this call in 2 sentences: issue raised, outcome, and customer sentiment.",
         successEvaluationPrompt:  "Did the agent resolve the customer's issue? yes/no with brief reason.",
@@ -238,11 +236,7 @@ export async function POST(req: NextRequest) {
     if (useSilkVoice) {
       vapiAssistant.voice = {
         provider: "custom-voice",
-        server: {
-          url: `${appUrl}/api/voice/silk-tts?transport=ws&fastFallbackMs=${SILK_FAST_FALLBACK_MS}`,
-          timeoutSeconds: SILK_FAST_TIMEOUT_SECONDS,
-        },
-        fallbackPlan: { voices: [{ provider: "vapi", voiceId: "Neha" }] },
+        server:   { url: `${appUrl}/api/voice/silk-tts?transport=ws`, timeoutSeconds: 45 },
       };
     } else {
       vapiAssistant.voice = { provider: "vapi", voiceId: "Neha" };

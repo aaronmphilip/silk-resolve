@@ -25,8 +25,6 @@ const SILK_WS_CONNECT_ENDPOINT = process.env.SILK_TTS_WS_CONNECT_URL?.trim() ||
   SILK_ENDPOINT.replace(/\/v1\/tts\/?$/, "/v1/tts/ws-connect");
 const RUMIK_SAMPLE_RATE = 24000;
 const SUPPORTED_TARGET_RATES = new Set([8000, 16000, 22050, 24000, 44100]);
-const MIN_FAST_FALLBACK_MS = 100;
-const MAX_FAST_FALLBACK_MS = 3_000;
 
 type VoiceRequestBody = {
   type?: string;
@@ -137,15 +135,6 @@ function resamplePcm16Mono(input: Buffer, fromRate: number, toRate: number): Buf
   }
 
   return output;
-}
-
-function parseFastFallbackMs(req: NextRequest): number | null {
-  const raw = req.nextUrl.searchParams.get("fastFallbackMs");
-  if (!raw) return null;
-
-  const ms = Number.parseInt(raw, 10);
-  if (!Number.isFinite(ms) || ms <= 0) return null;
-  return Math.min(MAX_FAST_FALLBACK_MS, Math.max(MIN_FAST_FALLBACK_MS, ms));
 }
 
 /**
@@ -395,216 +384,6 @@ async function streamRumik(
   }
 }
 
-async function streamRumikWithFirstAudioDeadline(
-  apiKey: string,
-  body: VoiceRequestBody,
-  text: string,
-  targetRate: number,
-  firstAudioDeadlineMs: number
-): Promise<NextResponse | { error: string; status: 502 | 504 }> {
-  const payload = buildRumikPayload(body, text);
-  const setupStart = Date.now();
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), Math.min(8_000, firstAudioDeadlineMs));
-
-  try {
-    const connectRes = await fetch(SILK_WS_CONNECT_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ model: payload.model, text: payload.text }),
-      signal: controller.signal,
-    });
-
-    if (!connectRes.ok) {
-      const err = await connectRes.text().catch(() => "");
-      console.error("[silk-tts] rumik fast ws-connect error:", connectRes.status, err);
-      return { error: "SILK stream setup failed", status: 502 };
-    }
-
-    const session = await connectRes.json() as { ws_url?: string; token?: string };
-    if (!session.ws_url || !session.token) {
-      console.error("[silk-tts] rumik fast ws-connect missing ws_url/token");
-      return { error: "SILK stream setup failed", status: 502 };
-    }
-
-    const elapsedAfterConnect = Date.now() - setupStart;
-    if (elapsedAfterConnect >= firstAudioDeadlineMs) {
-      console.warn(`[silk-tts] fast fallback before websocket open: ${elapsedAfterConnect}ms`);
-      return { error: "SILK first audio exceeded fast fallback budget", status: 504 };
-    }
-
-    const wsUrl = `${session.ws_url}?token=${encodeURIComponent(session.token)}`;
-    const ws = new WebSocket(wsUrl);
-    const resampler = makeStreamResampler(RUMIK_SAMPLE_RATE, targetRate);
-
-    const first = await new Promise<
-      | { ok: true; chunk: Buffer }
-      | { ok: false; status: 502 | 504; error: string }
-    >((resolve) => {
-      let settled = false;
-      const remainingMs = Math.max(1, firstAudioDeadlineMs - (Date.now() - setupStart));
-      const deadline = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        resolve({ ok: false, status: 504, error: "SILK first audio exceeded fast fallback budget" });
-      }, remainingMs);
-
-      function settle(value:
-        | { ok: true; chunk: Buffer }
-        | { ok: false; status: 502 | 504; error: string }
-      ) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(deadline);
-        resolve(value);
-      }
-
-      ws.on("open", () => {
-        ws.send(JSON.stringify(payload));
-      });
-
-      ws.on("message", (data, isBinary) => {
-        if (settled) return;
-
-        if (isBinary) {
-          const chunk = Buffer.isBuffer(data)
-            ? data
-            : Array.isArray(data)
-              ? Buffer.concat(data)
-              : Buffer.from(data as ArrayBuffer);
-          if (chunk.length === 0) return;
-
-          const out = resampler.push(chunk);
-          if (out.length > 0) settle({ ok: true, chunk: out });
-          return;
-        }
-
-        try {
-          const event = JSON.parse(data.toString("utf8")) as { type?: string; error?: string | boolean };
-          if (event.error) {
-            settle({ ok: false, status: 502, error: "SILK stream failed before audio" });
-          }
-        } catch {
-          settle({ ok: false, status: 502, error: "SILK stream closed before audio" });
-        }
-      });
-
-      ws.on("error", () => {
-        settle({ ok: false, status: 502, error: "SILK stream unavailable" });
-      });
-
-      ws.on("close", () => {
-        settle({ ok: false, status: 502, error: "SILK stream closed before audio" });
-      });
-    });
-
-    if (!first.ok) {
-      ws.close();
-      console.warn(`[silk-tts] fast fallback after ${Date.now() - setupStart}ms: ${first.error}`);
-      return { error: first.error, status: first.status };
-    }
-
-    console.log(`[silk-tts] rumik first audio met fast budget in ${Date.now() - setupStart}ms`);
-    ws.removeAllListeners("message");
-    ws.removeAllListeners("error");
-    ws.removeAllListeners("close");
-
-    const stream = new ReadableStream<Uint8Array>({
-      start(streamController) {
-        let done = false;
-        const streamTimeout = setTimeout(() => {
-          if (!done) {
-            done = true;
-            ws.close();
-            streamController.error(new Error("SILK stream timed out"));
-          }
-        }, 42_000);
-
-        const closeCleanly = () => {
-          if (done) return;
-          done = true;
-          clearTimeout(streamTimeout);
-          streamController.close();
-          ws.close();
-        };
-
-        streamController.enqueue(new Uint8Array(first.chunk));
-
-        ws.on("message", (data, isBinary) => {
-          if (done) return;
-
-          if (isBinary) {
-            const chunk = Buffer.isBuffer(data)
-              ? data
-              : Array.isArray(data)
-                ? Buffer.concat(data)
-                : Buffer.from(data as ArrayBuffer);
-            if (chunk.length > 0) {
-              const out = resampler.push(chunk);
-              if (out.length > 0) streamController.enqueue(new Uint8Array(out));
-            }
-            return;
-          }
-
-          try {
-            const event = JSON.parse(data.toString("utf8")) as { type?: string; error?: string | boolean };
-            if (event.error) {
-              done = true;
-              clearTimeout(streamTimeout);
-              ws.close();
-              streamController.error(new Error("SILK stream failed"));
-              return;
-            }
-            if (event.type === "done") closeCleanly();
-          } catch {
-            closeCleanly();
-          }
-        });
-
-        ws.on("error", (err) => {
-          if (done) return;
-          done = true;
-          clearTimeout(streamTimeout);
-          console.error("[silk-tts] rumik fast websocket error:", err);
-          streamController.error(err);
-        });
-
-        ws.on("close", () => {
-          if (!done) closeCleanly();
-        });
-      },
-      cancel() {
-        ws.close();
-      },
-    });
-
-    return new NextResponse(stream, {
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "Cache-Control": "no-store",
-        "X-Audio-Format": "pcm_s16le",
-        "X-Audio-Sample-Rate": String(targetRate),
-        "X-Audio-Channels": "1",
-        "X-Silk-Transport": "websocket",
-        "X-Silk-Fast-Fallback-Ms": String(firstAudioDeadlineMs),
-      },
-    });
-  } catch (err) {
-    console.error("[silk-tts] rumik fast stream setup error:", err);
-    return {
-      error: err instanceof Error && err.name === "AbortError"
-        ? "SILK first audio exceeded fast fallback budget"
-        : "SILK stream unavailable",
-      status: err instanceof Error && err.name === "AbortError" ? 504 : 502,
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
 export async function POST(req: NextRequest) {
   const { silk } = await getPlatformVoiceConfig();
 
@@ -630,15 +409,9 @@ export async function POST(req: NextRequest) {
   // so speech starts on the first frame instead of waiting for the whole WAV.
   // Any setup failure falls through to the buffered REST path below.
   const wantsStream = req.nextUrl.searchParams.get("transport") === "ws";
-  const fastFallbackMs = parseFastFallbackMs(req);
   if (wantsStream && req.nextUrl.searchParams.get("format") !== "wav") {
-    const streamed = fastFallbackMs
-      ? await streamRumikWithFirstAudioDeadline(silk.apiKey, body, text, sampleRate, fastFallbackMs)
-      : await streamRumik(silk.apiKey, body, text, sampleRate);
+    const streamed = await streamRumik(silk.apiKey, body, text, sampleRate);
     if (!("error" in streamed)) return streamed;
-    if (fastFallbackMs) {
-      return NextResponse.json({ error: streamed.error }, { status: streamed.status });
-    }
     console.warn("[silk-tts] websocket stream failed before audio, falling back to REST:", streamed.error);
   }
 
