@@ -348,14 +348,14 @@ function voiceText(text: string, silkEnabled: boolean, userText: string): string
 function fastLeadFor(userText: string, answer: string): string {
   const cleanAnswer = stripAll(answer).trim();
   if (!cleanAnswer) return "";
-  if (/^(sure|yes|no|okay|ok|glad|i understand|i can help|let me)\b[,.!]?/i.test(cleanAnswer)) return "";
+  if (/^(sure|yes|no|okay|ok|got it|glad|i understand|i can help|let me)\b[,.!]?/i.test(cleanAnswer)) return "";
 
   const text = userText.toLowerCase();
   if (/\b(thanks|thank you)\b/.test(text)) return "";
   if (/\b(angry|furious|terrible|worst|scam|fraud|cheated|not happy|frustrated|upset|complaint)\b/.test(text)) {
     return "I understand.";
   }
-  return "Sure.";
+  return "Got it.";
 }
 
 function splitTonePrefix(text: string): { prefix: string; rest: string } {
