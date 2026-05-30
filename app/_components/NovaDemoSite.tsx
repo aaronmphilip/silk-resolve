@@ -41,6 +41,7 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
 
   return (
     <>
+      {voiceMode !== "vapi" && <WarmMugaSocketScript />}
       <WidgetScript agentId={NOVACARE_AGENT_ID} voiceMode={voiceMode} label={site.cta} color={site.color} />
 
       <div className="min-h-screen bg-white text-[#111] font-sans">
@@ -176,6 +177,30 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
       </div>
     </>
   );
+}
+
+function WarmMugaSocketScript() {
+  const snippet = `
+(function() {
+  var warm = function() {
+    try {
+      fetch('/api/voice/silk-tts', {
+        method: 'GET',
+        cache: 'no-store',
+        keepalive: true
+      }).catch(function() {});
+    } catch (error) {}
+  };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', warm, { once: true });
+  } else {
+    warm();
+  }
+})();
+`.trim();
+
+  return <script id="silk-resolve-muga-warm" dangerouslySetInnerHTML={{ __html: snippet }} />;
 }
 
 function WidgetScript({ agentId, voiceMode, label, color }: { agentId: string; voiceMode: VoiceMode; label: string; color: string }) {
