@@ -13,6 +13,8 @@ import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
 import { stripAll, withSilkTone } from "@/lib/voice-emotion";
 
 export const runtime = "nodejs";
+const SILK_FAST_FALLBACK_MS = 100;
+const SILK_FAST_TIMEOUT_SECONDS = 1.1;
 
 function cleanSpokenText(text: string): string {
   return text
@@ -89,7 +91,10 @@ VOICE CALL RULES:
   const voice = useSilkVoice
     ? {
         provider: "custom-voice",
-        server: { url: `${origin}/api/voice/silk-tts?transport=ws`, timeoutSeconds: 45 },
+        server: {
+          url: `${origin}/api/voice/silk-tts?transport=ws&fastFallbackMs=${SILK_FAST_FALLBACK_MS}`,
+          timeoutSeconds: SILK_FAST_TIMEOUT_SECONDS,
+        },
         fallbackPlan: {
           voices: [{ provider: "vapi", voiceId: "Neha" }],
         },
@@ -124,8 +129,8 @@ VOICE CALL RULES:
       endpointing: 160,
     },
     silenceTimeoutSeconds: 18,
-    // Vapi waits this long after the caller stops before replying (default 0.4s).
-    startSpeakingPlan: { waitSeconds: 0.2 },
+    // MUGA gets a 100ms first-audio budget, then Vapi native fallback speaks.
+    startSpeakingPlan: { waitSeconds: 0 },
     serverUrl: `${origin}/api/voice/vapi-events`,
     serverMessages: ["end-of-call-report", "status-update", "tool-calls"],
     clientMessages: ["transcript", "hang", "speech-update", "metadata"],

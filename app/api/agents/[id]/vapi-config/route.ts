@@ -16,6 +16,8 @@ import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
 import { withSilkTone, stripAll } from "@/lib/voice-emotion";
 
 type Ctx = { params: Promise<{ id: string }> };
+const SILK_FAST_FALLBACK_MS = 100;
+const SILK_FAST_TIMEOUT_SECONDS = 1.1;
 
 function deriveOrigin(req: NextRequest): string {
   const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000")
@@ -87,11 +89,11 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   // Always stream Rumik MUGA over WebSocket (realtime). silk-tts resamples on the
   // fly and falls back to buffered REST internally if the stream can't be set up,
   // so there's no downside to defaulting every SILK call to the streaming path.
-  const silkTransport = useSilkVoice ? "?transport=ws" : "";
+  const silkTransport = useSilkVoice ? `?transport=ws&fastFallbackMs=${SILK_FAST_FALLBACK_MS}` : "";
   const voice = useSilkVoice
     ? {
         provider: "custom-voice",
-        server: { url: `${origin}/api/voice/silk-tts${silkTransport}`, timeoutSeconds: 45 },
+        server: { url: `${origin}/api/voice/silk-tts${silkTransport}`, timeoutSeconds: SILK_FAST_TIMEOUT_SECONDS },
         fallbackPlan: { voices: [{ provider: "vapi", voiceId: "Neha" }] },
       }
     : { provider: "vapi", voiceId: "Neha" };
@@ -149,9 +151,9 @@ VOICE CALL RULES:
     silenceTimeoutSeconds: 18,
     maxDurationSeconds: 1800,
     backchannelingEnabled: false,
-    // Vapi waits this long after the caller stops before the agent replies.
-    // Default is 0.4s; 0.2s shaves perceived reply latency without clipping speech.
-    startSpeakingPlan: { waitSeconds: 0.2 },
+    // Keep perceived reply latency low: MUGA gets a 100ms first-audio budget,
+    // then Vapi falls back to its native voice. Extra wait here only adds lag.
+    startSpeakingPlan: { waitSeconds: 0 },
     clientMessages: [
       "assistant.speechStarted",
       "transcript",
