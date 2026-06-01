@@ -32,10 +32,32 @@ const COMMON_PATTERNS = [
   /\b(renew|renewal|auto renew|expire)\b/i,
   /\b(exclude|excluded|not covered|cosmetic)\b/i,
   /\b(claim status|status|policy id|claim id|account|my policy|my claim)\b/i,
-  /\b(moon|mars|space|alien|car insurance|bike insurance|vehicle insurance|life insurance|stock|crypto|weather|flight|hotel|restaurant|pizza|capital of)\b/i,
   /\b(phone|email|support|contact|emergency|helpline|number)\b/i,
   /\b(who are you|about|company|novacare)\b/i,
 ];
+
+const CLEAR_OUT_OF_SCOPE_PATTERNS = [
+  /\b(moon|mars|space|alien)\b/i,
+  /\b(cook|cooking|recipe|pasta|pizza|restaurant)\b/i,
+  /\b(car insurance|bike insurance|vehicle insurance|life insurance)\b/i,
+  /\b(stock|crypto|weather|flight|hotel|movie|song|cricket|football)\b/i,
+  /\b(javascript|python|coding|homework|capital of|loan|bank account)\b/i,
+];
+
+const NOVACARE_INTENT_PATTERNS = [
+  /\b(novacare|health|insurance|insurer|policy|plan|premium|price|pricing|cost|monthly)\b/i,
+  /\b(coverage|cover|covered|insured|benefit|claim|preauth|pre-auth|pre auth|cashless)\b/i,
+  /\b(reimburse|reimbursement|hospital|network|icu|opd|ambulance|maternity|waiting)\b/i,
+  /\b(pre existing|pre-existing|existing disease|dental|doctor|medicine|surgery|treatment)\b/i,
+  /\b(emergency|support|contact|helpline|email|phone|app|customer|service)\b/i,
+  /\b(add family|family member|dependent|dependents|mother|father|parent|spouse|wife|husband|child|children)\b/i,
+  /\b(renew|renewal|expire|exclude|excluded|not covered|cosmetic|status|account)\b/i,
+  /\b(who are you|what do you|what can you|help|company|about)\b/i,
+];
+
+function isSmallTalkPrompt(text: string): boolean {
+  return /^(hi|hello|hey|thanks|thank you|bye|goodbye)[\s.!?]*$/i.test(text.trim());
+}
 
 function stripVoiceMarkers(text: string): string {
   return text
@@ -54,6 +76,8 @@ function normalizeSpeechKey(text: string): string {
 }
 
 function bridgeForPrompt(text: string): string {
+  if (CLEAR_OUT_OF_SCOPE_PATTERNS.some((pattern) => pattern.test(text))) return "";
+  if (!isSmallTalkPrompt(text) && !NOVACARE_INTENT_PATTERNS.some((pattern) => pattern.test(text))) return "";
   if (COMMON_PATTERNS.some((pattern) => pattern.test(text))) return "";
   if (/\b(angry|furious|terrible|worst|scam|fraud|cheated|not happy|frustrated|upset|complaint)\b/i.test(text)) {
     return "I understand.";
