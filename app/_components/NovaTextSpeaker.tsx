@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { Loader2, Send, Square, Volume2 } from "lucide-react";
 
 interface NovaTextSpeakerProps {
@@ -13,6 +13,12 @@ const SAMPLE_QUESTIONS = [
   "What are the plans?",
   "How do claims work?",
   "Do you have network hospitals?",
+];
+
+const PREFETCHED_BRIDGE_PHRASES = [
+  "Let me check that.",
+  "I understand.",
+  "Got it.",
 ];
 
 const COMMON_PATTERNS = [
@@ -72,6 +78,35 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const runIdRef = useRef(0);
   const audioQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const prefetchedAudioRef = useRef(new Map<string, { audio: ArrayBuffer; sampleRate: number }>());
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function prefetchBridgeAudio() {
+      fetch("/api/voice/silk-tts", { method: "GET", cache: "no-store" }).catch(() => {});
+
+      await Promise.all(PREFETCHED_BRIDGE_PHRASES.map(async (phrase) => {
+        try {
+          const res = await fetch("/api/voice/silk-tts?transport=ws", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: `[neutral] ${phrase}`, sampleRate: 24000 }),
+          });
+          if (!res.ok || cancelled) return;
+          prefetchedAudioRef.current.set(normalizeSpeechKey(phrase), {
+            audio: await res.arrayBuffer(),
+            sampleRate: Number(res.headers.get("x-audio-sample-rate") ?? 24000),
+          });
+        } catch {}
+      }));
+    }
+
+    void prefetchBridgeAudio();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function stopCurrentSource() {
     try {
@@ -125,6 +160,13 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
     audioQueueRef.current = audioQueueRef.current
       .then(async () => {
         if (runId !== runIdRef.current) return;
+        const prefetched = prefetchedAudioRef.current.get(normalizeSpeechKey(speakable));
+        if (prefetched) {
+          setTransport("prefetched-muga-audio");
+          await playPcm(prefetched.audio, prefetched.sampleRate, runId);
+          return;
+        }
+
         const res = await fetch("/api/voice/silk-tts?transport=ws", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
