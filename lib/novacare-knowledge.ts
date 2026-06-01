@@ -73,6 +73,90 @@ export const NOVACARE_FACTS = {
     "NovaCare support is available twenty four seven by phone, app chat, email at support at novacare dot in, and the customer app.",
 } as const;
 
+export const MUGA_CACHED_AUDIO = [
+  {
+    id: "lead-got-it",
+    text: "Got it.",
+    audioFile: "muga-got-it-24k.pcm",
+  },
+  {
+    id: "lead-check",
+    text: "Let me check that.",
+    audioFile: "muga-let-me-check-that-24k.pcm",
+  },
+  {
+    id: "lead-empathy",
+    text: "I understand.",
+    audioFile: "muga-i-understand-24k.pcm",
+  },
+  {
+    id: "plans",
+    text:
+      "For NovaCare, Basic is four hundred ninety nine rupees per month for one adult. Standard is eight hundred ninety nine rupees for two adults and two children. Premium is one thousand four hundred ninety nine rupees for a full family. For most families, Standard is the practical starting point.",
+    audioFile: "novacare-plans-24k.pcm",
+  },
+  {
+    id: "plan-basic",
+    text:
+      "NovaCare Basic is four hundred ninety nine rupees per month, with three lakh rupees sum insured for one adult. It includes cashless hospitalization, I C U cover, road ambulance up to two thousand rupees per claim, and one free annual health check.",
+    audioFile: "novacare-plan-basic-24k.pcm",
+  },
+  {
+    id: "plan-standard",
+    text:
+      "NovaCare Standard is eight hundred ninety nine rupees per month, with five lakh rupees sum insured for two adults and two children. It includes cashless hospitalization, O P D cover up to ten thousand rupees per year, maternity add-on eligibility, and free tele-consultations.",
+    audioFile: "novacare-plan-standard-24k.pcm",
+  },
+  {
+    id: "plan-premium",
+    text:
+      "NovaCare Premium is one thousand four hundred ninety nine rupees per month, with ten lakh rupees sum insured for a full family. It includes O P D cover up to twenty five thousand rupees per year, a critical illness rider, international emergency support, and private-room eligibility.",
+    audioFile: "novacare-plan-premium-24k.pcm",
+  },
+  {
+    id: "coverage",
+    text:
+      "Basic covers three lakh rupees, Standard covers five lakh rupees, and Premium covers ten lakh rupees. Hospitalization, I C U, ambulance, and annual health check are included across all plans.",
+    audioFile: "novacare-coverage-24k.pcm",
+  },
+  {
+    id: "claims",
+    text:
+      "For a cashless claim, go to a network hospital and show your NovaCare e-card. The hospital sends pre-auth to NovaCare, and the normal target time is thirty minutes. Keep your policy ID, e-card, government ID, diagnosis note, and admission request ready.",
+    audioFile: "novacare-claims-24k.pcm",
+  },
+  {
+    id: "network-hospitals",
+    text:
+      "NovaCare has over ten thousand cashless network hospitals across India, including Apollo, Fortis, Max, Manipal, Narayana Health, Medanta, and Aster partner hospitals.",
+    audioFile: "novacare-network-hospitals-24k.pcm",
+  },
+  {
+    id: "reimbursement",
+    text:
+      "For reimbursement, pay the hospital, then upload bills, the discharge summary, prescriptions, and bank details in the NovaCare app. Approved claims are usually paid within seven working days.",
+    audioFile: "novacare-reimbursement-24k.pcm",
+  },
+  {
+    id: "waiting",
+    text:
+      "All plans have a thirty day general waiting period. Pre-existing conditions are covered after two years of continuous NovaCare coverage. Maternity cover is available on Standard and Premium with a two year waiting period.",
+    audioFile: "novacare-waiting-24k.pcm",
+  },
+  {
+    id: "support",
+    text:
+      "For emergency admission, call one eight zero zero, six six eight, two two seven three. You can also use app chat or email support at support at novacare dot in.",
+    audioFile: "novacare-support-24k.pcm",
+  },
+  {
+    id: "about",
+    text:
+      "NovaCare is an I R D A I registered health insurer founded in twenty eighteen in Mumbai. It serves two point four million active policyholders across India and has a ninety eight point two percent claim settlement rate.",
+    audioFile: "novacare-about-24k.pcm",
+  },
+] as const;
+
 export const NOVACARE_SAMPLE_CUSTOMERS = [
   {
     name: "Aarav Mehta",
@@ -170,41 +254,62 @@ function planLine(plan: typeof NOVACARE_PLANS[number]): string {
   return `${plan.name} is ${plan.spokenPrice}, with ${plan.sumInsured} sum insured for ${plan.audience}.`;
 }
 
+function cachedAudioText(id: typeof MUGA_CACHED_AUDIO[number]["id"]): string {
+  return MUGA_CACHED_AUDIO.find((item) => item.id === id)?.text ?? "";
+}
+
+export function normalizeMugaCacheText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]\s*/i, "")
+    .replace(/<(laugh|sigh|hmm|pause|breathe)>/gi, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function cachedMugaAudioForText(text: string): typeof MUGA_CACHED_AUDIO[number] | null {
+  const key = normalizeMugaCacheText(text);
+  return MUGA_CACHED_AUDIO.find((item) => normalizeMugaCacheText(item.text) === key) ?? null;
+}
+
 export function answerNovaCareQuestion(userText: string): string {
   const text = userText.toLowerCase();
   if (!text.trim()) return "";
 
   const selectedPlan = planByText(text);
   if (selectedPlan && hasAny(text, ["price", "cost", "premium", "coverage", "cover", "insured", "benefit", "include", "plan"])) {
-    return `${planLine(selectedPlan)} It includes ${selectedPlan.highlights.slice(0, 3).join(", ")}.`;
+    if (selectedPlan.name.endsWith("Basic")) return cachedAudioText("plan-basic");
+    if (selectedPlan.name.endsWith("Standard")) return cachedAudioText("plan-standard");
+    if (selectedPlan.name.endsWith("Premium")) return cachedAudioText("plan-premium");
   }
 
   if (hasAny(text, ["again", "repeat", "say that", "one more time"])) {
-    return `Sure. Basic is ${NOVACARE_PLANS[0].spokenPrice}, Standard is ${NOVACARE_PLANS[1].spokenPrice}, and Premium is ${NOVACARE_PLANS[2].spokenPrice}.`;
+    return cachedAudioText("plans");
   }
 
   if (hasAny(text, ["plan", "plans", "price", "pricing", "cost", "premium", "monthly", "compare"])) {
-    return `${planLine(NOVACARE_PLANS[0])} ${planLine(NOVACARE_PLANS[1])} ${planLine(NOVACARE_PLANS[2])} For most families, Standard is the practical starting point.`;
+    return cachedAudioText("plans");
   }
 
   if (hasAny(text, ["coverage", "cover", "covered", "insured", "limit", "policy limit", "sum insured"])) {
-    return `Basic covers ${NOVACARE_PLANS[0].sumInsured}, Standard covers ${NOVACARE_PLANS[1].sumInsured}, and Premium covers ${NOVACARE_PLANS[2].sumInsured}. Hospitalization, I C U, ambulance, and annual health check are included across all plans.`;
+    return cachedAudioText("coverage");
   }
 
   if (hasAny(text, ["network", "hospital", "cashless", "fortis", "apollo", "max", "manipal", "medanta", "narayana", "aster"])) {
-    return `${NOVACARE_FACTS.hospitals} For a cashless claim, show your NovaCare e-card and the hospital sends pre-auth to NovaCare.`;
+    return cachedAudioText("network-hospitals");
   }
 
   if (hasAny(text, ["claim", "claims", "preauth", "pre-auth", "pre auth", "cashless"])) {
-    return `${NOVACARE_FACTS.cashless} Keep the policy ID, e-card, government ID, diagnosis note, and admission request ready.`;
+    return cachedAudioText("claims");
   }
 
   if (hasAny(text, ["reimburse", "reimbursement", "paid back", "upload", "bills"])) {
-    return NOVACARE_FACTS.reimbursement;
+    return cachedAudioText("reimbursement");
   }
 
   if (hasAny(text, ["waiting", "pre existing", "pre-existing", "existing disease", "maternity"])) {
-    return `${NOVACARE_FACTS.waiting} ${NOVACARE_FACTS.maternity}`;
+    return cachedAudioText("waiting");
   }
 
   if (hasAny(text, ["exclude", "excluded", "not covered", "cosmetic"])) {
@@ -216,11 +321,11 @@ export function answerNovaCareQuestion(userText: string): string {
   }
 
   if (hasAny(text, ["phone", "email", "support", "contact", "emergency", "helpline", "number"])) {
-    return `${NOVACARE_FACTS.emergency} You can also use app chat or email support at support at novacare dot in.`;
+    return cachedAudioText("support");
   }
 
   if (hasAny(text, ["who are you", "about", "company", "novacare"])) {
-    return `${NOVACARE_FACTS.about} ${NOVACARE_FACTS.claimRate}`;
+    return cachedAudioText("about");
   }
 
   return "";

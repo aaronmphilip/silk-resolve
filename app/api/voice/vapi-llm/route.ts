@@ -7,7 +7,7 @@
  */
 import { NextRequest } from "next/server";
 import { stripAll, tensionToTone, withSilkTone, type SilkTone } from "@/lib/voice-emotion";
-import { answerNovaCareQuestion } from "@/lib/novacare-knowledge";
+import { answerNovaCareQuestion, cachedMugaAudioForText } from "@/lib/novacare-knowledge";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -348,6 +348,7 @@ function voiceText(text: string, silkEnabled: boolean, userText: string): string
 function fastLeadFor(userText: string, answer: string): string {
   const cleanAnswer = stripAll(answer).trim();
   if (!cleanAnswer) return "";
+  if (cachedMugaAudioForText(cleanAnswer)) return "";
   if (/^(sure|yes|no|okay|ok|got it|glad|i understand|i can help|let me)\b[,.!]?/i.test(cleanAnswer)) return "";
 
   const text = userText.toLowerCase();
@@ -355,7 +356,7 @@ function fastLeadFor(userText: string, answer: string): string {
   if (/\b(angry|furious|terrible|worst|scam|fraud|cheated|not happy|frustrated|upset|complaint)\b/.test(text)) {
     return "I understand.";
   }
-  return "Got it.";
+  return "Let me check that.";
 }
 
 function splitTonePrefix(text: string): { prefix: string; rest: string } {

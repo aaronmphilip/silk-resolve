@@ -16,6 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import WebSocket from "ws";
 import { readFileSync } from "fs";
 import path from "path";
+import { cachedMugaAudioForText } from "@/lib/novacare-knowledge";
 import { getPlatformVoiceConfig } from "@/lib/platform";
 import { extractSilkTone, stripAll, stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
 
@@ -29,7 +30,6 @@ const RUMIK_SAMPLE_RATE = 24000;
 const SUPPORTED_TARGET_RATES = new Set([8000, 16000, 22050, 24000, 44100]);
 const REUSABLE_WS_IDLE_MS = 5 * 60_000;
 const WARM_TEXT = "[neutral] Voice stream ready.";
-const FAST_LEAD_AUDIO_PATH = path.join(process.cwd(), "public", "audio", "muga-got-it-24k.pcm");
 
 type VoiceRequestBody = {
   type?: string;
@@ -69,7 +69,7 @@ interface ReusableRumikSocket {
 
 let reusableRumikSocket: ReusableRumikSocket | null = null;
 let reusableRumikConnecting: Promise<ReusableRumikSocket> | null = null;
-let fastLeadAudio: Buffer | null = null;
+const cachedAudioFiles = new Map<string, Buffer>();
 
 function extractTextAndSampleRate(body: VoiceRequestBody) {
   const message = body.message;
@@ -90,20 +90,19 @@ function ensureMugaTone(text: string): string {
   return withSilkTone(tone, stripAll(clean));
 }
 
-function isFastLeadText(text: string): boolean {
-  return stripAll(text)
-    .toLowerCase()
-    .replace(/[^a-z\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim() === "got it";
-}
+function getCachedMugaAudio(text: string, targetRate: number): { id: string; pcm: Buffer } | null {
+  const cached = cachedMugaAudioForText(text);
+  if (!cached) return null;
 
-function getFastLeadAudio(targetRate: number): Buffer | null {
   try {
-    fastLeadAudio ??= readFileSync(FAST_LEAD_AUDIO_PATH);
-    return resamplePcm16Mono(fastLeadAudio, RUMIK_SAMPLE_RATE, targetRate);
+    let audio = cachedAudioFiles.get(cached.id);
+    if (!audio) {
+      audio = readFileSync(path.join(process.cwd(), "public", "audio", cached.audioFile));
+      cachedAudioFiles.set(cached.id, audio);
+    }
+    return { id: cached.id, pcm: resamplePcm16Mono(audio, RUMIK_SAMPLE_RATE, targetRate) };
   } catch (err) {
-    console.error("[silk-tts] fast lead audio unavailable:", err);
+    console.error(`[silk-tts] cached muga audio unavailable for ${cached.id}:`, err);
     return null;
   }
 }
@@ -677,20 +676,19 @@ export async function POST(req: NextRequest) {
   // Any setup failure falls through to the buffered REST path below.
   const wantsStream = req.nextUrl.searchParams.get("transport") === "ws";
   if (wantsStream && req.nextUrl.searchParams.get("format") !== "wav") {
-    if (isFastLeadText(text)) {
-      const pcm = getFastLeadAudio(sampleRate);
-      if (pcm) {
-        return new NextResponse(new Uint8Array(pcm), {
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "Cache-Control": "no-store",
-            "X-Audio-Format": "pcm_s16le",
-            "X-Audio-Sample-Rate": String(sampleRate),
-            "X-Audio-Channels": "1",
-            "X-Silk-Transport": "cached-muga-lead",
-          },
-        });
-      }
+    const cached = getCachedMugaAudio(text, sampleRate);
+    if (cached) {
+      return new NextResponse(new Uint8Array(cached.pcm), {
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "Cache-Control": "no-store",
+          "X-Audio-Format": "pcm_s16le",
+          "X-Audio-Sample-Rate": String(sampleRate),
+          "X-Audio-Channels": "1",
+          "X-Silk-Transport": "cached-muga-audio",
+          "X-Silk-Cache-Key": cached.id,
+        },
+      });
     }
 
     const reusable = await streamRumikReusable(silk.apiKey, body, text, sampleRate);
