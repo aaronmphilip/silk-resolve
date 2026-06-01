@@ -90,6 +90,12 @@ export const MUGA_CACHED_AUDIO = [
     audioFile: "muga-i-understand-24k.pcm",
   },
   {
+    id: "greeting",
+    text:
+      "Hi! I'm Priya, your NovaCare support agent. I can help with plan prices, coverage, claims, reimbursement, and network hospitals. What would you like to check?",
+    audioFile: "novacare-greeting-24k.pcm",
+  },
+  {
     id: "plans",
     text:
       "For NovaCare, Basic is four hundred ninety nine rupees per month for one adult. Standard is eight hundred ninety nine rupees for two adults and two children. Premium is one thousand four hundred ninety nine rupees for a full family. For most families, Standard is the practical starting point.",

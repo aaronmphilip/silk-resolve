@@ -210,13 +210,26 @@ export async function POST(req: NextRequest) {
       // NOTE: pins phone STT to English — adjust `language` if you take non-EN calls.
       transcriber: {
         provider:    "deepgram",
-        model:       "nova-2",
+        model:       "flux-general-en",
         language:    "en",
         smartFormat: false,
         numerals:    true,
-        endpointing: 50,
+        eotThreshold: 0.55,
+        eotTimeoutMs: 1200,
       },
-      startSpeakingPlan: { waitSeconds: 0 },
+      startSpeakingPlan: {
+        waitSeconds: 0,
+        transcriptionEndpointingPlan: {
+          onPunctuationSeconds: 0.05,
+          onNoPunctuationSeconds: 0.3,
+          onNumberSeconds: 0.2,
+        },
+      },
+      stopSpeakingPlan: {
+        numWords: 0,
+        voiceSeconds: 0.15,
+        backoffSeconds: 0.4,
+      },
       analysisPlan: {
         summaryPrompt:            "Summarise this call in 2 sentences: issue raised, outcome, and customer sentiment.",
         successEvaluationPrompt:  "Did the agent resolve the customer's issue? yes/no with brief reason.",
