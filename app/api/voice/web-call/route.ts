@@ -121,7 +121,7 @@ VOICE CALL RULES:
       language: "en",
       smartFormat: false,
       numerals: true,
-      endpointing: 160,
+      endpointing: 100,
     },
     silenceTimeoutSeconds: 18,
     // Do not add extra delay after transcription; MUGA synthesis is the bottleneck.

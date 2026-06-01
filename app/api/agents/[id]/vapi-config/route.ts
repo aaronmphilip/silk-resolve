@@ -144,7 +144,7 @@ VOICE CALL RULES:
       language: "en",
       smartFormat: false,  // disabling saves ~40ms per transcription
       numerals: true,
-      endpointing: 160,
+      endpointing: 100,
     },
     silenceTimeoutSeconds: 18,
     maxDurationSeconds: 1800,

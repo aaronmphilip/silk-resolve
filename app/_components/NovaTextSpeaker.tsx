@@ -28,6 +28,11 @@ const COMMON_PATTERNS = [
   /\b(claim|claims|preauth|pre-auth|pre auth|cashless)\b/i,
   /\b(reimburse|reimbursement|paid back|upload|bills)\b/i,
   /\b(waiting|pre existing|pre-existing|existing disease|maternity)\b/i,
+  /\b(add family|family member|dependent|dependents|mother|father|parent|spouse|wife|husband|child|children)\b/i,
+  /\b(renew|renewal|auto renew|expire)\b/i,
+  /\b(exclude|excluded|not covered|cosmetic)\b/i,
+  /\b(claim status|status|policy id|claim id|account|my policy|my claim)\b/i,
+  /\b(moon|mars|space|alien|car insurance|bike insurance|vehicle insurance|life insurance|stock|crypto|weather|flight|hotel|restaurant|pizza|capital of)\b/i,
   /\b(phone|email|support|contact|emergency|helpline|number)\b/i,
   /\b(who are you|about|company|novacare)\b/i,
 ];
@@ -60,6 +65,15 @@ function appendText(current: string, next: string): string {
   const clean = stripVoiceMarkers(next);
   if (!clean) return current;
   return `${current}${current && !current.endsWith(" ") ? " " : ""}${clean}`.replace(/\s+/g, " ").trim();
+}
+
+function stripLeadingBridge(text: string, bridge: string): string {
+  const clean = stripVoiceMarkers(text);
+  const bridgeKey = normalizeSpeechKey(bridge);
+  if (!bridgeKey || !normalizeSpeechKey(clean).startsWith(bridgeKey)) return clean;
+
+  const escaped = bridge.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  return clean.replace(new RegExp(`^\\s*${escaped}\\s*[,.;:!?-]*\\s*`, "i"), "").trim();
 }
 
 function readSsePayloads(buffer: string): { events: string[]; rest: string } {
@@ -255,15 +269,15 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
               const data = JSON.parse(payload) as {
                 choices?: Array<{ delta?: { content?: string } }>;
               };
-              const content = data.choices?.[0]?.delta?.content ?? "";
+              let content = data.choices?.[0]?.delta?.content ?? "";
               if (!content) continue;
-              if (
-                immediateBridge &&
-                !skippedServerBridge &&
-                normalizeSpeechKey(content) === normalizeSpeechKey(immediateBridge)
-              ) {
-                skippedServerBridge = true;
-                continue;
+              if (immediateBridge && !skippedServerBridge) {
+                const stripped = stripLeadingBridge(content, immediateBridge);
+                if (stripped !== stripVoiceMarkers(content)) {
+                  skippedServerBridge = true;
+                  content = stripped;
+                  if (!content) continue;
+                }
               }
               setAnswer((current) => appendText(current, content));
               enqueueSpeech(content, runId);

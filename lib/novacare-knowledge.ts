@@ -150,6 +150,36 @@ export const MUGA_CACHED_AUDIO = [
     audioFile: "novacare-support-24k.pcm",
   },
   {
+    id: "add-dependents",
+    text:
+      "You can add a family member in the NovaCare app. Open My Policy, choose Add Dependents, and follow the steps. For parent or spouse additions, the app will show any underwriting or premium change before confirmation.",
+    audioFile: "novacare-add-dependents-24k.pcm",
+  },
+  {
+    id: "renewals",
+    text:
+      "Auto-renew is on by default. NovaCare sends an S M S and app notification thirty days before renewal. You can review or change renewal settings in the NovaCare app.",
+    audioFile: "novacare-renewals-24k.pcm",
+  },
+  {
+    id: "exclusions",
+    text:
+      "Cosmetic treatment, non-prescribed supplements, self-inflicted injury, and unapproved experimental treatment are not covered.",
+    audioFile: "novacare-exclusions-24k.pcm",
+  },
+  {
+    id: "account-specific",
+    text:
+      "For account-specific claim status, share your policy ID or claim ID. A specialist can verify the exact account data and follow up with you.",
+    audioFile: "novacare-account-specific-24k.pcm",
+  },
+  {
+    id: "out-of-scope",
+    text:
+      "I don't have that information in this support script. I can help with NovaCare plans, claims, coverage, support, or network hospitals.",
+    audioFile: "novacare-out-of-scope-24k.pcm",
+  },
+  {
     id: "about",
     text:
       "NovaCare is an I R D A I registered health insurer founded in twenty eighteen in Mumbai. It serves two point four million active policyholders across India and has a ninety eight point two percent claim settlement rate.",
@@ -254,6 +284,27 @@ function planLine(plan: typeof NOVACARE_PLANS[number]): string {
   return `${plan.name} is ${plan.spokenPrice}, with ${plan.sumInsured} sum insured for ${plan.audience}.`;
 }
 
+function isClearlyOutOfScope(text: string): boolean {
+  return hasAny(text, [
+    "moon",
+    "mars",
+    "space",
+    "alien",
+    "car insurance",
+    "bike insurance",
+    "vehicle insurance",
+    "life insurance",
+    "stock",
+    "crypto",
+    "weather",
+    "flight",
+    "hotel",
+    "restaurant",
+    "pizza",
+    "capital of",
+  ]);
+}
+
 function cachedAudioText(id: typeof MUGA_CACHED_AUDIO[number]["id"]): string {
   return MUGA_CACHED_AUDIO.find((item) => item.id === id)?.text ?? "";
 }
@@ -276,6 +327,7 @@ export function cachedMugaAudioForText(text: string): typeof MUGA_CACHED_AUDIO[n
 export function answerNovaCareQuestion(userText: string): string {
   const text = userText.toLowerCase();
   if (!text.trim()) return "";
+  if (isClearlyOutOfScope(text)) return cachedAudioText("out-of-scope");
 
   const selectedPlan = planByText(text);
   if (selectedPlan && hasAny(text, ["price", "cost", "premium", "coverage", "cover", "insured", "benefit", "include", "plan"])) {
@@ -300,6 +352,10 @@ export function answerNovaCareQuestion(userText: string): string {
     return cachedAudioText("network-hospitals");
   }
 
+  if (hasAny(text, ["claim status", "status", "policy id", "claim id", "account", "my policy", "my claim"])) {
+    return cachedAudioText("account-specific");
+  }
+
   if (hasAny(text, ["claim", "claims", "preauth", "pre-auth", "pre auth", "cashless"])) {
     return cachedAudioText("claims");
   }
@@ -308,16 +364,20 @@ export function answerNovaCareQuestion(userText: string): string {
     return cachedAudioText("reimbursement");
   }
 
+  if (hasAny(text, ["add family", "family member", "dependent", "dependents", "mother", "father", "parent", "spouse", "wife", "husband", "child", "children"])) {
+    return cachedAudioText("add-dependents");
+  }
+
+  if (hasAny(text, ["renew", "renewal", "auto renew", "expire"])) {
+    return cachedAudioText("renewals");
+  }
+
   if (hasAny(text, ["waiting", "pre existing", "pre-existing", "existing disease", "maternity"])) {
     return cachedAudioText("waiting");
   }
 
   if (hasAny(text, ["exclude", "excluded", "not covered", "cosmetic"])) {
-    return NOVACARE_FACTS.exclusions;
-  }
-
-  if (hasAny(text, ["renew", "renewal", "auto renew", "expire"])) {
-    return NOVACARE_FACTS.renewals;
+    return cachedAudioText("exclusions");
   }
 
   if (hasAny(text, ["phone", "email", "support", "contact", "emergency", "helpline", "number"])) {

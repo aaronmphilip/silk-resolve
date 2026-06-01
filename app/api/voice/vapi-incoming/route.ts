@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
         language:    "en",
         smartFormat: false,
         numerals:    true,
-        endpointing: 160,
+        endpointing: 100,
       },
       startSpeakingPlan: { waitSeconds: 0 },
       analysisPlan: {

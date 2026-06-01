@@ -359,6 +359,13 @@ function fastLeadFor(userText: string, answer: string): string {
   return "Let me check that.";
 }
 
+function stripLeadingFastLead(text: string, lead: string): string {
+  const cleanLead = stripAll(lead).trim();
+  if (!cleanLead) return text;
+  const escaped = cleanLead.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+  return text.replace(new RegExp(`^\\s*${escaped}\\s*[,.;:!?-]*\\s*`, "i"), "").trim();
+}
+
 function splitTonePrefix(text: string): { prefix: string; rest: string } {
   const match = text.match(/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]\s*/i);
   if (!match) return { prefix: "", rest: text };
@@ -368,11 +375,12 @@ function splitTonePrefix(text: string): { prefix: string; rest: string } {
 function toSSE(text: string, fastLead = ""): Response {
   const id = `chatcmpl-${Date.now()}`;
   const { prefix, rest } = splitTonePrefix(text);
+  const dedupedRest = fastLead ? stripLeadingFastLead(rest, fastLead) : rest;
   const lines = [
     `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { role: "assistant" }, index: 0, finish_reason: null }] })}`,
     ...(fastLead ? [
       `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { content: `${prefix}${fastLead}` }, index: 0, finish_reason: null }] })}`,
-      ...(rest ? [`data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { content: ` ${rest}` }, index: 0, finish_reason: null }] })}`] : []),
+      ...(dedupedRest ? [`data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { content: ` ${dedupedRest}` }, index: 0, finish_reason: null }] })}`] : []),
     ] : [
       `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { content: text }, index: 0, finish_reason: null }] })}`,
     ]),
@@ -482,12 +490,14 @@ function streamGemini(args: {
       let pending = "";  // raw model text not yet emitted as a complete sentence
       const startedAt = Date.now();
       let firstChunkAt = 0;
+      const lead = silkEnabled ? fastLeadFor(userText, "response") : "";
 
       // Emit one speakable segment. We normalize a COMPLETE sentence at a time:
       // normalizing per raw token stripped inter-token spaces and merged words
       // ("four" + " hundred" -> "fourhundred") and broke multi-word number fixes.
       function emitSegment(raw: string, isLead = false) {
-        const clean = normalizeSpeechText(raw);
+        let clean = normalizeSpeechText(raw);
+        if (!isLead && lead) clean = stripLeadingFastLead(clean, lead);
         if (!clean.trim()) return;
         if (!isLead) emittedAnswerText = true;
 
@@ -534,7 +544,6 @@ function streamGemini(args: {
 
       try {
         controller.enqueue(encoder.encode(sseChunk(id, { role: "assistant" }, null)));
-        const lead = silkEnabled ? fastLeadFor(userText, "response") : "";
         if (lead) emitSegment(lead, true);
 
         const response = await fetch(
