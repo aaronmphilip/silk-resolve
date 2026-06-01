@@ -16,7 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import WebSocket from "ws";
 import { readFileSync } from "fs";
 import path from "path";
-import { cachedMugaAudioForText } from "@/lib/novacare-knowledge";
+import { MUGA_CACHED_AUDIO, cachedMugaAudioForText } from "@/lib/novacare-knowledge";
 import { getPlatformVoiceConfig } from "@/lib/platform";
 import { extractSilkTone, stripAll, stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
 
@@ -105,6 +105,21 @@ function getCachedMugaAudio(text: string, targetRate: number): { id: string; pcm
     console.error(`[silk-tts] cached muga audio unavailable for ${cached.id}:`, err);
     return null;
   }
+}
+
+function preloadCachedMugaAudio() {
+  let loaded = 0;
+  for (const cached of MUGA_CACHED_AUDIO) {
+    if (cachedAudioFiles.has(cached.id)) continue;
+    try {
+      const audio = readFileSync(path.join(process.cwd(), "public", "audio", cached.audioFile));
+      cachedAudioFiles.set(cached.id, audio);
+      loaded++;
+    } catch (err) {
+      console.error(`[silk-tts] cached muga preload failed for ${cached.id}:`, err);
+    }
+  }
+  return { cachedAudioItems: cachedAudioFiles.size, loaded };
 }
 
 function parseWav(buffer: Buffer): WavData {
@@ -743,12 +758,14 @@ export async function GET() {
 
   const startedAt = Date.now();
   try {
+    const cacheWarm = preloadCachedMugaAudio();
     const socket = await getReusableRumikSocket(silk.apiKey, WARM_TEXT);
     return NextResponse.json(
       {
         ok: true,
         reusable: isOpenReusableSocket(socket),
         busy: socket.busy,
+        ...cacheWarm,
         warmedMs: Date.now() - startedAt,
       },
       { headers: { "Cache-Control": "no-store" } }
