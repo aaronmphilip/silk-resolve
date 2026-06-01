@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { answerNovaCareQuestion, normalizeMugaCacheText } from "@/lib/novacare-knowledge";
 import { stripVoiceMarkers } from "@/lib/voice-emotion";
 
 export type WebVoiceCallState =
@@ -40,6 +41,22 @@ const CONFIG_TIMEOUT_MS = 60_000;
 const START_TIMEOUT_MS = 75_000;
 const ASSISTANT_MERGE_WINDOW_MS = 12_000;
 const VISITOR_ID_KEY = "silk_resolve_voice_visitor_id";
+const LOCAL_MUGA_SAMPLE_RATE = 24_000;
+const LOCAL_ASSISTANT_SUPPRESS_BUFFER_MS = 1_200;
+const LOCAL_BRIDGE_SUPPRESS_MS = 1_800;
+const PREFETCHED_LOCAL_MUGA_PHRASES = [
+  "Let me check that.",
+  "I understand.",
+  "Got it.",
+];
+
+interface LocalMugaClip {
+  audio: ArrayBuffer;
+  sampleRate: number;
+  durationMs: number;
+}
+
+type VapiControl = "mute-assistant" | "unmute-assistant";
 
 function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -163,6 +180,52 @@ function cleanTranscriptText(text: string): string {
     .trim();
 }
 
+function isSmallTalkPrompt(text: string): boolean {
+  return /^(hi|hello|hey|thanks|thank you|bye|goodbye)[\s.!?]*$/i.test(text.trim());
+}
+
+function bridgeForVoicePrompt(text: string): string {
+  const clean = text.trim();
+  if (!clean || isSmallTalkPrompt(clean)) return "";
+  if (/\b(angry|furious|terrible|worst|scam|fraud|cheated|not happy|frustrated|upset|complaint)\b/i.test(clean)) {
+    return "I understand.";
+  }
+  return "Let me check that.";
+}
+
+function pcmDurationMs(audio: ArrayBuffer, sampleRate: number): number {
+  if (!sampleRate) return 0;
+  return Math.ceil((audio.byteLength / 2 / sampleRate) * 1000);
+}
+
+async function fetchLocalMugaClip(text: string): Promise<LocalMugaClip> {
+  const response = await fetch("/api/voice/silk-tts?transport=ws", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, sampleRate: LOCAL_MUGA_SAMPLE_RATE }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(detail || "MUGA speech failed.");
+  }
+
+  const sampleRate = Number(response.headers.get("x-audio-sample-rate") ?? LOCAL_MUGA_SAMPLE_RATE);
+  const audio = await response.arrayBuffer();
+  return {
+    audio,
+    sampleRate,
+    durationMs: pcmDurationMs(audio, sampleRate),
+  };
+}
+
+function sendVapiControl(vapi: VapiInstance | null, control: VapiControl): void {
+  if (!vapi) return;
+  try {
+    vapi.send({ type: "control", control });
+  } catch {}
+}
+
 function appendTranscriptLine(
   lines: WebVoiceTranscript[],
   role: "user" | "assistant",
@@ -265,6 +328,12 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const vapiRef = useRef<VapiInstance | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const runIdRef = useRef(0);
+  const localAssistRunRef = useRef(0);
+  const localAudioContextRef = useRef<AudioContext | null>(null);
+  const localSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const localAudioCacheRef = useRef(new Map<string, Promise<LocalMugaClip>>());
+  const assistantUnmuteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const assistantTranscriptSuppressUntilRef = useRef(0);
   const registeredCallIdsRef = useRef(new Set<string>());
   // Promises kicked off on mount so the heavy work (SDK import, token + assistant
   // config fetches) is already done by the time the user taps Start call. The
@@ -298,11 +367,151 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     } catch {}
   }, []);
 
+  const releaseAssistantAudio = useCallback(() => {
+    if (assistantUnmuteTimerRef.current) {
+      clearTimeout(assistantUnmuteTimerRef.current);
+      assistantUnmuteTimerRef.current = null;
+    }
+    sendVapiControl(vapiRef.current, "unmute-assistant");
+  }, []);
+
+  const suppressAssistantAudio = useCallback((ms: number) => {
+    if (assistantUnmuteTimerRef.current) clearTimeout(assistantUnmuteTimerRef.current);
+    sendVapiControl(vapiRef.current, "mute-assistant");
+    assistantTranscriptSuppressUntilRef.current = Math.max(
+      assistantTranscriptSuppressUntilRef.current,
+      Date.now() + ms
+    );
+    assistantUnmuteTimerRef.current = setTimeout(() => {
+      assistantUnmuteTimerRef.current = null;
+      sendVapiControl(vapiRef.current, "unmute-assistant");
+    }, ms);
+  }, []);
+
+  const stopLocalAssist = useCallback(() => {
+    localAssistRunRef.current += 1;
+    try {
+      localSourceRef.current?.stop();
+    } catch {}
+    localSourceRef.current = null;
+    assistantTranscriptSuppressUntilRef.current = 0;
+    releaseAssistantAudio();
+  }, [releaseAssistantAudio]);
+
+  const getOrFetchLocalMugaClip = useCallback((text: string): Promise<LocalMugaClip> => {
+    const key = normalizeMugaCacheText(text);
+    const existing = localAudioCacheRef.current.get(key);
+    if (existing) return existing;
+
+    const pending = fetchLocalMugaClip(text).catch((err) => {
+      localAudioCacheRef.current.delete(key);
+      throw err;
+    });
+    localAudioCacheRef.current.set(key, pending);
+    return pending;
+  }, []);
+
+  const prefetchLocalAssistForText = useCallback((text: string) => {
+    if (voiceMode === "vapi" || text.trim().length < 10) return;
+    const answer = answerNovaCareQuestion(text);
+    if (answer) {
+      void getOrFetchLocalMugaClip(`[neutral] ${answer}`).catch(() => {});
+      return;
+    }
+
+    const bridge = bridgeForVoicePrompt(text);
+    if (bridge) void getOrFetchLocalMugaClip(`[neutral] ${bridge}`).catch(() => {});
+  }, [getOrFetchLocalMugaClip, voiceMode]);
+
+  const playLocalPcm = useCallback(async (clip: LocalMugaClip, localRunId: number) => {
+    if (localRunId !== localAssistRunRef.current || !mountedRef.current) return;
+
+    const AudioContextCtor =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) throw new Error("Audio playback is not supported in this browser.");
+
+    const ctx = localAudioContextRef.current ?? new AudioContextCtor();
+    localAudioContextRef.current = ctx;
+    if (ctx.state === "suspended") await ctx.resume();
+
+    const pcm = new Int16Array(clip.audio);
+    const audioBuffer = ctx.createBuffer(1, pcm.length, clip.sampleRate);
+    const channel = audioBuffer.getChannelData(0);
+    for (let i = 0; i < pcm.length; i++) {
+      channel[i] = Math.max(-1, Math.min(1, pcm[i] / 32768));
+    }
+
+    await new Promise<void>((resolve) => {
+      if (localRunId !== localAssistRunRef.current || !mountedRef.current) return resolve();
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      source.onended = () => {
+        if (localSourceRef.current === source) localSourceRef.current = null;
+        resolve();
+      };
+      localSourceRef.current = source;
+      source.start();
+    });
+  }, []);
+
+  const playLocalAssistForUserText = useCallback((userText: string, callRunId: number) => {
+    if (voiceMode === "vapi") return;
+
+    const cachedAnswer = answerNovaCareQuestion(userText);
+    const bridge = cachedAnswer ? "" : bridgeForVoicePrompt(userText);
+    const speech = cachedAnswer || bridge;
+    if (!speech) return;
+
+    const localRunId = localAssistRunRef.current + 1;
+    localAssistRunRef.current = localRunId;
+    try {
+      localSourceRef.current?.stop();
+    } catch {}
+    localSourceRef.current = null;
+
+    const initialSuppressMs = cachedAnswer ? 3_000 : LOCAL_BRIDGE_SUPPRESS_MS;
+    suppressAssistantAudio(initialSuppressMs);
+    setTranscript(lines => appendTranscriptLine(lines, "assistant", speech, Date.now()));
+
+    void (async () => {
+      try {
+        const clip = await getOrFetchLocalMugaClip(`[neutral] ${speech}`);
+        if (
+          !mountedRef.current ||
+          callRunId !== runIdRef.current ||
+          localRunId !== localAssistRunRef.current
+        ) {
+          return;
+        }
+
+        suppressAssistantAudio(
+          cachedAnswer
+            ? clip.durationMs + LOCAL_ASSISTANT_SUPPRESS_BUFFER_MS
+            : Math.max(LOCAL_BRIDGE_SUPPRESS_MS, clip.durationMs + 500)
+        );
+        await playLocalPcm(clip, localRunId);
+      } catch (err) {
+        if (!mountedRef.current || callRunId !== runIdRef.current || localRunId !== localAssistRunRef.current) return;
+        console.warn("[voice] local MUGA assist failed", err);
+        releaseAssistantAudio();
+      }
+    })();
+  }, [
+    getOrFetchLocalMugaClip,
+    playLocalPcm,
+    releaseAssistantAudio,
+    suppressAssistantAudio,
+    voiceMode,
+  ]);
+
   const cleanupCall = useCallback(async () => {
     stopTimer();
+    stopLocalAssist();
     await destroyVapi();
     setMuted(false);
-  }, [destroyVapi, stopTimer]);
+  }, [destroyVapi, stopLocalAssist, stopTimer]);
 
   const registerCall = useCallback(async (callId: string) => {
     if (!callId || registeredCallIdsRef.current.has(callId)) return;
@@ -348,7 +557,13 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     prewarmRef.current.token.catch(() => {});
     prewarmRef.current.assistant.catch(() => {});
     prewarmRef.current.voiceInfra.catch(() => {});
-  }, [agentId, voiceMode]);
+
+    if (voiceMode !== "vapi") {
+      for (const phrase of PREFETCHED_LOCAL_MUGA_PHRASES) {
+        void getOrFetchLocalMugaClip(`[neutral] ${phrase}`).catch(() => {});
+      }
+    }
+  }, [agentId, getOrFetchLocalMugaClip, voiceMode]);
 
   const startCall = useCallback(async () => {
     if (!agentId) {
@@ -439,14 +654,22 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
           // Partials stream in as the speaker talks — show them live, don't commit.
           if (msg.transcriptType !== "final") {
+            if (role === "user") prefetchLocalAssistForText(text);
+            if (role === "assistant" && Date.now() < assistantTranscriptSuppressUntilRef.current) return;
             setInterim({ role, text });
             return;
           }
 
+          if (role === "assistant" && Date.now() < assistantTranscriptSuppressUntilRef.current) return;
+
           const ts = Date.now();
           setInterim(null);
           setTranscript(lines => appendTranscriptLine(lines, role, text, ts));
-          if (role === "user") setTension(value => Math.min(10, value + 0.4));
+          if (role === "user") {
+            setTension(value => Math.min(10, value + 0.4));
+            prefetchLocalAssistForText(text);
+            playLocalAssistForUserText(text, runId);
+          }
         }
 
         if (msg.type === "status-update" && msg.status === "ended") {
@@ -478,6 +701,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     agentId,
     cleanupCall,
     finishCall,
+    playLocalAssistForUserText,
+    prefetchLocalAssistForText,
     registerCall,
     startTimer,
     stopTimer,
@@ -489,6 +714,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     const vapi = vapiRef.current;
     setState("ending");
     stopTimer();
+    stopLocalAssist();
     if (vapi) {
       try {
         vapi.end();
@@ -503,7 +729,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       vapiRef.current = null;
     }
     if (mountedRef.current) setState("ended");
-  }, [stopTimer]);
+  }, [stopLocalAssist, stopTimer]);
 
   const reset = useCallback(async () => {
     runIdRef.current += 1;
