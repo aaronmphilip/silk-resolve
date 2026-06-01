@@ -182,14 +182,18 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
 function WarmMugaSocketScript() {
   const snippet = `
 (function() {
-  var warm = function() {
+  var ping = function(path) {
     try {
-      fetch('/api/voice/silk-tts', {
+      fetch(path, {
         method: 'GET',
         cache: 'no-store',
         keepalive: true
       }).catch(function() {});
     } catch (error) {}
+  };
+  var warm = function() {
+    ping('/api/voice/vapi-llm?voice=silk');
+    ping('/api/voice/silk-tts');
   };
 
   if (document.readyState === 'loading') {
