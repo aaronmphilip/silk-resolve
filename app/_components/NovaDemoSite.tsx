@@ -89,6 +89,11 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
               </a>
             )}
           </div>
+          {voiceMode !== "vapi" && (
+            <div className="mt-10">
+              <NovaTextSpeaker systemPrompt={NOVACARE_PROMPT} />
+            </div>
+          )}
         </section>
 
         <div className="bg-[#0055ff] text-white">
@@ -163,7 +168,6 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
           </p>
           <div className="flex flex-col items-center gap-8">
             <TalkButton label={site.cta} />
-            {voiceMode !== "vapi" && <NovaTextSpeaker systemPrompt={NOVACARE_PROMPT} />}
           </div>
         </section>
 

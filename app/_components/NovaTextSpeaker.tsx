@@ -15,12 +15,39 @@ const SAMPLE_QUESTIONS = [
   "Do you have network hospitals?",
 ];
 
+const COMMON_PATTERNS = [
+  /\b(plan|plans|price|pricing|cost|premium|monthly|compare|basic|standard|premium)\b/i,
+  /\b(coverage|cover|covered|insured|limit|policy limit|sum insured)\b/i,
+  /\b(network|hospital|cashless|fortis|apollo|max|manipal|medanta|narayana|aster)\b/i,
+  /\b(claim|claims|preauth|pre-auth|pre auth|cashless)\b/i,
+  /\b(reimburse|reimbursement|paid back|upload|bills)\b/i,
+  /\b(waiting|pre existing|pre-existing|existing disease|maternity)\b/i,
+  /\b(phone|email|support|contact|emergency|helpline|number)\b/i,
+  /\b(who are you|about|company|novacare)\b/i,
+];
+
 function stripVoiceMarkers(text: string): string {
   return text
     .replace(/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]\s*/i, "")
     .replace(/<(laugh|sigh|hmm|pause|breathe)>/gi, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeSpeechKey(text: string): string {
+  return stripVoiceMarkers(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function bridgeForPrompt(text: string): string {
+  if (COMMON_PATTERNS.some((pattern) => pattern.test(text))) return "";
+  if (/\b(angry|furious|terrible|worst|scam|fraud|cheated|not happy|frustrated|upset|complaint)\b/i.test(text)) {
+    return "I understand.";
+  }
+  return "Let me check that.";
 }
 
 function appendText(current: string, next: string): string {
@@ -135,6 +162,14 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
     setTransport("");
     setState("thinking");
 
+    const immediateBridge = bridgeForPrompt(prompt);
+    let skippedServerBridge = false;
+    if (immediateBridge) {
+      setAnswer(immediateBridge);
+      setState("speaking");
+      enqueueSpeech(`[neutral] ${immediateBridge}`, runId);
+    }
+
     try {
       const res = await fetch("/api/voice/vapi-llm?voice=silk", {
         method: "POST",
@@ -180,6 +215,14 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
               };
               const content = data.choices?.[0]?.delta?.content ?? "";
               if (!content) continue;
+              if (
+                immediateBridge &&
+                !skippedServerBridge &&
+                normalizeSpeechKey(content) === normalizeSpeechKey(immediateBridge)
+              ) {
+                skippedServerBridge = true;
+                continue;
+              }
               setAnswer((current) => appendText(current, content));
               enqueueSpeech(content, runId);
             } catch {}
@@ -207,7 +250,7 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
     <div className="mx-auto max-w-2xl border border-gray-200 bg-white text-left rounded-lg overflow-hidden">
       <div className="border-b border-gray-100 px-4 py-3 flex items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-widest text-[#0055ff]">Typed question</p>
+          <p className="text-[11px] font-bold uppercase tracking-widest text-[#0055ff]">Text a problem</p>
           <p className="text-xs text-gray-500 mt-0.5">NovaCare support</p>
         </div>
         <div className="flex items-center gap-2 text-[11px] font-medium text-gray-500">
