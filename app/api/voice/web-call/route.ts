@@ -90,9 +90,6 @@ VOICE CALL RULES:
     ? {
         provider: "custom-voice",
         server: { url: `${origin}/api/voice/silk-tts?transport=ws`, timeoutSeconds: 45 },
-        fallbackPlan: {
-          voices: [{ provider: "vapi", voiceId: "Neha" }],
-        },
       }
     : { provider: "vapi", voiceId: "Neha" };
 
@@ -101,7 +98,7 @@ VOICE CALL RULES:
     name: agent.name,
     model: {
       provider: "custom-llm",
-      url: `${origin}/api/voice/vapi-llm`,
+      url: `${origin}/api/voice/vapi-llm?voice=silk`,
       timeoutSeconds: 6,
       model: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
       messages: [{ role: "system", content: voicePrompt }],
@@ -121,7 +118,7 @@ VOICE CALL RULES:
       language: "en",
       smartFormat: false,
       numerals: true,
-      endpointing: 100,
+      endpointing: 50,
     },
     silenceTimeoutSeconds: 18,
     // Do not add extra delay after transcription; MUGA synthesis is the bottleneck.

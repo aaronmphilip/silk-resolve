@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
   const timeout = setTimeout(() => controller.abort(), 8_000);
   const pings = origin
     ? await Promise.all([
-        ping(`${origin}/api/voice/vapi-llm`, controller.signal),
+        ping(`${origin}/api/voice/vapi-llm?voice=silk`, controller.signal),
         ping(`${origin}/api/voice/silk-tts`, controller.signal),
       ])
     : [];

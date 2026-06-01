@@ -683,3 +683,11 @@ export async function POST(req: NextRequest) {
     );
   }
 }
+
+export async function GET(req: NextRequest) {
+  const { silkEnabled } = getConfig(req);
+  return Response.json(
+    { ok: true, silkEnabled, model: DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.5-flash-lite" },
+    { headers: { "Cache-Control": "no-store" } }
+  );
+}

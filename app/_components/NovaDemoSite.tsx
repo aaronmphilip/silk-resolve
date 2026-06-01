@@ -1,4 +1,5 @@
 import TalkButton from "@/app/fakewebsite/TalkButton";
+import NovaInstantVoice from "@/app/_components/NovaInstantVoice";
 import NovaTextSpeaker from "@/app/_components/NovaTextSpeaker";
 import { NOVACARE_AGENT_ID, NOVACARE_FACTS, NOVACARE_PLANS, NOVACARE_PROMPT } from "@/lib/novacare-knowledge";
 
@@ -90,7 +91,8 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
             )}
           </div>
           {voiceMode !== "vapi" && (
-            <div className="mt-10">
+            <div className="mt-10 space-y-4">
+              <NovaInstantVoice />
               <NovaTextSpeaker systemPrompt={NOVACARE_PROMPT} />
             </div>
           )}

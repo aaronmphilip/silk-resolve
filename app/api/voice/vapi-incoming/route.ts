@@ -190,7 +190,7 @@ export async function POST(req: NextRequest) {
       firstMessage: spokenFirstMessage,
       model: {
         provider:    "custom-llm",
-        url:         `${appUrl}/api/voice/vapi-llm`,
+        url:         `${appUrl}/api/voice/vapi-llm?voice=silk`,
         model:       process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
         messages:    [{ role: "system", content: buildSystemPrompt(agentRow, meshContext) }],
         temperature: 0.7,
@@ -214,7 +214,7 @@ export async function POST(req: NextRequest) {
         language:    "en",
         smartFormat: false,
         numerals:    true,
-        endpointing: 100,
+        endpointing: 50,
       },
       startSpeakingPlan: { waitSeconds: 0 },
       analysisPlan: {

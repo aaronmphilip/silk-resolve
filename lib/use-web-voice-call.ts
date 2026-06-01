@@ -218,6 +218,15 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+async function warmSilkVoiceInfra(voiceMode: WebVoiceMode): Promise<void> {
+  if (voiceMode === "vapi") return;
+
+  await Promise.allSettled([
+    fetch("/api/voice/vapi-llm?voice=silk", { method: "GET", cache: "no-store" }),
+    fetch("/api/voice/silk-tts", { method: "GET", cache: "no-store" }),
+  ]);
+}
+
 // Prefer a value already in flight from prewarm(); if it's missing or the
 // prewarm fetch rejected (e.g. user was briefly offline on mount), fall back to
 // a fresh fetch so a stale failure never permanently blocks Start call.
@@ -237,6 +246,7 @@ interface PrewarmCache {
   vapi: Promise<VapiCtor>;
   token: Promise<TokenResponse>;
   assistant: Promise<AssistantConfig>;
+  voiceInfra: Promise<void>;
 }
 
 export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk") {
@@ -330,12 +340,14 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       assistant: fetchJson<AssistantConfig>(
         `/api/agents/${agentId}/vapi-config?voice=${encodeURIComponent(voiceMode)}`
       ),
+      voiceInfra: warmSilkVoiceInfra(voiceMode),
     };
     // Swallow rejections now so React/browser don't flag unhandled rejections;
     // startCall still awaits these and falls back to a fresh fetch on failure.
     prewarmRef.current.vapi.catch(() => {});
     prewarmRef.current.token.catch(() => {});
     prewarmRef.current.assistant.catch(() => {});
+    prewarmRef.current.voiceInfra.catch(() => {});
   }, [agentId, voiceMode]);
 
   const startCall = useCallback(async () => {
@@ -369,6 +381,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           cachedOrFetch(warm?.assistant, () =>
             fetchJson<AssistantConfig>(`/api/agents/${agentId}/vapi-config?voice=${encodeURIComponent(voiceMode)}`)
           ),
+          cachedOrFetch(warm?.voiceInfra, () => warmSilkVoiceInfra(voiceMode)),
           preflightMicrophone(),
         ]),
         CONFIG_TIMEOUT_MS,

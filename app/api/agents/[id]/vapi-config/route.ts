@@ -92,7 +92,6 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     ? {
         provider: "custom-voice",
         server: { url: `${origin}/api/voice/silk-tts${silkTransport}`, timeoutSeconds: 45 },
-        fallbackPlan: { voices: [{ provider: "vapi", voiceId: "Neha" }] },
       }
     : { provider: "vapi", voiceId: "Neha" };
 
@@ -144,7 +143,7 @@ VOICE CALL RULES:
       language: "en",
       smartFormat: false,  // disabling saves ~40ms per transcription
       numerals: true,
-      endpointing: 100,
+      endpointing: 50,
     },
     silenceTimeoutSeconds: 18,
     maxDurationSeconds: 1800,

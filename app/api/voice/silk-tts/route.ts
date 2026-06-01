@@ -70,6 +70,7 @@ interface ReusableRumikSocket {
 let reusableRumikSocket: ReusableRumikSocket | null = null;
 let reusableRumikConnecting: Promise<ReusableRumikSocket> | null = null;
 const cachedAudioFiles = new Map<string, Buffer>();
+const cachedAudioVariants = new Map<string, Buffer>();
 
 function extractTextAndSampleRate(body: VoiceRequestBody) {
   const message = body.message;
@@ -90,36 +91,56 @@ function ensureMugaTone(text: string): string {
   return withSilkTone(tone, stripAll(clean));
 }
 
+function cachedVariantKey(id: string, targetRate: number): string {
+  return `${id}:${targetRate}`;
+}
+
 function getCachedMugaAudio(text: string, targetRate: number): { id: string; pcm: Buffer } | null {
   const cached = cachedMugaAudioForText(text);
   if (!cached) return null;
 
   try {
+    const variantKey = cachedVariantKey(cached.id, targetRate);
+    const existingVariant = cachedAudioVariants.get(variantKey);
+    if (existingVariant) return { id: cached.id, pcm: existingVariant };
+
     let audio = cachedAudioFiles.get(cached.id);
     if (!audio) {
       audio = readFileSync(path.join(process.cwd(), "public", "audio", cached.audioFile));
       cachedAudioFiles.set(cached.id, audio);
     }
-    return { id: cached.id, pcm: resamplePcm16Mono(audio, RUMIK_SAMPLE_RATE, targetRate) };
+    const pcm = resamplePcm16Mono(audio, RUMIK_SAMPLE_RATE, targetRate);
+    cachedAudioVariants.set(variantKey, pcm);
+    return { id: cached.id, pcm };
   } catch (err) {
     console.error(`[silk-tts] cached muga audio unavailable for ${cached.id}:`, err);
     return null;
   }
 }
 
-function preloadCachedMugaAudio() {
+function preloadCachedMugaAudio(targetRates = [RUMIK_SAMPLE_RATE]) {
   let loaded = 0;
+  let variantsLoaded = 0;
   for (const cached of MUGA_CACHED_AUDIO) {
-    if (cachedAudioFiles.has(cached.id)) continue;
     try {
-      const audio = readFileSync(path.join(process.cwd(), "public", "audio", cached.audioFile));
-      cachedAudioFiles.set(cached.id, audio);
-      loaded++;
+      let audio = cachedAudioFiles.get(cached.id);
+      if (!audio) {
+        audio = readFileSync(path.join(process.cwd(), "public", "audio", cached.audioFile));
+        cachedAudioFiles.set(cached.id, audio);
+        loaded++;
+      }
+
+      for (const targetRate of targetRates) {
+        const key = cachedVariantKey(cached.id, targetRate);
+        if (cachedAudioVariants.has(key)) continue;
+        cachedAudioVariants.set(key, resamplePcm16Mono(audio, RUMIK_SAMPLE_RATE, targetRate));
+        variantsLoaded++;
+      }
     } catch (err) {
       console.error(`[silk-tts] cached muga preload failed for ${cached.id}:`, err);
     }
   }
-  return { cachedAudioItems: cachedAudioFiles.size, loaded };
+  return { cachedAudioItems: cachedAudioFiles.size, cachedAudioVariants: cachedAudioVariants.size, loaded, variantsLoaded };
 }
 
 function parseWav(buffer: Buffer): WavData {
@@ -702,6 +723,7 @@ export async function POST(req: NextRequest) {
           "X-Audio-Channels": "1",
           "X-Silk-Transport": "cached-muga-audio",
           "X-Silk-Cache-Key": cached.id,
+          "Content-Length": String(cached.pcm.byteLength),
         },
       });
     }
@@ -758,7 +780,7 @@ export async function GET() {
 
   const startedAt = Date.now();
   try {
-    const cacheWarm = preloadCachedMugaAudio();
+    const cacheWarm = preloadCachedMugaAudio([8000, 16000, 24000]);
     const socket = await getReusableRumikSocket(silk.apiKey, WARM_TEXT);
     return NextResponse.json(
       {
