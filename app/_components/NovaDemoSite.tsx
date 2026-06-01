@@ -1,5 +1,6 @@
 import TalkButton from "@/app/fakewebsite/TalkButton";
-import { NOVACARE_AGENT_ID, NOVACARE_FACTS, NOVACARE_PLANS } from "@/lib/novacare-knowledge";
+import NovaTextSpeaker from "@/app/_components/NovaTextSpeaker";
+import { NOVACARE_AGENT_ID, NOVACARE_FACTS, NOVACARE_PLANS, NOVACARE_PROMPT } from "@/lib/novacare-knowledge";
 
 type VoiceMode = "silk" | "silk-stream" | "vapi";
 
@@ -160,7 +161,10 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
           <p className="text-gray-500 text-sm max-w-xl mx-auto mb-7">
             Try: "Help me with the plans", "How do claims work?", or "Do you cover network hospitals?"
           </p>
-          <TalkButton label={site.cta} />
+          <div className="flex flex-col items-center gap-8">
+            <TalkButton label={site.cta} />
+            {voiceMode !== "vapi" && <NovaTextSpeaker systemPrompt={NOVACARE_PROMPT} />}
+          </div>
         </section>
 
         <footer className="max-w-5xl mx-auto px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-100">
