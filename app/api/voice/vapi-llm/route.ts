@@ -213,6 +213,43 @@ function firstMatchingLine(lines: string[], pattern: RegExp): string {
   return lines.find((line) => pattern.test(line)) ?? "";
 }
 
+function specificNovaCareScriptAnswer(userText: string): string {
+  const text = userText.toLowerCase();
+
+  if (/\b(e\s*-?\s*card|ecard)\b/.test(text) && /\b(cannot|can't|cant|lost|missing|find|forgot|don't have|dont have|not showing)\b/.test(text)) {
+    return "If you cannot find your NovaCare e-card, open the NovaCare app and check My Policy or Digital E-card. If it is still missing before admission, use app chat or call the emergency helpline, and keep your policy ID and government ID ready.";
+  }
+
+  if (/\b(opd|outpatient)\b/.test(text)) {
+    return "O P D means outpatient care, like doctor visits or consultations where you are not admitted to a hospital. NovaCare Standard includes O P D up to ten thousand rupees per year, and Premium includes O P D up to twenty five thousand rupees per year.";
+  }
+
+  if (/\bcritical illness|critical rider|illness rider|rider\b/.test(text)) {
+    return "A critical illness rider is an extra benefit for serious illnesses listed in the policy. In this script, NovaCare Premium includes a critical illness rider.";
+  }
+
+  if (/\b(room eligibility|private room|room eligible|room rent|private-room)\b/.test(text)) {
+    return "Room eligibility means the room category your policy can support during hospitalization. In this script, NovaCare Premium includes private-room eligibility.";
+  }
+
+  if (/\b(android|ios|iphone|app)\b/.test(text) && /\b(use|available|download|phone|mobile|install|login|access)\b/.test(text)) {
+    return "Yes, you can use the NovaCare app on i O S and Android. The app is used for policy details, e-card access, reimbursement uploads, chat support, and renewal settings.";
+  }
+
+  if (
+    /\b(delay|delays|faster|fast|speed|reduce|avoid)\b/.test(text) &&
+    /\b(admission|preauth|pre-auth|cashless|hospital)\b/.test(text)
+  ) {
+    return "To reduce admission delays, use a NovaCare network hospital, show your e-card early, and keep your policy ID, government ID, diagnosis note, and admission request ready. The normal cashless pre-auth target is thirty minutes after the hospital sends the request.";
+  }
+
+  if (/\b(prepare|ready|carry|keep)\b/.test(text) && /\b(doctor|admission|hospital|visit)\b/.test(text)) {
+    return "Before a hospital visit, keep your NovaCare policy ID, e-card, government ID, diagnosis note, and admission request ready. For cashless treatment, confirm the hospital is in the NovaCare network in the app.";
+  }
+
+  return "";
+}
+
 function queryTokens(text: string): string[] {
   return text
     .toLowerCase()
@@ -233,6 +270,14 @@ function queryTokens(text: string): string[] {
       "could",
       "would",
       "people",
+      "health",
+      "insurance",
+      "should",
+      "cannot",
+      "cant",
+      "have",
+      "novacare",
+      "customer",
     ].includes(token));
 }
 
@@ -254,11 +299,17 @@ function scoredPromptAnswer(systemPrompt: string, userText: string): string {
       score: tokens.reduce((score, token) => score + (line.toLowerCase().includes(token) ? 1 : 0), 0),
     }))
     .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 3)
+    .sort((a, b) => b.score - a.score);
+
+  const bestScore = scored[0]?.score ?? 0;
+  if (bestScore < 2) return "";
+
+  const scoredLines = scored
+    .filter((item) => item.score === bestScore)
+    .slice(0, 2)
     .map((item) => item.line);
 
-  return compactAnswer(scored, 2);
+  return compactAnswer(scoredLines, 2);
 }
 
 function answerFromSystemPrompt(systemPrompt: string, userText: string): string {
@@ -266,6 +317,9 @@ function answerFromSystemPrompt(systemPrompt: string, userText: string): string 
   if (!systemPrompt.trim()) return "";
 
   if (/\bnovacare\b/i.test(systemPrompt)) {
+    const specificAnswer = specificNovaCareScriptAnswer(userText);
+    if (specificAnswer) return specificAnswer;
+
     const novaCareAnswer = answerNovaCareQuestion(userText);
     if (novaCareAnswer) return novaCareAnswer;
   }
@@ -300,6 +354,20 @@ function answerFromSystemPrompt(systemPrompt: string, userText: string): string 
   }
 
   return scoredPromptAnswer(systemPrompt, userText);
+}
+
+function geminiSystemInstruction(systemContent: string): string {
+  const base = systemContent ||
+    "You are a helpful voice assistant. Reply in 1 to 3 plain spoken sentences. No markdown.";
+
+  return `${base}
+
+STRICT ANSWER SELECTION:
+- Answer the caller's exact question first.
+- Do not mention plan names, prices, or coverage amounts unless the caller asks about plans, prices, coverage, or limits.
+- Do not paste unrelated facts from the script just because they share generic words like health or insurance.
+- If the exact detail is not in the script, say you do not have that exact detail in this support script, then offer the closest supported next step.
+- Keep the answer to one or two spoken sentences.`;
 }
 
 function estimateTension(userText: string): number {
@@ -463,10 +531,7 @@ async function callGemini(args: {
       signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
       body: JSON.stringify({
         systemInstruction: {
-          parts: [{
-            text: systemContent ||
-              "You are a helpful voice assistant. Reply in 1 to 3 plain spoken sentences. No markdown.",
-          }],
+          parts: [{ text: geminiSystemInstruction(systemContent) }],
         },
         contents,
         generationConfig: geminiGenerationConfig(model),
@@ -575,10 +640,7 @@ function streamGemini(args: {
             signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
             body: JSON.stringify({
               systemInstruction: {
-                parts: [{
-                  text: systemContent ||
-                    "You are a helpful voice assistant. Reply in 1 to 2 plain spoken sentences. No markdown.",
-                }],
+                parts: [{ text: geminiSystemInstruction(systemContent) }],
               },
               contents,
               generationConfig: geminiGenerationConfig(model),
