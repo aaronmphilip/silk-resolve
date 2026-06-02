@@ -42,7 +42,6 @@ const START_TIMEOUT_MS = 75_000;
 const ASSISTANT_MERGE_WINDOW_MS = 12_000;
 const VISITOR_ID_KEY = "silk_resolve_voice_visitor_id";
 const LOCAL_MUGA_SAMPLE_RATE = 24_000;
-const LOCAL_VAPI_PLACEHOLDER_SUPPRESS_MS = 2_500;
 const VAPI_PLACEHOLDER_TRANSCRIPT_RE = /^(?:got it|i understand)[.!?\s]*$/i;
 const PREFETCHED_LOCAL_MUGA_PHRASES = [
   "Let me check that.",
@@ -412,17 +411,24 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     sendVapiControl(vapiRef.current, "unmute-assistant");
   }, []);
 
-  const suppressAssistantAudio = useCallback((ms: number) => {
+  const suppressAssistantAudio = useCallback((ms?: number) => {
     if (assistantUnmuteTimerRef.current) clearTimeout(assistantUnmuteTimerRef.current);
+    assistantUnmuteTimerRef.current = null;
     sendVapiControl(vapiRef.current, "mute-assistant");
-    assistantTranscriptSuppressUntilRef.current = Math.max(
-      assistantTranscriptSuppressUntilRef.current,
-      Date.now() + ms
-    );
-    assistantUnmuteTimerRef.current = setTimeout(() => {
-      assistantUnmuteTimerRef.current = null;
-      sendVapiControl(vapiRef.current, "unmute-assistant");
-    }, ms);
+
+    if (typeof ms === "number") {
+      assistantTranscriptSuppressUntilRef.current = Math.max(
+        assistantTranscriptSuppressUntilRef.current,
+        Date.now() + ms
+      );
+      assistantUnmuteTimerRef.current = setTimeout(() => {
+        assistantUnmuteTimerRef.current = null;
+        sendVapiControl(vapiRef.current, "unmute-assistant");
+      }, ms);
+      return;
+    }
+
+    assistantTranscriptSuppressUntilRef.current = Number.POSITIVE_INFINITY;
   }, []);
 
   const muteMicForLocalOutput = useCallback(() => {
@@ -665,7 +671,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     localSpeechKeysRef.current = new Set();
 
     muteMicForLocalOutput();
-    suppressAssistantAudio(LOCAL_VAPI_PLACEHOLDER_SUPPRESS_MS);
+    suppressAssistantAudio();
     setTranscript(lines => appendTranscriptLine(lines, "assistant", speech, Date.now()));
 
     void (async () => {
@@ -675,7 +681,6 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         if (cachedAnswer) {
           await localAudioQueueRef.current;
           if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
-            releaseAssistantAudio();
             restoreMicAfterLocalOutput();
           }
           return;
@@ -684,7 +689,6 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         const streamedAnswer = await streamLocalAnswer(userText, bridge, callRunId, localRunId);
         await localAudioQueueRef.current;
         if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
-          releaseAssistantAudio();
           restoreMicAfterLocalOutput();
         }
       } catch (err) {
