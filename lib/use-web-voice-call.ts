@@ -43,6 +43,7 @@ const ASSISTANT_MERGE_WINDOW_MS = 12_000;
 const VISITOR_ID_KEY = "silk_resolve_voice_visitor_id";
 const LOCAL_MUGA_SAMPLE_RATE = 24_000;
 const LOCAL_VAPI_PLACEHOLDER_SUPPRESS_MS = 2_500;
+const VAPI_PLACEHOLDER_TRANSCRIPT_RE = /^(?:got it|i understand)[.!?\s]*$/i;
 const PREFETCHED_LOCAL_MUGA_PHRASES = [
   "Let me check that.",
   "I understand.",
@@ -252,17 +253,8 @@ function sendVapiControl(vapi: VapiInstance | null, control: VapiControl): void 
   } catch {}
 }
 
-function sendVapiAssistantContext(vapi: VapiInstance | null, text: string): void {
-  const content = stripVoiceMarkers(text).trim();
-  if (!vapi || !content) return;
-
-  try {
-    vapi.send({
-      type: "add-message",
-      message: { role: "assistant", content },
-      triggerResponseEnabled: false,
-    });
-  } catch {}
+function isVapiPlaceholderTranscript(text: string): boolean {
+  return VAPI_PLACEHOLDER_TRANSCRIPT_RE.test(stripVoiceMarkers(text).trim());
 }
 
 function appendTranscriptLine(
@@ -373,6 +365,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const localSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const localAudioQueueRef = useRef<Promise<void>>(Promise.resolve());
   const localAudioCacheRef = useRef(new Map<string, Promise<LocalMugaClip>>());
+  const localSpeechKeysRef = useRef(new Set<string>());
   const assistantUnmuteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assistantTranscriptSuppressUntilRef = useRef(0);
   const assistantSystemPromptRef = useRef("");
@@ -464,6 +457,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     } catch {}
     localSourceRef.current = null;
     localAudioQueueRef.current = Promise.resolve();
+    localSpeechKeysRef.current.clear();
     assistantTranscriptSuppressUntilRef.current = 0;
     releaseAssistantAudio();
     restoreMicAfterLocalOutput();
@@ -534,6 +528,9 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const enqueueLocalSpeech = useCallback((text: string, callRunId: number, localRunId: number) => {
     const speakable = text.trim();
     if (!speakable) return;
+    const speechKey = normalizeMugaCacheText(speakable);
+    if (localSpeechKeysRef.current.has(speechKey)) return;
+    localSpeechKeysRef.current.add(speechKey);
 
     // Start synthesis immediately, then queue only playback. This lets the real
     // answer render through MUGA while the cached bridge is still speaking,
@@ -665,6 +662,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     } catch {}
     localSourceRef.current = null;
     localAudioQueueRef.current = Promise.resolve();
+    localSpeechKeysRef.current = new Set();
 
     muteMicForLocalOutput();
     suppressAssistantAudio(LOCAL_VAPI_PLACEHOLDER_SUPPRESS_MS);
@@ -677,7 +675,6 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         if (cachedAnswer) {
           await localAudioQueueRef.current;
           if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
-            sendVapiAssistantContext(vapiRef.current, speech);
             releaseAssistantAudio();
             restoreMicAfterLocalOutput();
           }
@@ -687,7 +684,6 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         const streamedAnswer = await streamLocalAnswer(userText, bridge, callRunId, localRunId);
         await localAudioQueueRef.current;
         if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
-          sendVapiAssistantContext(vapiRef.current, `${bridge} ${streamedAnswer ?? ""}`);
           releaseAssistantAudio();
           restoreMicAfterLocalOutput();
         }
@@ -858,6 +854,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           if (!text) return;
 
           const role = normalizeTranscriptRole(msg.role);
+          if (role === "assistant" && voiceMode !== "vapi" && isVapiPlaceholderTranscript(text)) return;
 
           // Partials stream in as the speaker talks — show them live, don't commit.
           if (msg.transcriptType !== "final") {
