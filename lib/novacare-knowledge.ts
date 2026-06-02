@@ -227,6 +227,8 @@ export const NOVACARE_AGENT_VARIABLES = [
   { name: "tension_level", description: "Current caller frustration score from zero to ten", source: "PEEK" },
 ] as const;
 
+type MugaCachedAudioId = typeof MUGA_CACHED_AUDIO[number]["id"];
+
 export const NOVACARE_PROMPT = `You are Priya, the AI support agent for NovaCare, an IRDAI registered health insurance provider in India.
 
 ABOUT NOVACARE:
@@ -401,6 +403,22 @@ function isLikelyNovaCareSupportIntent(text: string): boolean {
     "cosmetic",
     "status",
     "account",
+    "move",
+    "moving",
+    "relocate",
+    "relocating",
+    "shift",
+    "shifting",
+    "city",
+    "pune",
+    "chennai",
+    "bangalore",
+    "bengaluru",
+    "mumbai",
+    "delhi",
+    "hyderabad",
+    "valid",
+    "active",
     "who are you",
     "what do you",
     "what can you",
@@ -412,6 +430,14 @@ function isLikelyNovaCareSupportIntent(text: string): boolean {
 
 function isSmallTalk(text: string): boolean {
   return /^(hi|hello|hey|thanks|thank you|bye|goodbye)[\s.!?]*$/i.test(text.trim());
+}
+
+function isAccountSpecificIntent(text: string): boolean {
+  return (
+    hasAny(text, ["claim status", "policy id", "claim id", "account", "my claim"]) ||
+    /\bmy policy\b.*\b(status|number|id|details|claim|account)\b/i.test(text) ||
+    /\b(status|number|id|details)\b.*\b(my policy|my claim|claim|policy)\b/i.test(text)
+  );
 }
 
 function isRelocationIntent(text: string): boolean {
@@ -467,8 +493,91 @@ function isRelocationIntent(text: string): boolean {
   );
 }
 
-function cachedAudioText(id: typeof MUGA_CACHED_AUDIO[number]["id"]): string {
+function isPlanListIntent(text: string): boolean {
+  return hasAny(text, ["plan", "plans", "price", "pricing", "cost", "premium", "monthly", "compare"]);
+}
+
+function isCoverageIntent(text: string): boolean {
+  return (
+    hasAny(text, ["coverage", "covered", "insured", "limit", "policy limit", "sum insured", "benefit", "benefits"]) ||
+    /\bwhat(?:'s| is)?\s+(?:covered|included)\b/i.test(text) ||
+    /\bdoes .* cover\b/i.test(text)
+  );
+}
+
+function isNetworkHospitalIntent(text: string): boolean {
+  return (
+    hasAny(text, ["network hospital", "network hospitals", "hospital network", "cashless hospital", "cashless hospitals"]) ||
+    hasAny(text, ["fortis", "apollo", "max", "manipal", "medanta", "narayana", "aster"]) ||
+    /\b(hospital|hospitals|network)\b.*\b(pune|chennai|bangalore|bengaluru|mumbai|delhi|hyderabad|kolkata|ahmedabad|jaipur)\b/i.test(text) ||
+    /\b(pune|chennai|bangalore|bengaluru|mumbai|delhi|hyderabad|kolkata|ahmedabad|jaipur)\b.*\b(hospital|hospitals|network)\b/i.test(text) ||
+    (hasAny(text, ["hospital", "hospitals", "network"]) && !hasAny(text, ["claim", "claims", "preauth", "pre-auth", "pre auth", "reimburse", "reimbursement"]))
+  );
+}
+
+function isClaimProcessIntent(text: string): boolean {
+  return (
+    hasAny(text, ["claim", "claims", "preauth", "pre-auth", "pre auth", "cashless claim", "cashless claims"]) ||
+    /\b(hospital|admission|admit)\b.*\b(approval|preauth|claim)\b/i.test(text)
+  ) && !isAccountSpecificIntent(text);
+}
+
+function isReimbursementIntent(text: string): boolean {
+  return hasAny(text, ["reimburse", "reimbursement", "paid back", "pay first", "paid first", "upload", "bills", "discharge summary", "bank details"]);
+}
+
+function isDependentIntent(text: string): boolean {
+  return hasAny(text, ["add family", "family member", "dependent", "dependents", "mother", "father", "parent", "spouse", "wife", "husband", "child", "children"]);
+}
+
+function isRenewalIntent(text: string): boolean {
+  return hasAny(text, ["renew", "renewal", "auto renew", "auto-renew", "expire", "expiry"]);
+}
+
+function isWaitingIntent(text: string): boolean {
+  return hasAny(text, ["waiting", "pre existing", "pre-existing", "existing disease", "maternity"]);
+}
+
+function isExclusionIntent(text: string): boolean {
+  return hasAny(text, ["exclude", "excluded", "exclusion", "exclusions", "not covered", "cosmetic"]);
+}
+
+function isSupportIntent(text: string): boolean {
+  return hasAny(text, ["phone", "email", "support", "contact", "emergency", "helpline", "number", "chat"]);
+}
+
+function isAboutIntent(text: string): boolean {
+  return hasAny(text, ["who are you", "about", "company", "novacare"]);
+}
+
+function cachedAudioText(id: MugaCachedAudioId): string {
   return MUGA_CACHED_AUDIO.find((item) => item.id === id)?.text ?? "";
+}
+
+function cachedIntentIdForQuestion(text: string): MugaCachedAudioId | null {
+  const selectedPlan = planByText(text);
+  if (selectedPlan && hasAny(text, ["price", "cost", "premium", "coverage", "cover", "insured", "benefit", "include", "plan"])) {
+    if (selectedPlan.name.endsWith("Basic")) return "plan-basic";
+    if (selectedPlan.name.endsWith("Standard")) return "plan-standard";
+    if (selectedPlan.name.endsWith("Premium")) return "plan-premium";
+  }
+
+  if (isRelocationIntent(text)) return "relocation";
+  if (hasAny(text, ["again", "repeat", "say that", "one more time"])) return "plans";
+  if (isAccountSpecificIntent(text)) return "account-specific";
+  if (isReimbursementIntent(text)) return "reimbursement";
+  if (isClaimProcessIntent(text)) return "claims";
+  if (isNetworkHospitalIntent(text)) return "network-hospitals";
+  if (isPlanListIntent(text)) return "plans";
+  if (isCoverageIntent(text)) return "coverage";
+  if (isDependentIntent(text)) return "add-dependents";
+  if (isRenewalIntent(text)) return "renewals";
+  if (isWaitingIntent(text)) return "waiting";
+  if (isExclusionIntent(text)) return "exclusions";
+  if (isSupportIntent(text)) return "support";
+  if (isAboutIntent(text)) return "about";
+
+  return null;
 }
 
 export function normalizeMugaCacheText(text: string): string {
@@ -492,71 +601,6 @@ export function answerNovaCareQuestion(userText: string): string {
   if (isClearlyOutOfScope(text)) return cachedAudioText("out-of-scope");
   if (!isSmallTalk(text) && !isLikelyNovaCareSupportIntent(text)) return cachedAudioText("out-of-scope");
 
-  const selectedPlan = planByText(text);
-  if (selectedPlan && hasAny(text, ["price", "cost", "premium", "coverage", "cover", "insured", "benefit", "include", "plan"])) {
-    if (selectedPlan.name.endsWith("Basic")) return cachedAudioText("plan-basic");
-    if (selectedPlan.name.endsWith("Standard")) return cachedAudioText("plan-standard");
-    if (selectedPlan.name.endsWith("Premium")) return cachedAudioText("plan-premium");
-  }
-
-  if (isRelocationIntent(text)) {
-    return cachedAudioText("relocation");
-  }
-
-  if (hasAny(text, ["again", "repeat", "say that", "one more time"])) {
-    return cachedAudioText("plans");
-  }
-
-  if (hasAny(text, ["plan", "plans", "price", "pricing", "cost", "premium", "monthly", "compare"])) {
-    return cachedAudioText("plans");
-  }
-
-  if (hasAny(text, ["coverage", "cover", "covered", "insured", "limit", "policy limit", "sum insured"])) {
-    return cachedAudioText("coverage");
-  }
-
-  if (hasAny(text, ["network", "hospital", "cashless", "fortis", "apollo", "max", "manipal", "medanta", "narayana", "aster"])) {
-    return cachedAudioText("network-hospitals");
-  }
-
-  if (
-    hasAny(text, ["claim status", "policy id", "claim id", "account", "my claim"]) ||
-    /\bmy policy\b.*\b(status|number|id|details|claim|account)\b/i.test(text)
-  ) {
-    return cachedAudioText("account-specific");
-  }
-
-  if (hasAny(text, ["claim", "claims", "preauth", "pre-auth", "pre auth", "cashless"])) {
-    return cachedAudioText("claims");
-  }
-
-  if (hasAny(text, ["reimburse", "reimbursement", "paid back", "upload", "bills"])) {
-    return cachedAudioText("reimbursement");
-  }
-
-  if (hasAny(text, ["add family", "family member", "dependent", "dependents", "mother", "father", "parent", "spouse", "wife", "husband", "child", "children"])) {
-    return cachedAudioText("add-dependents");
-  }
-
-  if (hasAny(text, ["renew", "renewal", "auto renew", "expire"])) {
-    return cachedAudioText("renewals");
-  }
-
-  if (hasAny(text, ["waiting", "pre existing", "pre-existing", "existing disease", "maternity"])) {
-    return cachedAudioText("waiting");
-  }
-
-  if (hasAny(text, ["exclude", "excluded", "not covered", "cosmetic"])) {
-    return cachedAudioText("exclusions");
-  }
-
-  if (hasAny(text, ["phone", "email", "support", "contact", "emergency", "helpline", "number"])) {
-    return cachedAudioText("support");
-  }
-
-  if (hasAny(text, ["who are you", "about", "company", "novacare"])) {
-    return cachedAudioText("about");
-  }
-
-  return "";
+  const intentId = cachedIntentIdForQuestion(text);
+  return intentId ? cachedAudioText(intentId) : "";
 }
