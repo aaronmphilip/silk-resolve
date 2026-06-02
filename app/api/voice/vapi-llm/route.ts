@@ -217,23 +217,23 @@ function specificNovaCareScriptAnswer(userText: string): string {
   const text = userText.toLowerCase();
 
   if (/\b(e\s*-?\s*card|ecard)\b/.test(text) && /\b(cannot|can't|cant|lost|missing|find|forgot|don't have|dont have|not showing)\b/.test(text)) {
-    return "If you cannot find your NovaCare e-card, open the NovaCare app and check My Policy or Digital E-card. If it is still missing before admission, use app chat or call the emergency helpline, and keep your policy ID and government ID ready.";
+    return "I don't have the exact e-card recovery steps in this support script. For admission, keep your policy ID and government ID ready, and use NovaCare live chat or the emergency helpline for help before treatment.";
   }
 
   if (/\b(opd|outpatient)\b/.test(text)) {
-    return "O P D means outpatient care, like doctor visits or consultations where you are not admitted to a hospital. NovaCare Standard includes O P D up to ten thousand rupees per year, and Premium includes O P D up to twenty five thousand rupees per year.";
+    return "This support script does not define O P D. It only says NovaCare Standard includes O P D up to ten thousand rupees per year, and Premium includes O P D up to twenty five thousand rupees per year.";
   }
 
   if (/\bcritical illness|critical rider|illness rider|rider\b/.test(text)) {
-    return "A critical illness rider is an extra benefit for serious illnesses listed in the policy. In this script, NovaCare Premium includes a critical illness rider.";
+    return "This support script does not define the critical illness rider or list the illnesses. It only says NovaCare Premium includes a critical illness rider.";
   }
 
   if (/\b(room eligibility|private room|room eligible|room rent|private-room)\b/.test(text)) {
-    return "Room eligibility means the room category your policy can support during hospitalization. In this script, NovaCare Premium includes private-room eligibility.";
+    return "This support script does not define private-room eligibility or room rent rules. It only says NovaCare Premium includes private-room eligibility.";
   }
 
   if (/\b(android|ios|iphone|app)\b/.test(text) && /\b(use|available|download|phone|mobile|install|login|access)\b/.test(text)) {
-    return "Yes, you can use the NovaCare app on i O S and Android. The app is used for policy details, e-card access, reimbursement uploads, chat support, and renewal settings.";
+    return "Yes. The support script says the NovaCare app is available on i O S and Android. It also says the app supports reimbursement uploads, renewal settings, and adding dependents.";
   }
 
   if (
@@ -366,6 +366,7 @@ STRICT ANSWER SELECTION:
 - Answer the caller's exact question first.
 - Do not mention plan names, prices, or coverage amounts unless the caller asks about plans, prices, coverage, or limits.
 - Do not paste unrelated facts from the script just because they share generic words like health or insurance.
+- Do not invent app screens, recovery flows, benefit definitions, or operational steps that are not stated in the script.
 - If the exact detail is not in the script, say you do not have that exact detail in this support script, then offer the closest supported next step.
 - Keep the answer to one or two spoken sentences.`;
 }
