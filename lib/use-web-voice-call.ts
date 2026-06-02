@@ -508,6 +508,17 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     const speakable = text.trim();
     if (!speakable) return;
 
+    // Start synthesis immediately, then queue only playback. This lets the real
+    // answer render through MUGA while the cached bridge is still speaking,
+    // which is the closest current MUGA API shape gets to a realtime turn.
+    const clipPromise = (
+      mountedRef.current &&
+      callRunId === runIdRef.current &&
+      localRunId === localAssistRunRef.current
+    )
+      ? getOrFetchLocalMugaClip(speakable)
+      : Promise.resolve(null);
+
     localAudioQueueRef.current = localAudioQueueRef.current
       .then(async () => {
         if (
@@ -518,8 +529,9 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           return;
         }
 
-        const clip = await getOrFetchLocalMugaClip(speakable);
+        const clip = await clipPromise;
         if (
+          !clip ||
           !mountedRef.current ||
           callRunId !== runIdRef.current ||
           localRunId !== localAssistRunRef.current
