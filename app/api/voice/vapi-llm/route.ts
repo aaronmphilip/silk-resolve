@@ -266,11 +266,15 @@ function answerFromSystemPrompt(systemPrompt: string, userText: string): string 
   if (!systemPrompt.trim()) return "";
 
   if (/\bnovacare\b/i.test(systemPrompt)) {
+    if (/\b(move|moving|relocate|relocating|shift|city|pune|chennai|mumbai|delhi|bangalore|bengaluru|hyderabad)\b/.test(text)) {
+      return "Yes, your NovaCare policy stays active across India. If you move from Pune to Chennai, check the NovaCare app for cashless network hospitals in Chennai before treatment.";
+    }
+
     const novaCareAnswer = answerNovaCareQuestion(userText);
     if (novaCareAnswer) return novaCareAnswer;
   }
 
-  if (/\b(plan|plans|price|pricing|cost|premium|monthly|cover|coverage|insured|policy)\b/.test(text)) {
+  if (/\b(plan|plans|price|pricing|cost|premium|monthly|cover|coverage|insured|benefit|limit)\b/.test(text)) {
     const lines = sectionLines(systemPrompt, /^plans\b/i);
     const answer = planSummary(lines) || compactAnswer(lines, 2);
     if (answer) return answer;

@@ -456,7 +456,10 @@ export function answerNovaCareQuestion(userText: string): string {
     return cachedAudioText("network-hospitals");
   }
 
-  if (hasAny(text, ["claim status", "status", "policy id", "claim id", "account", "my policy", "my claim"])) {
+  if (
+    hasAny(text, ["claim status", "policy id", "claim id", "account", "my claim"]) ||
+    /\bmy policy\b.*\b(status|number|id|details|claim|account)\b/i.test(text)
+  ) {
     return cachedAudioText("account-specific");
   }
 
