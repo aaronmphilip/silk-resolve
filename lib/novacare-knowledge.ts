@@ -569,11 +569,11 @@ function cachedIntentIdForQuestion(text: string): MugaCachedAudioId | null {
   if (isClaimProcessIntent(text)) return "claims";
   if (isNetworkHospitalIntent(text)) return "network-hospitals";
   if (isPlanListIntent(text)) return "plans";
-  if (isCoverageIntent(text)) return "coverage";
   if (isDependentIntent(text)) return "add-dependents";
   if (isRenewalIntent(text)) return "renewals";
   if (isWaitingIntent(text)) return "waiting";
   if (isExclusionIntent(text)) return "exclusions";
+  if (isCoverageIntent(text)) return "coverage";
   if (isSupportIntent(text)) return "support";
   if (isAboutIntent(text)) return "about";
 
