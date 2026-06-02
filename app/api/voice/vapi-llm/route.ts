@@ -46,8 +46,9 @@ function geminiGenerationConfig(model: string): Record<string, unknown> {
   }
   return config;
 }
-const OUT_OF_SCOPE_RESPONSE =
-  "I don't have that information in this support script. I can help with NovaCare plans, claims, coverage, support, or network hospitals.";
+const SCRIPT_MISSING_RESPONSE =
+  "I don't have that question in this support script, so I don't know the answer from the script.";
+const OUT_OF_SCOPE_RESPONSE = SCRIPT_MISSING_RESPONSE;
 
 function getConfig(req: NextRequest) {
   const silkDisabled = ["0", "false", "off", "no"].includes(
@@ -217,7 +218,7 @@ function specificNovaCareScriptAnswer(userText: string): string {
   const text = userText.toLowerCase();
 
   if (/\b(e\s*-?\s*card|ecard)\b/.test(text) && /\b(cannot|can't|cant|lost|missing|find|forgot|don't have|dont have|not showing)\b/.test(text)) {
-    return "I don't have the exact e-card recovery steps in this support script. For admission, keep your policy ID and government ID ready, and use NovaCare live chat or the emergency helpline for help before treatment.";
+    return "I don't have that question in this support script, so I don't know the exact e-card recovery steps. For admission, keep your policy ID and government ID ready, and use NovaCare live chat or the emergency helpline for help before treatment.";
   }
 
   if (/\b(opd|outpatient)\b/.test(text)) {
@@ -278,6 +279,8 @@ function queryTokens(text: string): string[] {
       "have",
       "novacare",
       "customer",
+      "support",
+      "help",
     ].includes(token));
 }
 
@@ -310,6 +313,25 @@ function scoredPromptAnswer(systemPrompt: string, userText: string): string {
     .map((item) => item.line);
 
   return compactAnswer(scoredLines, 2);
+}
+
+function scriptEvidenceScore(systemPrompt: string, userText: string): number {
+  const tokens = queryTokens(userText);
+  if (tokens.length === 0) return 0;
+
+  const knowledgePrompt = systemPrompt.split(/\bVOICE CALL RULES:/i)[0] ?? systemPrompt;
+  const normalizedScript = knowledgePrompt
+    .split(/\r?\n/)
+    .map(cleanPromptLine)
+    .join(" ")
+    .toLowerCase();
+
+  return tokens.reduce((score, token) => score + (normalizedScript.includes(token) ? 1 : 0), 0);
+}
+
+function canTryGeminiFromScript(systemPrompt: string, userText: string): boolean {
+  if (!systemPrompt.trim()) return false;
+  return scriptEvidenceScore(systemPrompt, userText) > 0;
 }
 
 function answerFromSystemPrompt(systemPrompt: string, userText: string): string {
@@ -367,7 +389,7 @@ STRICT ANSWER SELECTION:
 - Do not mention plan names, prices, or coverage amounts unless the caller asks about plans, prices, coverage, or limits.
 - Do not paste unrelated facts from the script just because they share generic words like health or insurance.
 - Do not invent app screens, recovery flows, benefit definitions, or operational steps that are not stated in the script.
-- If the exact detail is not in the script, say you do not have that exact detail in this support script, then offer the closest supported next step.
+- If the exact detail is not in the script, say: "I don't have that question in this support script, so I don't know the answer from the script."
 - Keep the answer to one or two spoken sentences.`;
 }
 
@@ -733,9 +755,13 @@ export async function POST(req: NextRequest) {
     return reply(promptAnswer, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled);
   }
 
+  if (!canTryGeminiFromScript(systemContent, lastUser)) {
+    return reply(SCRIPT_MISSING_RESPONSE, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled);
+  }
+
   if (!apiKey) {
     return reply(
-      promptAnswer || OUT_OF_SCOPE_RESPONSE,
+      SCRIPT_MISSING_RESPONSE,
       wantsStream,
       model,
       silkEnabled,
@@ -762,7 +788,7 @@ export async function POST(req: NextRequest) {
       model,
       systemContent,
       contents,
-      fallback: promptAnswer,
+      fallback: SCRIPT_MISSING_RESPONSE,
       silkEnabled,
       userText: lastUser,
       clientLeadEnabled,
@@ -771,11 +797,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const text = await callGemini({ apiKey, model, systemContent, contents });
-    return reply(text || promptAnswer, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled);
+    return reply(text || SCRIPT_MISSING_RESPONSE, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled);
   } catch (err) {
     console.error("[vapi-llm] upstream failed:", err);
     return reply(
-      promptAnswer || OUT_OF_SCOPE_RESPONSE,
+      SCRIPT_MISSING_RESPONSE,
       wantsStream,
       model,
       silkEnabled,
