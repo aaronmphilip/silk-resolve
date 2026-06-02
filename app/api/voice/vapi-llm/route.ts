@@ -55,10 +55,12 @@ function getConfig(req: NextRequest) {
   );
   const requestedVoice = req.nextUrl.searchParams.get("voice") === "vapi" ? "vapi" : "silk";
   const clientLeadEnabled = req.nextUrl.searchParams.get("clientLead") === "1";
+  const localClientEnabled = req.nextUrl.searchParams.get("local") === "1";
   return {
     apiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
     silkEnabled: requestedVoice === "silk" && Boolean(process.env.SILK_API_KEY?.trim()) && !silkDisabled,
     clientLeadEnabled,
+    localClientEnabled,
   };
 }
 
@@ -361,6 +363,14 @@ function fastLeadFor(userText: string, answer: string): string {
   return "Let me check that.";
 }
 
+function browserHandledPlaceholder(userText: string): string {
+  const text = userText.toLowerCase();
+  if (/\b(angry|furious|terrible|worst|scam|fraud|cheated|not happy|frustrated|upset|complaint)\b/.test(text)) {
+    return "I understand.";
+  }
+  return "Got it.";
+}
+
 function stripLeadingFastLead(text: string, lead: string): string {
   const cleanLead = stripAll(lead).trim();
   if (!cleanLead) return text;
@@ -641,11 +651,18 @@ export async function POST(req: NextRequest) {
   // this guarantees the thinking-disable config matches the model we actually call.
   const model = DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.5-flash-lite";
   const wantsStream = body.stream !== false;
-  const { apiKey, silkEnabled, clientLeadEnabled } = getConfig(req);
+  const { apiKey, silkEnabled, clientLeadEnabled, localClientEnabled } = getConfig(req);
 
   const systemContent = messages.find((message) => message.role === "system")?.content ?? "";
   const lastUser = lastUserText(messages);
   const promptAnswer = answerFromSystemPrompt(systemContent, lastUser);
+
+  // The web client can handle fast local MUGA playback itself. In that mode the
+  // Vapi call still needs a tiny response to keep the turn healthy, but it should
+  // not trigger a duplicate full MUGA generation in the background.
+  if (clientLeadEnabled && !localClientEnabled) {
+    return reply(browserHandledPlaceholder(lastUser), wantsStream, model, silkEnabled, lastUser, clientLeadEnabled);
+  }
 
   // Company/site knowledge should not wait on Gemini. This is the path that
   // fixes the fake website agent answering from the saved agent prompt.

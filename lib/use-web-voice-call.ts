@@ -253,6 +253,19 @@ function sendVapiControl(vapi: VapiInstance | null, control: VapiControl): void 
   } catch {}
 }
 
+function sendVapiAssistantContext(vapi: VapiInstance | null, text: string): void {
+  const content = stripVoiceMarkers(text).trim();
+  if (!vapi || !content) return;
+
+  try {
+    vapi.send({
+      type: "add-message",
+      message: { role: "assistant", content },
+      triggerResponseEnabled: false,
+    });
+  } catch {}
+}
+
 function appendTranscriptLine(
   lines: WebVoiceTranscript[],
   role: "user" | "assistant",
@@ -535,7 +548,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       { role: "user", content: userText },
     ];
 
-    const response = await fetch("/api/voice/vapi-llm?voice=silk&clientLead=1", {
+    const response = await fetch("/api/voice/vapi-llm?voice=silk&clientLead=1&local=1", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ stream: true, messages }),
@@ -550,6 +563,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     const decoder = new TextDecoder();
     let buffer = "";
     let strippedBridge = false;
+    let answerText = "";
 
     for (;;) {
       const { done, value } = await reader.read();
@@ -585,6 +599,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
             const transcriptText = stripVoiceMarkers(content);
             if (transcriptText) {
+              answerText = `${answerText} ${transcriptText}`.replace(/\s+/g, " ").trim();
               setTranscript(lines => appendTranscriptLine(lines, "assistant", transcriptText, Date.now()));
             }
             enqueueLocalSpeech(content, callRunId, localRunId);
@@ -592,6 +607,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         }
       }
     }
+
+    return answerText;
   }, [enqueueLocalSpeech]);
 
   const playLocalAssistForUserText = useCallback((userText: string, callRunId: number) => {
@@ -622,14 +639,16 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           suppressAssistantAudio(clip.durationMs + LOCAL_ASSISTANT_SUPPRESS_BUFFER_MS);
           await localAudioQueueRef.current;
           if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
+            sendVapiAssistantContext(vapiRef.current, speech);
             releaseAssistantAudio();
           }
           return;
         }
 
-        await streamLocalAnswer(userText, bridge, callRunId, localRunId);
+        const streamedAnswer = await streamLocalAnswer(userText, bridge, callRunId, localRunId);
         await localAudioQueueRef.current;
         if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
+          sendVapiAssistantContext(vapiRef.current, `${bridge} ${streamedAnswer ?? ""}`);
           releaseAssistantAudio();
         }
       } catch (err) {
