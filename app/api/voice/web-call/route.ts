@@ -121,7 +121,7 @@ VOICE CALL RULES:
       eotThreshold: 0.55,
       eotTimeoutMs: 1200,
     },
-    silenceTimeoutSeconds: 18,
+    silenceTimeoutSeconds: 60,
     // Do not add extra delay after transcription; MUGA synthesis is the bottleneck.
     startSpeakingPlan: {
       waitSeconds: 0,

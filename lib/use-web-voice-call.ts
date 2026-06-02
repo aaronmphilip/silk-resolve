@@ -42,8 +42,7 @@ const START_TIMEOUT_MS = 75_000;
 const ASSISTANT_MERGE_WINDOW_MS = 12_000;
 const VISITOR_ID_KEY = "silk_resolve_voice_visitor_id";
 const LOCAL_MUGA_SAMPLE_RATE = 24_000;
-const LOCAL_ASSISTANT_SUPPRESS_BUFFER_MS = 1_200;
-const LOCAL_STREAM_SUPPRESS_MS = 30_000;
+const LOCAL_VAPI_PLACEHOLDER_SUPPRESS_MS = 2_500;
 const PREFETCHED_LOCAL_MUGA_PHRASES = [
   "Let me check that.",
   "I understand.",
@@ -365,6 +364,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const [interim, setInterim] = useState<{ role: "user" | "assistant"; text: string } | null>(null);
 
   const mountedRef = useRef(true);
+  const mutedRef = useRef(false);
   const vapiRef = useRef<VapiInstance | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const runIdRef = useRef(0);
@@ -376,6 +376,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const assistantUnmuteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assistantTranscriptSuppressUntilRef = useRef(0);
   const assistantSystemPromptRef = useRef("");
+  const micMutedBeforeLocalOutputRef = useRef<boolean | null>(null);
   const registeredCallIdsRef = useRef(new Set<string>());
   // Promises kicked off on mount so the heavy work (SDK import, token + assistant
   // config fetches) is already done by the time the user taps Start call. The
@@ -431,6 +432,31 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     }, ms);
   }, []);
 
+  const muteMicForLocalOutput = useCallback(() => {
+    const vapi = vapiRef.current;
+    if (!vapi) return;
+    if (micMutedBeforeLocalOutputRef.current === null) {
+      micMutedBeforeLocalOutputRef.current = mutedRef.current;
+    }
+    try {
+      vapi.setMuted(true);
+      mutedRef.current = true;
+      setMuted(true);
+    } catch {}
+  }, []);
+
+  const restoreMicAfterLocalOutput = useCallback(() => {
+    const vapi = vapiRef.current;
+    const restoreTo = micMutedBeforeLocalOutputRef.current;
+    micMutedBeforeLocalOutputRef.current = null;
+    if (!vapi || restoreTo === null) return;
+    try {
+      vapi.setMuted(restoreTo);
+      mutedRef.current = restoreTo;
+      setMuted(restoreTo);
+    } catch {}
+  }, []);
+
   const stopLocalAssist = useCallback(() => {
     localAssistRunRef.current += 1;
     try {
@@ -440,7 +466,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     localAudioQueueRef.current = Promise.resolve();
     assistantTranscriptSuppressUntilRef.current = 0;
     releaseAssistantAudio();
-  }, [releaseAssistantAudio]);
+    restoreMicAfterLocalOutput();
+  }, [releaseAssistantAudio, restoreMicAfterLocalOutput]);
 
   const getOrFetchLocalMugaClip = useCallback((text: string): Promise<LocalMugaClip> => {
     const key = normalizeMugaCacheText(text);
@@ -529,7 +556,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           return;
         }
 
-        const clip = await clipPromise;
+        const clip = await clipPromise.catch(() => getOrFetchLocalMugaClip(speakable));
         if (
           !clip ||
           !mountedRef.current ||
@@ -639,7 +666,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     localSourceRef.current = null;
     localAudioQueueRef.current = Promise.resolve();
 
-    suppressAssistantAudio(cachedAnswer ? 3_000 : LOCAL_STREAM_SUPPRESS_MS);
+    muteMicForLocalOutput();
+    suppressAssistantAudio(LOCAL_VAPI_PLACEHOLDER_SUPPRESS_MS);
     setTranscript(lines => appendTranscriptLine(lines, "assistant", speech, Date.now()));
 
     void (async () => {
@@ -647,12 +675,11 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         enqueueLocalSpeech(`[neutral] ${speech}`, callRunId, localRunId);
 
         if (cachedAnswer) {
-          const clip = await getOrFetchLocalMugaClip(`[neutral] ${speech}`);
-          suppressAssistantAudio(clip.durationMs + LOCAL_ASSISTANT_SUPPRESS_BUFFER_MS);
           await localAudioQueueRef.current;
           if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
             sendVapiAssistantContext(vapiRef.current, speech);
             releaseAssistantAudio();
+            restoreMicAfterLocalOutput();
           }
           return;
         }
@@ -662,18 +689,22 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
           sendVapiAssistantContext(vapiRef.current, `${bridge} ${streamedAnswer ?? ""}`);
           releaseAssistantAudio();
+          restoreMicAfterLocalOutput();
         }
       } catch (err) {
         if (!mountedRef.current || callRunId !== runIdRef.current || localRunId !== localAssistRunRef.current) return;
         console.warn("[voice] local MUGA assist failed", err);
         releaseAssistantAudio();
+        restoreMicAfterLocalOutput();
       }
     })();
   }, [
     canUseNovaCareCache,
     enqueueLocalSpeech,
     getOrFetchLocalMugaClip,
+    muteMicForLocalOutput,
     releaseAssistantAudio,
+    restoreMicAfterLocalOutput,
     streamLocalAnswer,
     suppressAssistantAudio,
     voiceMode,
@@ -683,6 +714,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     stopTimer();
     stopLocalAssist();
     await destroyVapi();
+    mutedRef.current = false;
     setMuted(false);
   }, [destroyVapi, stopLocalAssist, stopTimer]);
 
@@ -924,6 +956,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
     const nextMuted = !muted;
     vapi.setMuted(nextMuted);
+    mutedRef.current = nextMuted;
     setMuted(nextMuted);
   }, [muted]);
 

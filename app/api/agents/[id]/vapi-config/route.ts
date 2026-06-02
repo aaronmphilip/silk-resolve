@@ -135,7 +135,7 @@ VOICE CALL RULES:
     firstMessageMode: "assistant-speaks-first",
     firstMessageInterruptionsEnabled: true,
     customerJoinTimeoutSeconds: 60,
-    endCallPhrases: ["goodbye", "bye bye", "thank you bye"],
+    endCallPhrases: [],
     endCallMessage: "",
     transcriber: {
       provider: "deepgram",
@@ -146,7 +146,7 @@ VOICE CALL RULES:
       eotThreshold: 0.55,
       eotTimeoutMs: 1200,
     },
-    silenceTimeoutSeconds: 18,
+    silenceTimeoutSeconds: 60,
     maxDurationSeconds: 1800,
     backchannelingEnabled: false,
     // Vapi's default extra wait is 0.4s. MUGA already has enough synth latency,
