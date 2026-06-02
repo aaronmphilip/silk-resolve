@@ -266,10 +266,6 @@ function answerFromSystemPrompt(systemPrompt: string, userText: string): string 
   if (!systemPrompt.trim()) return "";
 
   if (/\bnovacare\b/i.test(systemPrompt)) {
-    if (/\b(move|moving|relocate|relocating|shift|city|pune|chennai|mumbai|delhi|bangalore|bengaluru|hyderabad)\b/.test(text)) {
-      return "Yes, your NovaCare policy stays active across India. If you move from Pune to Chennai, check the NovaCare app for cashless network hospitals in Chennai before treatment.";
-    }
-
     const novaCareAnswer = answerNovaCareQuestion(userText);
     if (novaCareAnswer) return novaCareAnswer;
   }

@@ -138,6 +138,12 @@ export const MUGA_CACHED_AUDIO = [
     audioFile: "novacare-network-hospitals-24k.pcm",
   },
   {
+    id: "relocation",
+    text:
+      "Yes, your NovaCare policy stays active across India. Before treatment in a new city, check the NovaCare app for cashless network hospitals there.",
+    audioFile: "novacare-relocation-24k.pcm",
+  },
+  {
     id: "reimbursement",
     text:
       "For reimbursement, pay the hospital, then upload bills, the discharge summary, prescriptions, and bank details in the NovaCare app. Approved claims are usually paid within seven working days.",
@@ -408,6 +414,59 @@ function isSmallTalk(text: string): boolean {
   return /^(hi|hello|hey|thanks|thank you|bye|goodbye)[\s.!?]*$/i.test(text.trim());
 }
 
+function isRelocationIntent(text: string): boolean {
+  const hasMobility = hasAny(text, [
+    "move",
+    "moving",
+    "relocate",
+    "relocating",
+    "relocated",
+    "shift",
+    "shifting",
+    "transfer",
+    "transferred",
+    "change city",
+    "changed city",
+    "new city",
+    "different city",
+    "another city",
+  ]);
+
+  const hasCity = hasAny(text, [
+    "pune",
+    "chennai",
+    "bangalore",
+    "bengaluru",
+    "mumbai",
+    "delhi",
+    "hyderabad",
+    "kolkata",
+    "ahmedabad",
+    "jaipur",
+    "city",
+  ]);
+
+  const hasPolicyContext = hasAny(text, [
+    "policy",
+    "coverage",
+    "cover",
+    "covered",
+    "network",
+    "hospital",
+    "cashless",
+    "work",
+    "valid",
+    "active",
+  ]);
+
+  const hasValidityQuestion = hasAny(text, ["policy", "coverage", "cover", "covered", "work", "valid", "active"]);
+
+  return (
+    (hasMobility && hasPolicyContext) ||
+    (hasCity && hasValidityQuestion && /\b(from|to|move|moving|relocate|relocating|shift|new city|different city|another city)\b/i.test(text))
+  );
+}
+
 function cachedAudioText(id: typeof MUGA_CACHED_AUDIO[number]["id"]): string {
   return MUGA_CACHED_AUDIO.find((item) => item.id === id)?.text ?? "";
 }
@@ -438,6 +497,10 @@ export function answerNovaCareQuestion(userText: string): string {
     if (selectedPlan.name.endsWith("Basic")) return cachedAudioText("plan-basic");
     if (selectedPlan.name.endsWith("Standard")) return cachedAudioText("plan-standard");
     if (selectedPlan.name.endsWith("Premium")) return cachedAudioText("plan-premium");
+  }
+
+  if (isRelocationIntent(text)) {
+    return cachedAudioText("relocation");
   }
 
   if (hasAny(text, ["again", "repeat", "say that", "one more time"])) {
