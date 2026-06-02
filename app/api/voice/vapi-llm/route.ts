@@ -47,7 +47,7 @@ function geminiGenerationConfig(model: string): Record<string, unknown> {
   return config;
 }
 const SCRIPT_MISSING_RESPONSE =
-  "I don't have that question in this support script, so I don't know the answer from the script.";
+  "I don't have the answer to this question from my support script, so I cannot help you with that.";
 const OUT_OF_SCOPE_RESPONSE = SCRIPT_MISSING_RESPONSE;
 
 function getConfig(req: NextRequest) {
@@ -218,7 +218,7 @@ function specificNovaCareScriptAnswer(userText: string): string {
   const text = userText.toLowerCase();
 
   if (/\b(e\s*-?\s*card|ecard)\b/.test(text) && /\b(cannot|can't|cant|lost|missing|find|forgot|don't have|dont have|not showing)\b/.test(text)) {
-    return "I don't have that question in this support script, so I don't know the exact e-card recovery steps. For admission, keep your policy ID and government ID ready, and use NovaCare live chat or the emergency helpline for help before treatment.";
+    return SCRIPT_MISSING_RESPONSE;
   }
 
   if (/\b(opd|outpatient)\b/.test(text)) {
@@ -389,7 +389,7 @@ STRICT ANSWER SELECTION:
 - Do not mention plan names, prices, or coverage amounts unless the caller asks about plans, prices, coverage, or limits.
 - Do not paste unrelated facts from the script just because they share generic words like health or insurance.
 - Do not invent app screens, recovery flows, benefit definitions, or operational steps that are not stated in the script.
-- If the exact detail is not in the script, say: "I don't have that question in this support script, so I don't know the answer from the script."
+- If the exact detail is not in the script, say: "I don't have the answer to this question from my support script, so I cannot help you with that."
 - Keep the answer to one or two spoken sentences.`;
 }
 
