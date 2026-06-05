@@ -90,6 +90,12 @@ export const MUGA_CACHED_AUDIO = [
     audioFile: "muga-i-understand-24k.pcm",
   },
   {
+    id: "script-missing",
+    text:
+      "I don't have the answer to this question from my support script, so I cannot help you with that.",
+    audioFile: "silk-script-missing-24k.pcm",
+  },
+  {
     id: "greeting",
     text:
       "Hi! I'm Priya, your NovaCare support agent. I can help with plan prices, coverage, claims, reimbursement, and network hospitals. What would you like to check?",
