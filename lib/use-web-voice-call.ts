@@ -47,6 +47,7 @@ const PREFETCHED_LOCAL_MUGA_PHRASES = [
   "Let me check that.",
   "I understand.",
   "Got it.",
+  "I don't have the answer to this question from my support script, so I cannot help you with that.",
 ];
 
 interface LocalMugaClip {
