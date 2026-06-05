@@ -3,5 +3,11 @@
   "buildCommand": "next build",
   "devCommand": "next dev",
   "installCommand": "npm install",
-  "regions": ["bom1"]
+  "regions": ["bom1"],
+  "crons": [
+    {
+      "path": "/api/voice/warm",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }
