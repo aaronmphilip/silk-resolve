@@ -6,5 +6,5 @@ export const metadata = {
 };
 
 export default function NovaMugaPage() {
-  return <NovaDemoSite voiceMode="silk" />;
+  return <NovaDemoSite voiceMode="silk-stream" />;
 }

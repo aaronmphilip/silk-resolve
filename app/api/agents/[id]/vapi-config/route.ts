@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
+import { MULBERRY_DEFAULTS, normalizeWebVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
 import { withSilkTone, stripAll } from "@/lib/voice-emotion";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -38,13 +39,8 @@ function cleanSpokenText(text: string): string {
     .trim();
 }
 
-type VoiceMode = "silk" | "silk-stream" | "vapi";
-
-function voiceMode(req: NextRequest): VoiceMode {
-  const requested = req.nextUrl.searchParams.get("voice");
-  if (requested === "vapi") return "vapi";
-  if (requested === "silk-stream") return "silk-stream";
-  return "silk";
+function voiceMode(req: NextRequest): WebVoiceMode {
+  return normalizeWebVoiceMode(req.nextUrl.searchParams.get("voice"));
 }
 
 export async function GET(req: NextRequest, { params }: Ctx) {
@@ -84,14 +80,12 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
   // ── Voice provider ─────────────────────────────────────────────────────────
   const useSilkVoice = requestedVoice !== "vapi" && Boolean(silk.apiKey && silk.vapiEnabled);
-  // Always stream Rumik MUGA over WebSocket (realtime). silk-tts resamples on the
-  // fly and falls back to buffered REST internally if the stream can't be set up,
-  // so there's no downside to defaulting every SILK call to the streaming path.
-  const silkTransport = useSilkVoice ? "?transport=ws" : "";
+  const silkModel = requestedVoice === "silk-mulberry" ? "mulberry" : "muga";
+  const silkQuery = useSilkVoice ? `?transport=ws&model=${silkModel}` : "";
   const voice = useSilkVoice
     ? {
         provider: "custom-voice",
-        server: { url: `${origin}/api/voice/silk-tts${silkTransport}`, timeoutSeconds: 45 },
+        server: { url: `${origin}/api/voice/silk-tts${silkQuery}`, timeoutSeconds: 45 },
       }
     : { provider: "vapi", voiceId: "Neha" };
 
@@ -116,7 +110,9 @@ VOICE CALL RULES:
     agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`
   );
   const spokenFirstMessage = useSilkVoice
-    ? withSilkTone("happy", stripAll(rawFirst))
+    ? silkModel === "mulberry"
+      ? stripAll(rawFirst)
+      : withSilkTone("happy", stripAll(rawFirst))
     : stripAll(rawFirst);
 
   return NextResponse.json({
@@ -179,8 +175,18 @@ VOICE CALL RULES:
       agentId: agent.id,
       aiProvider: aiConfig.provider,
       voiceMode: useSilkVoice
-        ? requestedVoice === "silk-stream" ? "silk-muga-stream" : "silk-muga-rest"
+        ? requestedVoice === "silk-mulberry"
+          ? "silk-mulberry-1.5"
+          : requestedVoice === "silk-stream"
+            ? "silk-muga-stream"
+            : "silk-muga-rest"
         : "vapi-native",
+      ...(useSilkVoice && silkModel === "mulberry"
+        ? {
+            silkDescription: MULBERRY_DEFAULTS.description,
+            silkSpeaker: MULBERRY_DEFAULTS.speaker,
+          }
+        : {}),
       callDirection: (agent as { call_direction?: string }).call_direction ?? "inbound",
     },
   });

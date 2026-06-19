@@ -17,6 +17,7 @@ import WebSocket from "ws";
 import { readFileSync } from "fs";
 import path from "path";
 import { MUGA_CACHED_AUDIO, cachedMugaAudioForText } from "@/lib/novacare-knowledge";
+import { MULBERRY_DEFAULTS, type SilkModel } from "@/lib/silk-voice";
 import { getPlatformVoiceConfig } from "@/lib/platform";
 import { extractSilkTone, stripAll, stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
 
@@ -60,6 +61,7 @@ interface WavData {
 }
 
 interface ReusableRumikSocket {
+  model: SilkModel;
   ws: WebSocket;
   busy: boolean;
   createdAt: number;
@@ -67,8 +69,8 @@ interface ReusableRumikSocket {
   closeTimer?: ReturnType<typeof setTimeout>;
 }
 
-let reusableRumikSocket: ReusableRumikSocket | null = null;
-let reusableRumikConnecting: Promise<ReusableRumikSocket> | null = null;
+const reusableRumikSockets = new Map<SilkModel, ReusableRumikSocket>();
+const reusableRumikConnecting = new Map<SilkModel, Promise<ReusableRumikSocket>>();
 const cachedAudioFiles = new Map<string, Buffer>();
 const cachedAudioVariants = new Map<string, Buffer>();
 
@@ -266,8 +268,15 @@ function makeStreamResampler(fromRate: number, toRate: number) {
   };
 }
 
-function buildRumikPayload(body: VoiceRequestBody, text: string): Record<string, unknown> {
-  const model = body.model || "muga";
+function resolveSilkModel(req: NextRequest, body: VoiceRequestBody): SilkModel {
+  const fromQuery = req.nextUrl.searchParams.get("model");
+  if (fromQuery === "mulberry" || fromQuery === "muga") return fromQuery;
+  if (body.model === "mulberry" || body.model === "muga") return body.model;
+  return "muga";
+}
+
+function buildRumikPayload(body: VoiceRequestBody, text: string, modelOverride?: SilkModel): Record<string, unknown> {
+  const model = modelOverride ?? body.model ?? "muga";
   const payload: Record<string, unknown> = {
     model,
     text: model === "muga" ? ensureMugaTone(text) : stripVoiceMarkers(text),
@@ -279,9 +288,9 @@ function buildRumikPayload(body: VoiceRequestBody, text: string): Record<string,
   };
 
   if (model === "mulberry") {
-    payload.description = body.description || "warm, calm, professional voice";
-    if (body.speaker) payload.speaker = body.speaker;
-    if (typeof body.f0_up_key === "number") payload.f0_up_key = body.f0_up_key;
+    payload.description = body.description || MULBERRY_DEFAULTS.description;
+    payload.speaker = body.speaker || MULBERRY_DEFAULTS.speaker;
+    payload.f0_up_key = typeof body.f0_up_key === "number" ? body.f0_up_key : MULBERRY_DEFAULTS.f0_up_key;
   }
 
   for (const key of Object.keys(payload)) {
@@ -295,25 +304,41 @@ function isOpenReusableSocket(socket: ReusableRumikSocket | null): socket is Reu
   return Boolean(socket && socket.ws.readyState === WebSocket.OPEN);
 }
 
-function clearReusableSocket(socket = reusableRumikSocket) {
-  if (socket?.closeTimer) clearTimeout(socket.closeTimer);
-  if (socket?.ws.readyState === WebSocket.OPEN || socket?.ws.readyState === WebSocket.CONNECTING) {
-    socket.ws.close();
+function clearReusableSocket(model: SilkModel, socket?: ReusableRumikSocket | null) {
+  const target = socket ?? reusableRumikSockets.get(model) ?? null;
+  if (target?.closeTimer) clearTimeout(target.closeTimer);
+  if (target?.ws.readyState === WebSocket.OPEN || target?.ws.readyState === WebSocket.CONNECTING) {
+    target.ws.close();
   }
-  if (socket === reusableRumikSocket) reusableRumikSocket = null;
+  if (!socket || reusableRumikSockets.get(model) === socket) {
+    reusableRumikSockets.delete(model);
+  }
 }
 
 function scheduleReusableSocketClose(socket: ReusableRumikSocket) {
   if (socket.closeTimer) clearTimeout(socket.closeTimer);
   socket.closeTimer = setTimeout(() => {
     if (!socket.busy && Date.now() - socket.lastUsedAt >= REUSABLE_WS_IDLE_MS) {
-      clearReusableSocket(socket);
+      clearReusableSocket(socket.model, socket);
     }
   }, REUSABLE_WS_IDLE_MS);
 }
 
-async function createReusableRumikSocket(apiKey: string, seedText: string): Promise<ReusableRumikSocket> {
-  const payload = { model: "muga", text: ensureMugaTone(seedText || WARM_TEXT) };
+function warmConnectPayload(model: SilkModel, seedText: string): Record<string, unknown> {
+  if (model === "mulberry") {
+    return {
+      model,
+      text: stripVoiceMarkers(seedText || WARM_TEXT),
+      description: MULBERRY_DEFAULTS.description,
+      speaker: MULBERRY_DEFAULTS.speaker,
+      f0_up_key: MULBERRY_DEFAULTS.f0_up_key,
+    };
+  }
+  return { model, text: ensureMugaTone(seedText || WARM_TEXT) };
+}
+
+async function createReusableRumikSocket(apiKey: string, model: SilkModel, seedText: string): Promise<ReusableRumikSocket> {
+  const payload = warmConnectPayload(model, seedText);
   const setupStart = Date.now();
 
   const connectRes = await fetch(SILK_WS_CONNECT_ENDPOINT, {
@@ -350,6 +375,7 @@ async function createReusableRumikSocket(apiKey: string, seedText: string): Prom
   });
 
   const socket: ReusableRumikSocket = {
+    model,
     ws,
     busy: false,
     createdAt: Date.now(),
@@ -357,36 +383,39 @@ async function createReusableRumikSocket(apiKey: string, seedText: string): Prom
   };
 
   ws.on("close", () => {
-    if (reusableRumikSocket === socket) reusableRumikSocket = null;
+    if (reusableRumikSockets.get(model) === socket) reusableRumikSockets.delete(model);
   });
   ws.on("error", (err) => {
-    console.error("[silk-tts] reusable rumik websocket error:", err);
-    clearReusableSocket(socket);
+    console.error(`[silk-tts] reusable rumik websocket error (${model}):`, err);
+    clearReusableSocket(model, socket);
   });
 
-  console.log(`[silk-tts] reusable rumik websocket ready in ${Date.now() - setupStart}ms`);
+  console.log(`[silk-tts] reusable rumik websocket ready (${model}) in ${Date.now() - setupStart}ms`);
   scheduleReusableSocketClose(socket);
   return socket;
 }
 
-async function getReusableRumikSocket(apiKey: string, seedText: string): Promise<ReusableRumikSocket> {
-  if (isOpenReusableSocket(reusableRumikSocket)) {
-    return reusableRumikSocket;
+async function getReusableRumikSocket(apiKey: string, model: SilkModel, seedText: string): Promise<ReusableRumikSocket> {
+  const existing = reusableRumikSockets.get(model);
+  if (isOpenReusableSocket(existing ?? null)) {
+    return existing!;
   }
 
-  reusableRumikSocket = null;
-  if (!reusableRumikConnecting) {
-    reusableRumikConnecting = createReusableRumikSocket(apiKey, seedText)
+  reusableRumikSockets.delete(model);
+  let pending = reusableRumikConnecting.get(model);
+  if (!pending) {
+    pending = createReusableRumikSocket(apiKey, model, seedText)
       .then((socket) => {
-        reusableRumikSocket = socket;
+        reusableRumikSockets.set(model, socket);
         return socket;
       })
       .finally(() => {
-        reusableRumikConnecting = null;
+        reusableRumikConnecting.delete(model);
       });
+    reusableRumikConnecting.set(model, pending);
   }
 
-  return reusableRumikConnecting;
+  return pending;
 }
 
 async function callRumik(apiKey: string, body: VoiceRequestBody, text: string) {
@@ -425,9 +454,10 @@ async function streamRumik(
   apiKey: string,
   body: VoiceRequestBody,
   text: string,
-  targetRate: number
+  targetRate: number,
+  model: SilkModel
 ): Promise<NextResponse | { error: string; status: 502 }> {
-  const payload = buildRumikPayload(body, text);
+  const payload = buildRumikPayload(body, text, model);
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 8_000);
   const setupStart = Date.now();
@@ -556,13 +586,14 @@ async function streamRumikReusable(
   apiKey: string,
   body: VoiceRequestBody,
   text: string,
-  targetRate: number
+  targetRate: number,
+  model: SilkModel
 ): Promise<NextResponse | { skipped: true } | { error: string; status: 502 }> {
   let socket: ReusableRumikSocket;
   try {
-    socket = await getReusableRumikSocket(apiKey, text);
+    socket = await getReusableRumikSocket(apiKey, model, text);
   } catch (err) {
-    console.error("[silk-tts] reusable websocket setup failed:", err);
+    console.error(`[silk-tts] reusable websocket setup failed (${model}):`, err);
     return { error: "SILK stream setup failed", status: 502 };
   }
 
@@ -574,7 +605,7 @@ async function streamRumikReusable(
   socket.lastUsedAt = Date.now();
   if (socket.closeTimer) clearTimeout(socket.closeTimer);
 
-  const payload = buildRumikPayload(body, text);
+  const payload = buildRumikPayload(body, text, model);
   const setupStart = Date.now();
   const resampler = makeStreamResampler(RUMIK_SAMPLE_RATE, targetRate);
   const ws = socket.ws;
@@ -599,7 +630,7 @@ async function streamRumikReusable(
         if (!done) {
           done = true;
           cleanup();
-          clearReusableSocket(socket);
+          clearReusableSocket(model, socket);
           streamController.error(new Error("SILK stream timed out"));
         }
       }, 42_000);
@@ -617,7 +648,7 @@ async function streamRumikReusable(
         done = true;
         clearTimeout(streamTimeout);
         cleanup();
-        clearReusableSocket(socket);
+        clearReusableSocket(model, socket);
         streamController.error(err);
       };
 
@@ -710,9 +741,10 @@ export async function POST(req: NextRequest) {
   // as it is generated (resampled on the fly to whatever rate Vapi asked for),
   // so speech starts on the first frame instead of waiting for the whole WAV.
   // Any setup failure falls through to the buffered REST path below.
+  const model = resolveSilkModel(req, body);
   const wantsStream = req.nextUrl.searchParams.get("transport") === "ws";
   if (wantsStream && req.nextUrl.searchParams.get("format") !== "wav") {
-    const cached = getCachedMugaAudio(text, sampleRate);
+    const cached = model === "muga" ? getCachedMugaAudio(text, sampleRate) : null;
     if (cached) {
       return new NextResponse(new Uint8Array(cached.pcm), {
         headers: {
@@ -728,18 +760,19 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const reusable = await streamRumikReusable(silk.apiKey, body, text, sampleRate);
+    const reusable = await streamRumikReusable(silk.apiKey, body, text, sampleRate, model);
     if (!("skipped" in reusable) && !("error" in reusable)) return reusable;
     if ("error" in reusable) {
-      console.warn("[silk-tts] reusable stream failed before audio, falling back to fresh stream:", reusable.error);
+      console.warn(`[silk-tts] reusable stream failed (${model}), falling back to fresh stream:`, reusable.error);
     }
 
-    const streamed = await streamRumik(silk.apiKey, body, text, sampleRate);
+    const streamed = await streamRumik(silk.apiKey, body, text, sampleRate, model);
     if (!("error" in streamed)) return streamed;
     console.warn("[silk-tts] websocket stream failed before audio, falling back to REST:", streamed.error);
   }
 
-  const rumik = await callRumik(silk.apiKey, body, text);
+  const rumikBody = { ...body, model };
+  const rumik = await callRumik(silk.apiKey, rumikBody, text);
   if ("error" in rumik) {
     return NextResponse.json({ error: rumik.error }, { status: rumik.status });
   }
@@ -772,21 +805,33 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const { silk } = await getPlatformVoiceConfig();
   if (!silk.apiKey) {
     return NextResponse.json({ error: "SILK not configured" }, { status: 404 });
   }
 
   const startedAt = Date.now();
+  const warmModel = req.nextUrl.searchParams.get("model") === "mulberry" ? "mulberry" : "muga";
+  const warmModels: SilkModel[] =
+    req.nextUrl.searchParams.get("all") === "1" ? ["muga", "mulberry"] : [warmModel];
+
   try {
     const cacheWarm = preloadCachedMugaAudio([8000, 16000, 24000]);
-    const socket = await getReusableRumikSocket(silk.apiKey, WARM_TEXT);
+    const sockets = await Promise.all(
+      warmModels.map((model) => getReusableRumikSocket(silk.apiKey, model, WARM_TEXT))
+    );
+    const reusable: Record<string, { open: boolean; busy: boolean }> = {};
+    for (let i = 0; i < warmModels.length; i++) {
+      reusable[warmModels[i]] = {
+        open: isOpenReusableSocket(sockets[i]),
+        busy: sockets[i].busy,
+      };
+    }
     return NextResponse.json(
       {
         ok: true,
-        reusable: isOpenReusableSocket(socket),
-        busy: socket.busy,
+        reusable,
         ...cacheWarm,
         warmedMs: Date.now() - startedAt,
       },

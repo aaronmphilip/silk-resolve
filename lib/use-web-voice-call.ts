@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { answerNovaCareQuestion, normalizeMugaCacheText, NOVACARE_AGENT_ID } from "@/lib/novacare-knowledge";
+import {
+  buildSilkTtsBody,
+  isSilkVoiceMode,
+  silkModelForVoiceMode,
+  silkSpeechText,
+  silkTtsQueryForMode,
+  type WebVoiceMode,
+} from "@/lib/silk-voice";
 import { stripVoiceMarkers } from "@/lib/voice-emotion";
+
+export type { WebVoiceMode };
 
 export type WebVoiceCallState =
   | "idle"
@@ -18,8 +28,6 @@ export interface WebVoiceTranscript {
   text: string;
   ts: number;
 }
-
-export type WebVoiceMode = "silk" | "silk-stream" | "vapi";
 
 type VapiCtor = typeof import("@vapi-ai/web").default;
 type VapiInstance = InstanceType<VapiCtor>;
@@ -225,16 +233,18 @@ function pcmDurationMs(audio: ArrayBuffer, sampleRate: number): number {
   return Math.ceil((audio.byteLength / 2 / sampleRate) * 1000);
 }
 
-async function fetchLocalMugaClip(text: string): Promise<LocalMugaClip> {
-  const response = await fetch("/api/voice/silk-tts?transport=ws", {
+async function fetchLocalSilkClip(text: string, voiceMode: WebVoiceMode): Promise<LocalMugaClip> {
+  const query = silkTtsQueryForMode(voiceMode);
+  const response = await fetch(`/api/voice/silk-tts${query}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, sampleRate: LOCAL_MUGA_SAMPLE_RATE }),
+    body: JSON.stringify(buildSilkTtsBody(voiceMode, text, LOCAL_MUGA_SAMPLE_RATE)),
   });
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new Error(detail || "MUGA speech failed.");
+    const model = silkModelForVoiceMode(voiceMode) ?? "muga";
+    throw new Error(detail || `${model.toUpperCase()} speech failed.`);
   }
 
   const sampleRate = Number(response.headers.get("x-audio-sample-rate") ?? LOCAL_MUGA_SAMPLE_RATE);
@@ -313,11 +323,12 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 async function warmSilkVoiceInfra(voiceMode: WebVoiceMode): Promise<void> {
-  if (voiceMode === "vapi") return;
+  if (!isSilkVoiceMode(voiceMode)) return;
 
+  const model = silkModelForVoiceMode(voiceMode) ?? "muga";
   await Promise.allSettled([
     fetch("/api/voice/vapi-llm?voice=silk", { method: "GET", cache: "no-store" }),
-    fetch("/api/voice/silk-tts", { method: "GET", cache: "no-store" }),
+    fetch(`/api/voice/silk-tts?model=${model}`, { method: "GET", cache: "no-store" }),
   ]);
 }
 
@@ -475,13 +486,13 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     const existing = localAudioCacheRef.current.get(key);
     if (existing) return existing;
 
-    const pending = fetchLocalMugaClip(text).catch((err) => {
+    const pending = fetchLocalSilkClip(text, voiceMode).catch((err) => {
       localAudioCacheRef.current.delete(key);
       throw err;
     });
     localAudioCacheRef.current.set(key, pending);
     return pending;
-  }, []);
+  }, [voiceMode]);
 
   const canUseNovaCareCache = useCallback(() => {
     return agentId === NOVACARE_AGENT_ID || /\bnovacare\b/i.test(assistantSystemPromptRef.current);
@@ -491,12 +502,12 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     if (voiceMode === "vapi" || text.trim().length < 10) return;
     const answer = canUseNovaCareCache() ? answerNovaCareQuestion(text) : "";
     if (answer) {
-      void getOrFetchLocalMugaClip(`[neutral] ${answer}`).catch(() => {});
+      void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, answer)).catch(() => {});
       return;
     }
 
     const bridge = bridgeForVoicePrompt(text);
-    if (bridge) void getOrFetchLocalMugaClip(`[neutral] ${bridge}`).catch(() => {});
+    if (bridge) void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, bridge)).catch(() => {});
   }, [canUseNovaCareCache, getOrFetchLocalMugaClip, voiceMode]);
 
   const playLocalPcm = useCallback(async (clip: LocalMugaClip, localRunId: number) => {
@@ -677,7 +688,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
     void (async () => {
       try {
-        enqueueLocalSpeech(`[neutral] ${speech}`, callRunId, localRunId);
+        enqueueLocalSpeech(silkSpeechText(voiceMode, speech), callRunId, localRunId);
 
         if (cachedAnswer) {
           await localAudioQueueRef.current;
@@ -766,7 +777,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
     if (voiceMode !== "vapi") {
       for (const phrase of PREFETCHED_LOCAL_MUGA_PHRASES) {
-        void getOrFetchLocalMugaClip(`[neutral] ${phrase}`).catch(() => {});
+        void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, phrase)).catch(() => {});
       }
     }
   }, [agentId, getOrFetchLocalMugaClip, voiceMode]);

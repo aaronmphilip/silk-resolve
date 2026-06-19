@@ -42,6 +42,7 @@
 
   function normalizeVoice(value) {
     if (value === 'silk-stream') return 'silk-stream';
+    if (value === 'silk-mulberry' || value === 'mulberry') return 'silk-mulberry';
     return value === 'vapi' ? 'vapi' : 'silk';
   }
 

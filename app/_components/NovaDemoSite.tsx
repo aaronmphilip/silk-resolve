@@ -2,11 +2,10 @@ import TalkButton from "@/app/fakewebsite/TalkButton";
 import NovaInstantVoice from "@/app/_components/NovaInstantVoice";
 import NovaTextSpeaker from "@/app/_components/NovaTextSpeaker";
 import { NOVACARE_AGENT_ID, NOVACARE_FACTS, NOVACARE_PLANS, NOVACARE_PROMPT } from "@/lib/novacare-knowledge";
-
-type VoiceMode = "silk" | "silk-stream" | "vapi";
+import { silkModelForVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
 
 interface NovaDemoSiteProps {
-  voiceMode: VoiceMode;
+  voiceMode: WebVoiceMode;
 }
 
 const copy = {
@@ -17,14 +16,37 @@ const copy = {
       "The same NovaCare support agent routed through Rumik SILK MUGA REST TTS. This waits for a WAV response before Vapi can speak.",
     cta: "Talk to MUGA REST",
     color: "#0055ff",
+    accent: "#0055ff",
+    compareHref: "/nova-muga-stream",
+    compareLabel: "MUGA streaming",
+    secondaryHref: "/nova-mulberry",
+    secondaryLabel: "Try Mulberry 1.5",
   },
   "silk-stream": {
-    badge: "SILK MUGA streaming voice assistant",
+    badge: "SILK MUGA · sub-1s streaming",
     title: "NovaCare with MUGA streaming",
     description:
-      "The same NovaCare support agent routed through Rumik's WebSocket streaming TTS. This streams raw PCM to Vapi as MUGA generates it.",
+      "Ultra-low-latency WebSocket streaming. Rumik MUGA pipes raw PCM to the browser as audio is generated — target input-to-output under 1 second.",
     cta: "Talk to MUGA streaming",
     color: "#0055ff",
+    accent: "#0055ff",
+    compareHref: "/nova-mulberry",
+    compareLabel: "Mulberry 1.5",
+    secondaryHref: "/nova-vapi",
+    secondaryLabel: "Compare Vapi speed",
+  },
+  "silk-mulberry": {
+    badge: "SILK Mulberry 1.5 · expressive streaming",
+    title: "NovaCare with Mulberry 1.5",
+    description:
+      "Expressive instruct-TTS steered by a natural-language voice description. WebSocket streaming for realtime playback with sub-second time-to-first-audio.",
+    cta: "Talk to Mulberry 1.5",
+    color: "#7c3aed",
+    accent: "#7c3aed",
+    compareHref: "/fakewebsite",
+    compareLabel: "MUGA streaming",
+    secondaryHref: "/nova-vapi",
+    secondaryLabel: "Compare Vapi speed",
   },
   vapi: {
     badge: "Vapi native voice assistant",
@@ -33,23 +55,38 @@ const copy = {
       "The same NovaCare support agent routed through Vapi native TTS for the fastest realtime demo. Same LLM and support logic, different voice renderer.",
     cta: "Talk to Vapi support",
     color: "#111111",
+    accent: "#111111",
+    compareHref: "/fakewebsite",
+    compareLabel: "MUGA streaming",
+    secondaryHref: "/nova-mulberry",
+    secondaryLabel: "Try Mulberry 1.5",
   },
-} satisfies Record<VoiceMode, { badge: string; title: string; description: string; cta: string; color: string }>;
+} satisfies Record<WebVoiceMode, {
+  badge: string;
+  title: string;
+  description: string;
+  cta: string;
+  color: string;
+  accent: string;
+  compareHref: string;
+  compareLabel: string;
+  secondaryHref: string;
+  secondaryLabel: string;
+}>;
 
 export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
   const site = copy[voiceMode];
-  const compareHref = voiceMode === "vapi" ? "/nova-muga-stream" : "/nova-vapi";
-  const compareLabel = voiceMode === "vapi" ? "MUGA streaming" : "Vapi speed";
+  const silkModel = silkModelForVoiceMode(voiceMode);
 
   return (
     <>
-      {voiceMode !== "vapi" && <WarmMugaSocketScript />}
+      {voiceMode !== "vapi" && <WarmSilkSocketScript voiceMode={voiceMode} />}
       <WidgetScript agentId={NOVACARE_AGENT_ID} voiceMode={voiceMode} label={site.cta} color={site.color} />
 
       <div className="min-h-screen bg-white text-[#111] font-sans">
         <nav className="sticky top-0 z-40 bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-[#0055ff] rounded flex items-center justify-center">
+            <div className="w-7 h-7 rounded flex items-center justify-center" style={{ backgroundColor: site.accent }}>
               <span className="text-white text-xs font-black">N</span>
             </div>
             <span className="font-bold text-[15px] tracking-tight">NovaCare</span>
@@ -60,51 +97,76 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
             <a href="#hospitals" className="hover:text-black transition-colors">Hospitals</a>
             <a href="#voice" className="hover:text-black transition-colors">Voice demo</a>
           </div>
-          <a href="#voice" className="bg-[#0055ff] text-white text-sm px-4 py-2 rounded-full font-medium hover:bg-blue-700 transition-colors">
+          <a
+            href="#voice"
+            className="text-white text-sm px-4 py-2 rounded-full font-medium hover:opacity-90 transition-opacity"
+            style={{ backgroundColor: site.accent }}
+          >
             Test voice
           </a>
         </nav>
 
         <section className="px-6 pt-16 pb-20 max-w-5xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-blue-50 border border-blue-100 rounded-full px-4 py-1.5 mb-6">
-            <span className="w-2 h-2 rounded-full bg-[#0055ff] animate-pulse" />
-            <span className="text-[11px] font-semibold text-blue-700 uppercase tracking-widest">{site.badge}</span>
+          <div
+            className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-6 border"
+            style={{
+              backgroundColor: voiceMode === "silk-mulberry" ? "#f5f3ff" : "#eff6ff",
+              borderColor: voiceMode === "silk-mulberry" ? "#ddd6fe" : "#dbeafe",
+            }}
+          >
+            <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: site.accent }} />
+            <span
+              className="text-[11px] font-semibold uppercase tracking-widest"
+              style={{ color: voiceMode === "silk-mulberry" ? "#6d28d9" : "#1d4ed8" }}
+            >
+              {site.badge}
+            </span>
           </div>
           <h1 className="text-4xl sm:text-6xl font-black tracking-tight text-[#0a0a14] leading-[1.05] mb-6">
             {site.title}<br />
-            <span className="text-[#0055ff]">same brain, different voice.</span>
+            <span style={{ color: site.accent }}>same brain, different voice.</span>
           </h1>
           <p className="text-lg sm:text-xl text-gray-500 max-w-2xl mx-auto leading-relaxed mb-10">
             {site.description}
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <a href="#voice" className="w-full sm:w-auto bg-[#0055ff] text-white text-sm font-semibold px-8 py-4 rounded-full hover:bg-blue-700 transition-colors">
+            <a
+              href="#voice"
+              className="w-full sm:w-auto text-white text-sm font-semibold px-8 py-4 rounded-full hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: site.accent }}
+            >
               Start web call
             </a>
-            <a href={compareHref} className="w-full sm:w-auto border border-gray-200 text-sm font-semibold px-8 py-4 rounded-full hover:border-gray-400 transition-colors text-gray-700">
-              Compare {compareLabel}
+            <a href={site.compareHref} className="w-full sm:w-auto border border-gray-200 text-sm font-semibold px-8 py-4 rounded-full hover:border-gray-400 transition-colors text-gray-700">
+              Compare {site.compareLabel}
             </a>
-            {voiceMode === "silk" && (
-              <a href="/nova-muga-stream" className="w-full sm:w-auto border border-blue-100 bg-blue-50 text-sm font-semibold px-8 py-4 rounded-full hover:border-blue-200 transition-colors text-blue-700">
-                Try MUGA streaming
-              </a>
-            )}
+            <a
+              href={site.secondaryHref}
+              className="w-full sm:w-auto border text-sm font-semibold px-8 py-4 rounded-full transition-colors"
+              style={{
+                borderColor: voiceMode === "silk-mulberry" ? "#ddd6fe" : "#dbeafe",
+                backgroundColor: voiceMode === "silk-mulberry" ? "#f5f3ff" : "#eff6ff",
+                color: voiceMode === "silk-mulberry" ? "#6d28d9" : "#1d4ed8",
+              }}
+            >
+              {site.secondaryLabel}
+            </a>
           </div>
           {voiceMode !== "vapi" && (
             <div className="mt-10 space-y-4">
-              <NovaInstantVoice />
-              <NovaTextSpeaker systemPrompt={NOVACARE_PROMPT} />
+              <NovaInstantVoice voiceMode={voiceMode} accentColor={site.accent} />
+              <NovaTextSpeaker systemPrompt={NOVACARE_PROMPT} voiceMode={voiceMode} accentColor={site.accent} />
             </div>
           )}
         </section>
 
-        <div className="bg-[#0055ff] text-white">
+        <div className="text-white" style={{ backgroundColor: site.accent }}>
           <div className="max-w-5xl mx-auto px-6 py-6 grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
             {[
               { val: "2.4M+", label: "Policies active" },
               { val: "98.2%", label: "Claims settled" },
               { val: "10k+", label: "Network hospitals" },
-              { val: "24 / 7", label: "AI + human support" },
+              { val: silkModel === "mulberry" ? "<1s" : "<1s", label: "Voice latency target" },
             ].map(s => (
               <div key={s.label}>
                 <p className="text-2xl font-black">{s.val}</p>
@@ -115,7 +177,7 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
         </div>
 
         <section id="plans" className="max-w-5xl mx-auto px-6 py-16">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-[#0055ff] mb-3 text-center">NovaCare plans</p>
+          <p className="text-[11px] font-bold uppercase tracking-widest mb-3 text-center" style={{ color: site.accent }}>NovaCare plans</p>
           <h2 className="text-3xl font-black text-center text-[#0a0a14] mb-10">Ask the agent to compare plans.</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
             {NOVACARE_PLANS.map(plan => (
@@ -128,7 +190,7 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
                 <ul className="space-y-2">
                   {plan.highlights.slice(0, 3).map(item => (
                     <li key={item} className="text-xs text-gray-500 flex gap-2">
-                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[#0055ff] shrink-0" />
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full shrink-0" style={{ backgroundColor: site.accent }} />
                       <span>{item}</span>
                     </li>
                   ))}
@@ -141,7 +203,7 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
         <section id="claims" className="bg-gray-50 border-y border-gray-100 px-6 py-16">
           <div className="max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10 items-start">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-widest text-[#0055ff] mb-3">Claims</p>
+              <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: site.accent }}>Claims</p>
               <h2 className="text-3xl font-black text-[#0a0a14] mb-4">Cashless approval in minutes.</h2>
               <p className="text-gray-500 leading-relaxed">
                 Ask about cashless claims, reimbursement, waiting periods, hospital network, or plan pricing.
@@ -161,7 +223,7 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
         </section>
 
         <section id="voice" className="max-w-5xl mx-auto px-6 py-16 text-center">
-          <p className="text-[11px] font-bold uppercase tracking-widest text-[#0055ff] mb-3">Voice demo</p>
+          <p className="text-[11px] font-bold uppercase tracking-widest mb-3" style={{ color: site.accent }}>Voice demo</p>
           <h2 className="text-2xl sm:text-3xl font-black text-[#0a0a14] mb-3">
             Test this version now.
           </h2>
@@ -175,13 +237,13 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
 
         <footer className="max-w-5xl mx-auto px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-100">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 bg-[#0055ff] rounded flex items-center justify-center">
+            <div className="w-5 h-5 rounded flex items-center justify-center" style={{ backgroundColor: site.accent }}>
               <span className="text-white text-[9px] font-black">N</span>
             </div>
             <span className="font-bold text-sm">NovaCare</span>
           </div>
           <p className="text-xs text-gray-400">
-            Demo support powered by Silk Resolve.
+            Demo support powered by Silk Resolve · {silkModel === "mulberry" ? "Mulberry 1.5" : "MUGA"} streaming.
           </p>
         </footer>
       </div>
@@ -189,21 +251,19 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
   );
 }
 
-function WarmMugaSocketScript() {
+function WarmSilkSocketScript({ voiceMode }: { voiceMode: WebVoiceMode }) {
+  const model = silkModelForVoiceMode(voiceMode) ?? "muga";
   const snippet = `
 (function() {
+  var model = ${JSON.stringify(model)};
   var ping = function(path) {
     try {
-      fetch(path, {
-        method: 'GET',
-        cache: 'no-store',
-        keepalive: true
-      }).catch(function() {});
+      fetch(path, { method: 'GET', cache: 'no-store', keepalive: true }).catch(function() {});
     } catch (error) {}
   };
   var warm = function() {
     ping('/api/voice/vapi-llm?voice=silk');
-    ping('/api/voice/silk-tts');
+    ping('/api/voice/silk-tts?model=' + encodeURIComponent(model));
   };
 
   if (document.readyState === 'loading') {
@@ -218,10 +278,10 @@ function WarmMugaSocketScript() {
 })();
 `.trim();
 
-  return <script id="silk-resolve-muga-warm" dangerouslySetInnerHTML={{ __html: snippet }} />;
+  return <script id="silk-resolve-warm" dangerouslySetInnerHTML={{ __html: snippet }} />;
 }
 
-function WidgetScript({ agentId, voiceMode, label, color }: { agentId: string; voiceMode: VoiceMode; label: string; color: string }) {
+function WidgetScript({ agentId, voiceMode, label, color }: { agentId: string; voiceMode: WebVoiceMode; label: string; color: string }) {
   const snippet = `
 (function() {
   var s = document.createElement('script');

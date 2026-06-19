@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/server";
 import PublicTalkClient from "./PublicTalkClient";
-import type { WebVoiceMode } from "@/lib/use-web-voice-call";
+import { normalizeWebVoiceMode } from "@/lib/silk-voice";
 
 export const dynamic = "force-dynamic";
 
@@ -10,16 +10,10 @@ interface PageProps {
   searchParams?: Promise<{ voice?: string }>;
 }
 
-function normalizeVoiceMode(value: string | undefined): WebVoiceMode {
-  if (value === "vapi") return "vapi";
-  if (value === "silk-stream") return "silk-stream";
-  return "silk";
-}
-
 export default async function PublicTalkPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const query = searchParams ? await searchParams : {};
-  const voiceMode = normalizeVoiceMode(query.voice);
+  const voiceMode = normalizeWebVoiceMode(query.voice);
   const { data: agent } = await createServiceClient()
     .from("agents")
     .select("id, name, status")

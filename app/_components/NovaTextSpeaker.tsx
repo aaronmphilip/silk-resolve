@@ -2,9 +2,19 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Loader2, Send, Square, Volume2 } from "lucide-react";
+import { playBufferedPcm, playStreamingPcmResponse } from "@/lib/silk-stream-player";
+import {
+  buildSilkTtsBody,
+  silkModelForVoiceMode,
+  silkTtsQueryForMode,
+  voiceModeLabel,
+  type WebVoiceMode,
+} from "@/lib/silk-voice";
 
 interface NovaTextSpeakerProps {
   systemPrompt: string;
+  voiceMode?: WebVoiceMode;
+  accentColor?: string;
 }
 
 type SpeakerState = "idle" | "thinking" | "speaking" | "error";
@@ -105,13 +115,15 @@ function readSsePayloads(buffer: string): { events: string[]; rest: string } {
   return { events: parts.slice(0, -1), rest: parts[parts.length - 1] ?? "" };
 }
 
-export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) {
+export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream", accentColor = "#0055ff" }: NovaTextSpeakerProps) {
   const [input, setInput] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [state, setState] = useState<SpeakerState>("idle");
   const [error, setError] = useState("");
   const [transport, setTransport] = useState("");
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const silkModel = silkModelForVoiceMode(voiceMode) ?? "muga";
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const runIdRef = useRef(0);
@@ -122,14 +134,18 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
     let cancelled = false;
 
     async function prefetchBridgeAudio() {
-      fetch("/api/voice/silk-tts", { method: "GET", cache: "no-store" }).catch(() => {});
+      const query = silkTtsQueryForMode(voiceMode);
+      const model = silkModelForVoiceMode(voiceMode) ?? "muga";
+      fetch(`/api/voice/silk-tts?model=${model}`, { method: "GET", cache: "no-store" }).catch(() => {});
+
+      if (silkModel !== "muga") return;
 
       await Promise.all(PREFETCHED_BRIDGE_PHRASES.map(async (phrase) => {
         try {
-          const res = await fetch("/api/voice/silk-tts?transport=ws", {
+          const res = await fetch(`/api/voice/silk-tts${query}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text: `[neutral] ${phrase}`, sampleRate: 24000 }),
+            body: JSON.stringify(buildSilkTtsBody(voiceMode, `[neutral] ${phrase}`)),
           });
           if (!res.ok || cancelled) return;
           prefetchedAudioRef.current.set(normalizeSpeechKey(phrase), {
@@ -144,7 +160,7 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [silkModel, voiceMode]);
 
   function stopCurrentSource() {
     try {
@@ -198,31 +214,41 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
     audioQueueRef.current = audioQueueRef.current
       .then(async () => {
         if (runId !== runIdRef.current) return;
-        const prefetched = prefetchedAudioRef.current.get(normalizeSpeechKey(speakable));
+        const prefetched = silkModel === "muga"
+          ? prefetchedAudioRef.current.get(normalizeSpeechKey(speakable))
+          : undefined;
         if (prefetched) {
           setTransport("prefetched-muga-audio");
-          await playPcm(prefetched.audio, prefetched.sampleRate, runId);
+          setLatencyMs(0);
+          await playBufferedPcm(
+            prefetched.audio,
+            prefetched.sampleRate,
+            runId,
+            () => runId === runIdRef.current,
+            audioContextRef.current
+          );
           return;
         }
 
-        const res = await fetch("/api/voice/silk-tts?transport=ws", {
+        const query = silkTtsQueryForMode(voiceMode);
+        const res = await fetch(`/api/voice/silk-tts${query}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: speakable, sampleRate: 24000 }),
+          body: JSON.stringify(buildSilkTtsBody(voiceMode, speakable)),
         });
 
-        if (!res.ok) {
-          const detail = await res.text().catch(() => "");
-          throw new Error(detail || "MUGA speech failed.");
-        }
-
-        setTransport(res.headers.get("x-silk-transport") ?? "");
-        const sampleRate = Number(res.headers.get("x-audio-sample-rate") ?? 24000);
-        await playPcm(await res.arrayBuffer(), sampleRate, runId);
+        const playback = await playStreamingPcmResponse(
+          res,
+          runId,
+          () => runId === runIdRef.current,
+          audioContextRef.current
+        );
+        setTransport(playback.transport || "websocket");
+        setLatencyMs(Math.round(playback.firstFrameMs));
       })
       .catch((err) => {
         if (runId !== runIdRef.current) return;
-        setError(err instanceof Error ? err.message : "MUGA speech failed.");
+        setError(err instanceof Error ? err.message : `${silkModel.toUpperCase()} speech failed.`);
         setState("error");
       });
   }
@@ -240,6 +266,7 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
     setAnswer("");
     setError("");
     setTransport("");
+    setLatencyMs(null);
     setState("thinking");
 
     const immediateBridge = bridgeForPrompt(prompt);
@@ -247,7 +274,8 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
     if (immediateBridge) {
       setAnswer(immediateBridge);
       setState("speaking");
-      enqueueSpeech(`[neutral] ${immediateBridge}`, runId);
+      const bridgeSpeech = silkModel === "muga" ? `[neutral] ${immediateBridge}` : immediateBridge;
+      enqueueSpeech(bridgeSpeech, runId);
     }
 
     try {
@@ -330,12 +358,12 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
     <div className="mx-auto max-w-2xl border border-gray-200 bg-white text-left rounded-lg overflow-hidden">
       <div className="border-b border-gray-100 px-4 py-3 flex items-center justify-between gap-3">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-widest text-[#0055ff]">Text a problem</p>
-          <p className="text-xs text-gray-500 mt-0.5">NovaCare support</p>
+          <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: accentColor }}>Text a problem</p>
+          <p className="text-xs text-gray-500 mt-0.5">{voiceModeLabel(voiceMode)}</p>
         </div>
         <div className="flex items-center gap-2 text-[11px] font-medium text-gray-500">
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Volume2 className="h-3.5 w-3.5" />}
-          {state === "thinking" ? "thinking" : state === "speaking" ? "speaking" : transport || "ready"}
+          {state === "thinking" ? "thinking" : state === "speaking" ? "speaking" : latencyMs !== null ? `${transport} · ${latencyMs}ms` : transport || "ready"}
         </div>
       </div>
 
@@ -346,7 +374,7 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
           <>
             {question && (
               <div className="flex justify-end">
-                <div className="max-w-[86%] rounded-lg bg-[#0055ff] text-white px-4 py-3">
+                <div className="max-w-[86%] rounded-lg text-white px-4 py-3" style={{ backgroundColor: accentColor }}>
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-white/60 mb-1">you</p>
                   <p className="text-sm leading-relaxed">{question}</p>
                 </div>
@@ -375,7 +403,8 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
             onChange={(event) => setInput(event.target.value)}
             disabled={busy}
             placeholder="I need help comparing the plans"
-            className="min-h-12 flex-1 rounded-lg border border-gray-200 px-4 text-sm outline-none focus:border-[#0055ff] disabled:bg-gray-50"
+            className="min-h-12 flex-1 rounded-lg border border-gray-200 px-4 text-sm outline-none disabled:bg-gray-50"
+            style={{ outlineColor: accentColor }}
           />
           {busy ? (
             <button
@@ -390,7 +419,8 @@ export default function NovaTextSpeaker({ systemPrompt }: NovaTextSpeakerProps) 
             <button
               type="submit"
               disabled={!input.trim()}
-              className="min-h-12 inline-flex items-center justify-center gap-2 rounded-lg bg-[#0055ff] px-5 text-sm font-semibold text-white disabled:opacity-40"
+              className="min-h-12 inline-flex items-center justify-center gap-2 rounded-lg px-5 text-sm font-semibold text-white disabled:opacity-40"
+              style={{ backgroundColor: accentColor }}
             >
               <Send className="h-4 w-4" />
               Speak

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Loader2, Mic, MicOff, Phone, PhoneOff, Volume2 } from "lucide-react";
+import { voiceModeLabel } from "@/lib/silk-voice";
 import { useWebVoiceCall, type WebVoiceCallState, type WebVoiceMode } from "@/lib/use-web-voice-call";
 
 interface PublicTalkClientProps {
@@ -18,12 +19,6 @@ const stateLabel: Record<WebVoiceCallState, string> = {
   ending: "ending",
   ended: "ended",
   error: "error",
-};
-
-const voiceLabel: Record<WebVoiceMode, string> = {
-  silk: "SILK MUGA REST voice",
-  "silk-stream": "SILK MUGA streaming voice",
-  vapi: "Vapi native voice",
 };
 
 function formatDuration(seconds: number): string {
@@ -67,7 +62,7 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode }: Publ
           <p className="text-[10px] font-mono text-[#f0ebe0]/35 uppercase tracking-widest">silk resolve</p>
           <h1 className="text-base font-bold truncate">{agentName}</h1>
           <p className="text-[10px] font-mono text-[#f0ebe0]/35 uppercase tracking-widest mt-0.5">
-            {voiceLabel[voiceMode]}
+            {voiceModeLabel(voiceMode)}
           </p>
         </div>
         <div className="flex items-center gap-2 border border-[#f0ebe0]/15 px-3 py-1.5">
