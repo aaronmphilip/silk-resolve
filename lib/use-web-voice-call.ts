@@ -6,8 +6,10 @@ import {
   buildSilkTtsBody,
   isSilkVoiceMode,
   silkModelForVoiceMode,
+  SILK_WARM_INTERVAL_MS,
   silkSpeechText,
   silkTtsQueryForMode,
+  silkWarmPaths,
   type WebVoiceMode,
 } from "@/lib/silk-voice";
 import { stripVoiceMarkers } from "@/lib/voice-emotion";
@@ -325,11 +327,9 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 async function warmSilkVoiceInfra(voiceMode: WebVoiceMode): Promise<void> {
   if (!isSilkVoiceMode(voiceMode)) return;
 
-  const model = silkModelForVoiceMode(voiceMode) ?? "muga";
-  await Promise.allSettled([
-    fetch("/api/voice/vapi-llm?voice=silk", { method: "GET", cache: "no-store" }),
-    fetch(`/api/voice/silk-tts?model=${model}`, { method: "GET", cache: "no-store" }),
-  ]);
+  await Promise.allSettled(
+    silkWarmPaths().map((path) => fetch(path, { method: "GET", cache: "no-store" }))
+  );
 }
 
 // Prefer a value already in flight from prewarm(); if it's missing or the
@@ -978,6 +978,21 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   useEffect(() => {
     prewarm();
   }, [prewarm]);
+
+  useEffect(() => {
+    if (!isSilkVoiceMode(voiceMode)) return;
+
+    const ping = () => {
+      if (document.hidden) return;
+      for (const path of silkWarmPaths()) {
+        fetch(path, { method: "GET", cache: "no-store", keepalive: true }).catch(() => {});
+      }
+    };
+
+    ping();
+    const timer = window.setInterval(ping, SILK_WARM_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [voiceMode]);
 
   useEffect(() => {
     return () => {

@@ -29,7 +29,8 @@ const SILK_WS_CONNECT_ENDPOINT = process.env.SILK_TTS_WS_CONNECT_URL?.trim() ||
   SILK_ENDPOINT.replace(/\/v1\/tts\/?$/, "/v1/tts/ws-connect");
 const RUMIK_SAMPLE_RATE = 24000;
 const SUPPORTED_TARGET_RATES = new Set([8000, 16000, 22050, 24000, 44100]);
-const REUSABLE_WS_IDLE_MS = 5 * 60_000;
+// Client keepalive pings every 20s; hold sockets open long enough to survive gaps.
+const REUSABLE_WS_IDLE_MS = 30 * 60_000;
 const WARM_TEXT = "[neutral] Voice stream ready.";
 
 type VoiceRequestBody = {
@@ -819,7 +820,11 @@ export async function GET(req: NextRequest) {
   try {
     const cacheWarm = preloadCachedMugaAudio([8000, 16000, 24000]);
     const sockets = await Promise.all(
-      warmModels.map((model) => getReusableRumikSocket(silk.apiKey, model, WARM_TEXT))
+      warmModels.map(async (model) => {
+        const socket = await getReusableRumikSocket(silk.apiKey, model, WARM_TEXT);
+        socket.lastUsedAt = Date.now();
+        return socket;
+      })
     );
     const reusable: Record<string, { open: boolean; busy: boolean }> = {};
     for (let i = 0; i < warmModels.length; i++) {

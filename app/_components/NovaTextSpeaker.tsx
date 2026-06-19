@@ -5,8 +5,10 @@ import { Loader2, Send, Square, Volume2 } from "lucide-react";
 import { playBufferedPcm, playStreamingPcmResponse } from "@/lib/silk-stream-player";
 import {
   buildSilkTtsBody,
+  SILK_WARM_INTERVAL_MS,
   silkModelForVoiceMode,
   silkTtsQueryForMode,
+  silkWarmPaths,
   voiceModeLabel,
   type WebVoiceMode,
 } from "@/lib/silk-voice";
@@ -135,8 +137,9 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
 
     async function prefetchBridgeAudio() {
       const query = silkTtsQueryForMode(voiceMode);
-      const model = silkModelForVoiceMode(voiceMode) ?? "muga";
-      fetch(`/api/voice/silk-tts?model=${model}`, { method: "GET", cache: "no-store" }).catch(() => {});
+      for (const path of silkWarmPaths()) {
+        fetch(path, { method: "GET", cache: "no-store" }).catch(() => {});
+      }
 
       if (silkModel !== "muga") return;
 
@@ -157,8 +160,16 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
     }
 
     void prefetchBridgeAudio();
+    const keepalive = window.setInterval(() => {
+      if (document.hidden) return;
+      for (const path of silkWarmPaths()) {
+        fetch(path, { method: "GET", cache: "no-store", keepalive: true }).catch(() => {});
+      }
+    }, SILK_WARM_INTERVAL_MS);
+
     return () => {
       cancelled = true;
+      window.clearInterval(keepalive);
     };
   }, [silkModel, voiceMode]);
 

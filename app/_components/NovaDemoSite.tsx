@@ -2,7 +2,7 @@ import TalkButton from "@/app/fakewebsite/TalkButton";
 import NovaInstantVoice from "@/app/_components/NovaInstantVoice";
 import NovaTextSpeaker from "@/app/_components/NovaTextSpeaker";
 import { NOVACARE_AGENT_ID, NOVACARE_FACTS, NOVACARE_PLANS, NOVACARE_PROMPT } from "@/lib/novacare-knowledge";
-import { silkModelForVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
+import { SILK_WARM_INTERVAL_MS, silkModelForVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
 
 interface NovaDemoSiteProps {
   voiceMode: WebVoiceMode;
@@ -251,19 +251,22 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
   );
 }
 
-function WarmSilkSocketScript({ voiceMode }: { voiceMode: WebVoiceMode }) {
-  const model = silkModelForVoiceMode(voiceMode) ?? "muga";
+function WarmSilkSocketScript({ voiceMode: _voiceMode }: { voiceMode: WebVoiceMode }) {
   const snippet = `
 (function() {
-  var model = ${JSON.stringify(model)};
+  var paths = [
+    '/api/voice/vapi-llm?voice=silk',
+    '/api/voice/silk-tts?all=1',
+    '/api/voice/silk-tts?model=muga',
+    '/api/voice/silk-tts?model=mulberry'
+  ];
   var ping = function(path) {
     try {
       fetch(path, { method: 'GET', cache: 'no-store', keepalive: true }).catch(function() {});
     } catch (error) {}
   };
   var warm = function() {
-    ping('/api/voice/vapi-llm?voice=silk');
-    ping('/api/voice/silk-tts?model=' + encodeURIComponent(model));
+    for (var i = 0; i < paths.length; i++) ping(paths[i]);
   };
 
   if (document.readyState === 'loading') {
@@ -274,7 +277,7 @@ function WarmSilkSocketScript({ voiceMode }: { voiceMode: WebVoiceMode }) {
 
   window.setInterval(function() {
     if (!document.hidden) warm();
-  }, 45000);
+  }, ${SILK_WARM_INTERVAL_MS});
 })();
 `.trim();
 

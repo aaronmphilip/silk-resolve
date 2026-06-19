@@ -204,10 +204,35 @@
       .replace(/"/g, '&quot;');
   }
 
+  function warmVoiceInfra() {
+    var paths = [
+      origin + '/api/voice/vapi-llm?voice=silk',
+      origin + '/api/voice/silk-tts?all=1',
+      origin + '/api/voice/silk-tts?model=muga',
+      origin + '/api/voice/silk-tts?model=mulberry'
+    ];
+    for (var i = 0; i < paths.length; i++) {
+      try {
+        fetch(paths[i], { method: 'GET', cache: 'no-store', keepalive: true }).catch(function() {});
+      } catch (e) {}
+    }
+  }
+
+  function startWarmLoop() {
+    warmVoiceInfra();
+    window.setInterval(function() {
+      if (!document.hidden) warmVoiceInfra();
+    }, 20000);
+  }
+
   // Mount when DOM is available
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', mount);
+    document.addEventListener('DOMContentLoaded', function() {
+      mount();
+      if (cfg.voice !== 'vapi') startWarmLoop();
+    });
   } else {
     mount();
+    if (cfg.voice !== 'vapi') startWarmLoop();
   }
 })();

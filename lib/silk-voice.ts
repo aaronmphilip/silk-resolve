@@ -94,6 +94,19 @@ export function silkSpeechText(mode: WebVoiceMode, text: string): string {
   return clean;
 }
 
+/** Client + server paths to keep Rumik WebSocket sessions hot. */
+export const SILK_WARM_INTERVAL_MS = 20_000;
+export const SILK_WARM_MODELS: SilkModel[] = ["muga", "mulberry"];
+
+export function silkWarmPaths(origin = ""): string[] {
+  const base = origin.replace(/\/$/, "");
+  return [
+    `${base}/api/voice/vapi-llm?voice=silk`,
+    `${base}/api/voice/silk-tts?all=1`,
+    ...SILK_WARM_MODELS.map((model) => `${base}/api/voice/silk-tts?model=${model}`),
+  ];
+}
+
 export function normalizeWebVoiceMode(value: string | undefined | null): WebVoiceMode {
   if (value === "vapi") return "vapi";
   if (value === "silk-stream") return "silk-stream";
