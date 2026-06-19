@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Loader2, Send, Square, Volume2 } from "lucide-react";
 import { playBufferedPcm, playStreamingPcmResponse } from "@/lib/silk-stream-player";
+import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
 import {
   buildSilkTtsBody,
   SILK_WARM_INTERVAL_MS,
@@ -129,6 +130,7 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
   const runIdRef = useRef(0);
+  const firstChunkLatencyRef = useRef<number | null>(null);
   const audioQueueRef = useRef<Promise<void>>(Promise.resolve());
   const prefetchedAudioRef = useRef(new Map<string, { audio: ArrayBuffer; sampleRate: number }>());
 
@@ -218,36 +220,30 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
     });
   }
 
-  function enqueueSpeech(text: string, runId: number) {
-    const speakable = text.trim();
-    if (!speakable) return;
+  function playSpeechChunk(speakable: string, runId: number): Promise<void> {
+    const prefetched = silkModel === "muga"
+      ? prefetchedAudioRef.current.get(normalizeSpeechKey(speakable))
+      : undefined;
 
-    audioQueueRef.current = audioQueueRef.current
-      .then(async () => {
-        if (runId !== runIdRef.current) return;
-        const prefetched = silkModel === "muga"
-          ? prefetchedAudioRef.current.get(normalizeSpeechKey(speakable))
-          : undefined;
-        if (prefetched) {
-          setTransport("prefetched-muga-audio");
-          setLatencyMs(0);
-          await playBufferedPcm(
-            prefetched.audio,
-            prefetched.sampleRate,
-            runId,
-            () => runId === runIdRef.current,
-            audioContextRef.current
-          );
-          return;
-        }
+    if (prefetched) {
+      setTransport("prefetched-muga-audio");
+      setLatencyMs(0);
+      return playBufferedPcm(
+        prefetched.audio,
+        prefetched.sampleRate,
+        runId,
+        () => runId === runIdRef.current,
+        audioContextRef.current
+      );
+    }
 
-        const query = silkTtsQueryForMode(voiceMode);
-        const res = await fetch(`/api/voice/silk-tts${query}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(buildSilkTtsBody(voiceMode, speakable)),
-        });
-
+    const query = silkTtsQueryForMode(voiceMode);
+    return fetch(`/api/voice/silk-tts${query}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(buildSilkTtsBody(voiceMode, speakable)),
+    })
+      .then(async (res) => {
         const playback = await playStreamingPcmResponse(
           res,
           runId,
@@ -255,13 +251,24 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
           audioContextRef.current
         );
         setTransport(playback.transport || "websocket");
-        setLatencyMs(Math.round(playback.firstFrameMs));
-      })
-      .catch((err) => {
-        if (runId !== runIdRef.current) return;
-        setError(err instanceof Error ? err.message : `${silkModel.toUpperCase()} speech failed.`);
-        setState("error");
+        if (firstChunkLatencyRef.current === null) {
+          firstChunkLatencyRef.current = Math.round(playback.firstFrameMs);
+          setLatencyMs(firstChunkLatencyRef.current);
+        }
       });
+  }
+
+  function enqueueSpeech(text: string, runId: number) {
+    const speakable = text.trim();
+    if (!speakable) return;
+
+    const job = playSpeechChunk(speakable, runId).catch((err) => {
+      if (runId !== runIdRef.current) return;
+      setError(err instanceof Error ? err.message : `${silkModel.toUpperCase()} speech failed.`);
+      setState("error");
+    });
+
+    audioQueueRef.current = audioQueueRef.current.then(() => job);
   }
 
   async function submit(text: string) {
@@ -278,6 +285,7 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
     setError("");
     setTransport("");
     setLatencyMs(null);
+    firstChunkLatencyRef.current = null;
     setState("thinking");
 
     const immediateBridge = bridgeForPrompt(prompt);
@@ -311,6 +319,12 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
+      const chunker = new StreamSpeechChunker((chunk) => {
+        const spoken = silkModel === "muga" && !/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]/i.test(chunk)
+          ? `[neutral] ${chunk}`
+          : chunk;
+        enqueueSpeech(spoken, runId);
+      });
 
       for (;;) {
         const { done, value } = await reader.read();
@@ -343,12 +357,13 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
                 }
               }
               setAnswer((current) => appendText(current, content));
-              enqueueSpeech(content, runId);
+              chunker.push(content);
             } catch {}
           }
         }
       }
 
+      chunker.finish();
       await audioQueueRef.current;
       if (runId === runIdRef.current) setState("idle");
     } catch (err) {

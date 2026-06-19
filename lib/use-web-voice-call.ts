@@ -12,6 +12,7 @@ import {
   silkWarmPaths,
   type WebVoiceMode,
 } from "@/lib/silk-voice";
+import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
 import { stripVoiceMarkers } from "@/lib/voice-emotion";
 
 export type { WebVoiceMode };
@@ -618,6 +619,9 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     let buffer = "";
     let strippedBridge = false;
     let answerText = "";
+    const chunker = new StreamSpeechChunker((chunk) => {
+      enqueueLocalSpeech(silkSpeechText(voiceMode, chunk), callRunId, localRunId);
+    });
 
     for (;;) {
       const { done, value } = await reader.read();
@@ -656,14 +660,15 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
               answerText = `${answerText} ${transcriptText}`.replace(/\s+/g, " ").trim();
               setTranscript(lines => appendTranscriptLine(lines, "assistant", transcriptText, Date.now()));
             }
-            enqueueLocalSpeech(content, callRunId, localRunId);
+            chunker.push(content);
           } catch {}
         }
       }
     }
 
+    chunker.finish();
     return answerText;
-  }, [enqueueLocalSpeech]);
+  }, [enqueueLocalSpeech, voiceMode]);
 
   const playLocalAssistForUserText = useCallback((userText: string, callRunId: number) => {
     if (voiceMode === "vapi") return;
