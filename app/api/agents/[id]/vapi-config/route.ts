@@ -10,7 +10,7 @@ import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
 import { isNovaCareAgentId } from "@/lib/novacare-knowledge";
 import { buildNovaCareVapiAssistant } from "@/lib/novacare-vapi-config";
-import { MULBERRY_DEFAULTS, MULBERRY_REALTIME_EOT, normalizeWebVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
+import { MULBERRY_DEFAULTS, SILK_REALTIME_EOT, normalizeWebVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
 import { withSilkTone, stripAll } from "@/lib/voice-emotion";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -127,8 +127,8 @@ VOICE CALL RULES:
     name: agent.name,
     model: {
       provider: "custom-llm",
-      url: `${origin}/api/voice/vapi-llm?voice=${requestedVoice}`,
-      timeoutSeconds: 6,
+      url: `${origin}/api/voice/vapi-llm?voice=${requestedVoice}${useSilkVoice ? "&fast=1" : ""}`,
+      timeoutSeconds: 5,
       model: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
       messages: [{ role: "system", content: voicePrompt }],
       temperature: 0.25,
@@ -147,8 +147,8 @@ VOICE CALL RULES:
       language: "en",
       smartFormat: false,
       numerals: true,
-      eotThreshold: isMulberry ? MULBERRY_REALTIME_EOT.eotThreshold : 0.55,
-      eotTimeoutMs: isMulberry ? MULBERRY_REALTIME_EOT.eotTimeoutMs : 1200,
+      eotThreshold: useSilkVoice ? SILK_REALTIME_EOT.eotThreshold : 0.55,
+      eotTimeoutMs: useSilkVoice ? SILK_REALTIME_EOT.eotTimeoutMs : 1200,
     },
     silenceTimeoutSeconds: 60,
     maxDurationSeconds: 1800,
@@ -156,9 +156,9 @@ VOICE CALL RULES:
     startSpeakingPlan: {
       waitSeconds: 0,
       transcriptionEndpointingPlan: {
-        onPunctuationSeconds: isMulberry ? MULBERRY_REALTIME_EOT.onPunctuationSeconds : 0.05,
-        onNoPunctuationSeconds: isMulberry ? MULBERRY_REALTIME_EOT.onNoPunctuationSeconds : 0.3,
-        onNumberSeconds: isMulberry ? MULBERRY_REALTIME_EOT.onNumberSeconds : 0.2,
+        onPunctuationSeconds: useSilkVoice ? SILK_REALTIME_EOT.onPunctuationSeconds : 0.05,
+        onNoPunctuationSeconds: useSilkVoice ? SILK_REALTIME_EOT.onNoPunctuationSeconds : 0.3,
+        onNumberSeconds: useSilkVoice ? SILK_REALTIME_EOT.onNumberSeconds : 0.2,
       },
     },
     stopSpeakingPlan: {

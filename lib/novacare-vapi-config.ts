@@ -1,5 +1,5 @@
 import { getNovaCareFallbackAgent } from "@/lib/novacare-knowledge";
-import { MULBERRY_DEFAULTS, MULBERRY_REALTIME_EOT, type WebVoiceMode } from "@/lib/silk-voice";
+import { MULBERRY_DEFAULTS, SILK_REALTIME_EOT, type WebVoiceMode } from "@/lib/silk-voice";
 import { stripAll, withSilkTone } from "@/lib/voice-emotion";
 
 function cleanSpokenText(text: string): string {
@@ -27,6 +27,7 @@ export function buildNovaCareVapiAssistant(options: NovaCareVapiAssistantOptions
   const useSilkVoice = options.useSilkVoice ?? voiceMode !== "vapi";
   const silkModel = voiceMode === "silk-mulberry" ? "mulberry" : "muga";
   const isMulberry = silkModel === "mulberry";
+  const useFastLlm = useSilkVoice && voiceMode !== "vapi";
   const silkQuery = useSilkVoice ? `?transport=ws&model=${silkModel}` : "";
   const voice = useSilkVoice
     ? {
@@ -59,12 +60,12 @@ VOICE CALL RULES:
     name: agent.name,
     model: {
       provider: "custom-llm",
-      url: `${origin}/api/voice/vapi-llm?voice=${voiceMode}${isMulberry ? "&fast=1" : ""}`,
-      timeoutSeconds: 6,
+      url: `${origin}/api/voice/vapi-llm?voice=${voiceMode}${useFastLlm ? "&fast=1" : ""}`,
+      timeoutSeconds: 5,
       model: options.geminiModel?.trim() || "gemini-2.5-flash-lite",
       messages: [{ role: "system", content: voicePrompt }],
-      temperature: 0.25,
-      maxTokens: 80,
+      temperature: 0.2,
+      maxTokens: 64,
     },
     voice,
     firstMessage: spokenFirstMessage,
@@ -79,8 +80,8 @@ VOICE CALL RULES:
       language: "en",
       smartFormat: false,
       numerals: true,
-      eotThreshold: isMulberry ? MULBERRY_REALTIME_EOT.eotThreshold : 0.55,
-      eotTimeoutMs: isMulberry ? MULBERRY_REALTIME_EOT.eotTimeoutMs : 1200,
+      eotThreshold: useSilkVoice ? SILK_REALTIME_EOT.eotThreshold : 0.55,
+      eotTimeoutMs: useSilkVoice ? SILK_REALTIME_EOT.eotTimeoutMs : 1200,
     },
     silenceTimeoutSeconds: 60,
     maxDurationSeconds: 1800,
@@ -88,9 +89,9 @@ VOICE CALL RULES:
     startSpeakingPlan: {
       waitSeconds: 0,
       transcriptionEndpointingPlan: {
-        onPunctuationSeconds: isMulberry ? MULBERRY_REALTIME_EOT.onPunctuationSeconds : 0.05,
-        onNoPunctuationSeconds: isMulberry ? MULBERRY_REALTIME_EOT.onNoPunctuationSeconds : 0.3,
-        onNumberSeconds: isMulberry ? MULBERRY_REALTIME_EOT.onNumberSeconds : 0.2,
+        onPunctuationSeconds: useSilkVoice ? SILK_REALTIME_EOT.onPunctuationSeconds : 0.05,
+        onNoPunctuationSeconds: useSilkVoice ? SILK_REALTIME_EOT.onNoPunctuationSeconds : 0.3,
+        onNumberSeconds: useSilkVoice ? SILK_REALTIME_EOT.onNumberSeconds : 0.2,
       },
     },
     stopSpeakingPlan: {

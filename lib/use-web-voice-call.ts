@@ -127,14 +127,26 @@ function parseErrorText(err: unknown): { name: string; message: string } {
 
   const record = err as { name?: unknown; message?: unknown; error?: unknown; errorMsg?: unknown };
   const name = typeof record?.name === "string" ? record.name : "";
-  const message =
+  let message =
     typeof record?.message === "string" ? record.message :
     typeof record?.error === "string" ? record.error :
     typeof record?.errorMsg === "string" ? record.errorMsg :
     typeof err === "string" ? err :
-    "Failed to start call";
+    "";
 
-  return { name, message };
+  if (!message && record?.error && typeof record.error === "object") {
+    const nested = parseErrorText(record.error);
+    if (nested.message) return nested;
+  }
+
+  if (!message) {
+    try {
+      const serialized = JSON.stringify(err);
+      if (serialized && serialized !== "{}") message = serialized;
+    } catch {}
+  }
+
+  return { name, message: message || "Failed to start call" };
 }
 
 export function normalizeVoiceCallError(err: unknown): string {
@@ -153,6 +165,9 @@ export function normalizeVoiceCallError(err: unknown): string {
   }
   if (lower.includes("invalid key")) {
     return "Vapi rejected the browser key. Check that VAPI_PUBLIC_KEY is the public key, not the private key.";
+  }
+  if (lower.includes("eotthreshold") || lower.includes("eottimeoutms") || lower.includes("eot threshold")) {
+    return "Voice call config was rejected by Vapi (speech-detection limits). Refresh the page and try again.";
   }
   if (lower.includes("meeting has ended") || lower.includes("room has ended")) {
     return "The Vapi room ended before the browser fully joined. Retry after allowing mic access.";
@@ -392,7 +407,6 @@ interface PrewarmCache {
   vapi: Promise<VapiCtor>;
   token: Promise<TokenResponse>;
   assistant: Promise<AssistantConfig>;
-  mic: Promise<void>;
 }
 
 export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk") {
@@ -427,6 +441,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   // config fetches) is already done by the time the user taps Start call. The
   // click then only needs the mic prompt + vapi.start() — that's the instant join.
   const prewarmRef = useRef<PrewarmCache | null>(null);
+  const startingRef = useRef(false);
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -541,8 +556,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
   const speculativePrefetchRef = useRef("");
 
-  const speculativePrefetchMulberry = useCallback((partialText: string) => {
-    if (voiceMode !== "silk-mulberry" || !canUseNovaCareCache()) return;
+  const speculativePrefetchSilk = useCallback((partialText: string) => {
+    if (!isSilkVoiceMode(voiceMode) || !canUseNovaCareCache()) return;
     const answer = speculativeNovaCareAnswer(partialText);
     if (!answer) return;
 
@@ -558,8 +573,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   }, [canUseNovaCareCache, voiceMode]);
 
   const prefetchLocalAssistForText = useCallback((text: string) => {
-    if (voiceMode === "silk-mulberry") {
-      speculativePrefetchMulberry(text);
+    if (isSilkVoiceMode(voiceMode)) {
+      speculativePrefetchSilk(text);
       return;
     }
     if (!usesTalkWidgetLocalAssist(voiceMode) || voiceMode === "vapi" || text.trim().length < 10) return;
@@ -571,7 +586,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
     const bridge = bridgeForVoicePrompt(text);
     if (bridge) void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, bridge)).catch(() => {});
-  }, [canUseNovaCareCache, getOrFetchLocalMugaClip, speculativePrefetchMulberry, voiceMode]);
+  }, [canUseNovaCareCache, getOrFetchLocalMugaClip, speculativePrefetchSilk, voiceMode]);
 
   const playLocalPcm = useCallback(async (clip: LocalMugaClip, localRunId: number) => {
     if (localRunId !== localAssistRunRef.current || !mountedRef.current) return;
@@ -831,15 +846,15 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       vapi: loadVapiCtor(),
       token: fetchVapiToken(),
       assistant: resolveAssistantConfig(agentId, voiceMode),
-      mic: preflightMicrophone(),
     };
     warmSilkVoiceInfra(voiceMode);
     // Swallow rejections now so React/browser don't flag unhandled rejections;
     // startCall still awaits these and falls back to a fresh fetch on failure.
+    // Mic permission is requested only on Start call — prewarming mic in iframes
+    // races autostart and can leave Vapi without a live track.
     prewarmRef.current.vapi.catch(() => {});
     prewarmRef.current.token.catch(() => {});
     prewarmRef.current.assistant.catch(() => {});
-    prewarmRef.current.mic.catch(() => {});
 
     if (usesTalkWidgetLocalAssist(voiceMode)) {
       for (const phrase of PREFETCHED_LOCAL_MUGA_PHRASES) {
@@ -854,32 +869,35 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       setState("error");
       return;
     }
+    if (startingRef.current) return;
+    startingRef.current = true;
 
     const runId = runIdRef.current + 1;
     runIdRef.current = runId;
 
-    await cleanupCall();
-    if (!mountedRef.current || runId !== runIdRef.current) return;
-
-    setState("connecting");
-    setError("");
-    setTranscript([]);
-    setInterim(null);
-    setTension(0);
-    setDuration(0);
-
-    const key = `${agentId}::${voiceMode}`;
-    const warm = prewarmRef.current?.key === key ? prewarmRef.current : null;
-
     try {
+      await cleanupCall();
+      if (!mountedRef.current || runId !== runIdRef.current) return;
+
+      setState("connecting");
+      setError("");
+      setTranscript([]);
+      setInterim(null);
+      setTension(0);
+      setDuration(0);
+
+      const key = `${agentId}::${voiceMode}`;
+      const warm = prewarmRef.current?.key === key ? prewarmRef.current : null;
+
       warmSilkVoiceInfra(voiceMode);
+
+      await preflightMicrophone();
 
       const [Vapi, token, assistant] = await withTimeout(
         Promise.all([
           cachedOrFetch(warm?.vapi, loadVapiCtor),
           cachedOrFetch(warm?.token, fetchVapiToken),
           cachedOrFetch(warm?.assistant, () => resolveAssistantConfig(agentId, voiceMode)),
-          cachedOrFetch(warm?.mic, preflightMicrophone),
         ]),
         CONFIG_TIMEOUT_MS,
         "Voice configuration took too long to load. Retry in a moment."
@@ -910,7 +928,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
       vapi.on("call-start-failed", event => {
         if (!mountedRef.current || runId !== runIdRef.current) return;
-        setError(normalizeVoiceCallError(event.error));
+        const failed = event as { error?: unknown; message?: unknown };
+        setError(normalizeVoiceCallError(failed.error ?? failed.message ?? event));
         void finishCall("error");
       });
 
@@ -978,12 +997,17 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         "Vapi did not finish starting the web call. Check mic permission and retry."
       ) as CallResponse | null;
 
-      if (call?.id) void registerCall(call.id);
+      if (!call) {
+        throw new Error("Vapi returned no call session. Refresh and try again.");
+      }
+      if (call.id) void registerCall(call.id);
     } catch (err) {
       if (!mountedRef.current || runId !== runIdRef.current) return;
       await cleanupCall();
       setError(normalizeVoiceCallError(err));
       setState("error");
+    } finally {
+      startingRef.current = false;
     }
   }, [
     agentId,

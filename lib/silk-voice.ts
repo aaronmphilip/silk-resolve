@@ -118,9 +118,11 @@ export function silkCriticalWarmPaths(origin = "", voiceMode: WebVoiceMode = "si
     voiceMode === "silk-stream" ? "silk-stream" : "silk";
   const model = voiceMode === "silk-mulberry" ? "mulberry" : "muga";
   return [
-    `${base}/api/voice/vapi-llm?voice=${llmVoice}`,
+    `${base}/api/voice/vapi-llm?voice=${llmVoice}&fast=1`,
     `${base}/api/voice/silk-tts?model=${model}`,
     `${base}/api/voice/silk-tts?model=${model}&warmFaq=1&faqId=greeting`,
+    `${base}/api/voice/silk-tts?model=${model}&warmFaq=1&faqId=plans`,
+    `${base}/api/voice/silk-tts?model=${model}&warmFaq=1&faqId=claims`,
   ];
 }
 
@@ -137,14 +139,20 @@ export function silkWarmPaths(origin = ""): string[] {
   ];
 }
 
-/** GPT Realtime-style Mulberry endpointing — semantic VAD approximated with aggressive Flux EOT. */
-export const MULBERRY_REALTIME_EOT = {
-  eotThreshold: 0.42,
-  eotTimeoutMs: 200,
+/**
+ * Aggressive Flux EOT for MUGA + Mulberry.
+ * Vapi enforces eotThreshold >= 0.5 and eotTimeoutMs >= 500 — lower values fail web-call creation.
+ */
+export const SILK_REALTIME_EOT = {
+  eotThreshold: 0.5,
+  eotTimeoutMs: 500,
   onPunctuationSeconds: 0.03,
-  onNoPunctuationSeconds: 0.1,
-  onNumberSeconds: 0.12,
+  onNoPunctuationSeconds: 0.08,
+  onNumberSeconds: 0.1,
 } as const;
+
+/** @deprecated Use SILK_REALTIME_EOT */
+export const MULBERRY_REALTIME_EOT = SILK_REALTIME_EOT;
 
 export function normalizeWebVoiceMode(value: string | undefined | null): WebVoiceMode {
   if (value === "vapi") return "vapi";

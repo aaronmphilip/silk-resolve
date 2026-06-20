@@ -8,6 +8,7 @@
 import { NextRequest } from "next/server";
 import { stripAll, tensionToTone, withSilkTone, type SilkTone } from "@/lib/voice-emotion";
 import { answerNovaCareQuestion, cachedMugaAudioForText } from "@/lib/novacare-knowledge";
+import { isSilkVoiceMode, normalizeWebVoiceMode } from "@/lib/silk-voice";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -58,15 +59,14 @@ function getConfig(req: NextRequest) {
   const silkDisabled = ["0", "false", "off", "no"].includes(
     process.env.SILK_VAPI_VOICE?.trim().toLowerCase() ?? ""
   );
-  const voiceParam = req.nextUrl.searchParams.get("voice") ?? "silk";
-  const requestedVoice = voiceParam === "vapi" ? "vapi" : "silk";
+  const voiceMode = normalizeWebVoiceMode(req.nextUrl.searchParams.get("voice"));
   const clientLeadEnabled = req.nextUrl.searchParams.get("clientLead") === "1";
   const localClientEnabled = req.nextUrl.searchParams.get("local") === "1";
-  const mulberryVoice = voiceParam === "silk-mulberry";
+  const mulberryVoice = voiceMode === "silk-mulberry";
   const fastMode = req.nextUrl.searchParams.get("fast") === "1";
   return {
     apiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
-    silkEnabled: requestedVoice === "silk" && Boolean(process.env.SILK_API_KEY?.trim()) && !silkDisabled,
+    silkEnabled: isSilkVoiceMode(voiceMode) && Boolean(process.env.SILK_API_KEY?.trim()) && !silkDisabled,
     clientLeadEnabled,
     localClientEnabled,
     mulberryVoice,
