@@ -163,9 +163,14 @@ export function normalizeWebVoiceMode(value: string | undefined | null): WebVoic
   return "silk";
 }
 
-/** Talk-widget speech-to-speech stays on Vapi + silk-tts only — no browser-side bridge/cache layer. */
-export function usesTalkWidgetLocalAssist(_mode: WebVoiceMode): boolean {
-  return false;
+/** Browser plays Mulberry/MUGA audio directly; Vapi stays on mic + STT only. */
+export function usesBrowserSilkPlayback(mode: WebVoiceMode): boolean {
+  return mode === "silk-mulberry" || mode === "silk" || mode === "silk-stream";
+}
+
+/** @deprecated Use usesBrowserSilkPlayback */
+export function usesTalkWidgetLocalAssist(mode: WebVoiceMode): boolean {
+  return usesBrowserSilkPlayback(mode);
 }
 
 /** Browser-only STT pipeline — disabled for Mulberry; Vapi + Deepgram captures voice reliably. */

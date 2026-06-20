@@ -400,11 +400,21 @@ function resolveSilkModel(req: NextRequest, body: VoiceRequestBody): SilkModel {
   return "muga";
 }
 
+function sanitizeMulberryDescription(description: string): string {
+  return description
+    .replace(/[—–]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 180);
+}
+
 function resolveMulberryDescription(body: VoiceRequestBody, text: string): string {
   const { description } = extractVoiceMeta(text);
-  if (description) return description;
-  if (typeof body.description === "string" && body.description.trim()) return body.description.trim();
-  return buildMulberryDescription(estimateTension(""), classifyCallIntent(""));
+  if (description) return sanitizeMulberryDescription(description);
+  if (typeof body.description === "string" && body.description.trim()) {
+    return sanitizeMulberryDescription(body.description);
+  }
+  return sanitizeMulberryDescription(buildMulberryDescription(estimateTension(""), classifyCallIntent("")));
 }
 
 function buildRumikPayload(body: VoiceRequestBody, text: string, modelOverride?: SilkModel): Record<string, unknown> {
@@ -706,7 +716,17 @@ async function streamRumik(
         "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model: payload.model, text: payload.text }),
+      body: JSON.stringify(
+        model === "mulberry"
+          ? {
+              model: payload.model,
+              text: payload.text,
+              description: payload.description,
+              speaker: payload.speaker,
+              f0_up_key: payload.f0_up_key,
+            }
+          : { model: payload.model, text: payload.text }
+      ),
       signal: controller.signal,
     });
 
@@ -912,7 +932,9 @@ async function streamRumikReusable(
         try {
           const event = JSON.parse(data.toString("utf8")) as { type?: string; error?: string | boolean };
           if (event.error) {
-            fail(new Error("SILK stream failed"));
+            const detail = typeof event.error === "string" ? event.error : "SILK stream failed";
+            console.error(`[silk-tts] reusable rumik stream error (${model}):`, detail);
+            fail(new Error(detail));
             return;
           }
           if (event.type === "done") closeCleanly();
@@ -1050,6 +1072,7 @@ export async function POST(req: NextRequest) {
     const streamed = await streamRumik(silk.apiKey, body, text, sampleRate, model);
     if (!("error" in streamed)) return streamed;
     console.warn("[silk-tts] websocket stream failed before audio, falling back to REST:", streamed.error);
+    clearReusableSocket(model);
   }
 
   const rumikBody = { ...body, model };

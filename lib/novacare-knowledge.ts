@@ -671,6 +671,7 @@ function cachedIntentIdForQuestion(text: string): MugaCachedAudioId | null {
 export function normalizeMugaCacheText(text: string): string {
   return text
     .toLowerCase()
+    .replace(/^\s*\[\[voice:[^\]]+\]\]\s*/i, "")
     .replace(/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]\s*/i, "")
     .replace(/<(laugh|sigh|hmm|pause|breathe)>/gi, "")
     .replace(/[^a-z0-9\s]/g, " ")

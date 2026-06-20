@@ -174,7 +174,7 @@ export function classifyCallIntent(userText: string): CallIntent {
 // ── Mulberry instruct-TTS descriptions (Rumik docs: natural-language steering) ─
 export function buildMulberryDescription(tension: number, intent: CallIntent): string {
   if (tension >= 8 || intent === "angry") {
-    return "soft, calm, reassuring female narrator — low energy, steady pace, empathetic gravitas";
+    return "soft, calm, reassuring female narrator, low energy, steady pace, empathetic gravitas";
   }
   if (tension >= 6 || intent === "frustrated" || intent === "complaint") {
     return "warm, empathetic female health insurance agent — patient, understanding, gently reassuring";
