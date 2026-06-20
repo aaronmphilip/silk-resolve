@@ -154,7 +154,14 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
           </div>
           {voiceMode !== "vapi" && (
             <div className="mt-10 space-y-4">
-              <NovaInstantVoice voiceMode={voiceMode} accentColor={site.accent} />
+              {voiceMode !== "silk-mulberry" && (
+                <NovaInstantVoice voiceMode={voiceMode} accentColor={site.accent} />
+              )}
+              {voiceMode === "silk-mulberry" && (
+                <p className="text-sm text-gray-500 max-w-xl mx-auto">
+                  Voice calls use the Talk button below or the floating widget — powered by Vapi + Mulberry for reliable mic capture.
+                </p>
+              )}
               <NovaTextSpeaker systemPrompt={NOVACARE_PROMPT} voiceMode={voiceMode} accentColor={site.accent} />
             </div>
           )}
@@ -292,7 +299,7 @@ function WidgetScript({ agentId, voiceMode, label, color }: { agentId: string; v
   const snippet = `
 (function() {
   var s = document.createElement('script');
-  s.src = window.location.origin + '/widget.js?v=6';
+  s.src = window.location.origin + '/widget.js?v=7';
   s.setAttribute('data-agent-id', '${agentId}');
   s.setAttribute('data-position', 'bottom-right');
   s.setAttribute('data-greeting', '${label}');

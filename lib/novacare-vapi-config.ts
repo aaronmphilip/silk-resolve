@@ -59,7 +59,7 @@ VOICE CALL RULES:
     name: agent.name,
     model: {
       provider: "custom-llm",
-      url: `${origin}/api/voice/vapi-llm?voice=${voiceMode}`,
+      url: `${origin}/api/voice/vapi-llm?voice=${voiceMode}${isMulberry ? "&fast=1" : ""}`,
       timeoutSeconds: 6,
       model: options.geminiModel?.trim() || "gemini-2.5-flash-lite",
       messages: [{ role: "system", content: voicePrompt }],

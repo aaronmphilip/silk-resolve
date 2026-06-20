@@ -46,14 +46,10 @@
     return value === 'vapi' ? 'vapi' : 'silk';
   }
 
-  function isDirectVoice() {
-    return cfg.voice === 'silk-mulberry';
-  }
-
   function talkUrl(id, options) {
     var opts = options || {};
     var url = origin + '/talk/' + encodeURIComponent(id) + '?voice=' + encodeURIComponent(cfg.voice);
-    if (opts.autostart && !isDirectVoice()) url += '&autostart=1';
+    if (opts.autostart) url += '&autostart=1';
     if (opts.cacheBust) url += '&_sr=' + encodeURIComponent(String(opts.cacheBust));
     return url;
   }
@@ -194,21 +190,19 @@
         if (iframe.dataset.agentId !== agentId || !iframe.src) {
           iframe.dataset.agentId = agentId;
           iframe.dataset.ready = '0';
-          iframe.src = talkUrl(agentId, { autostart: !isDirectVoice(), cacheBust: Date.now() });
+          iframe.src = talkUrl(agentId, { autostart: true, cacheBust: Date.now() });
           return;
         }
 
-        if (!isDirectVoice()) {
-          if (iframe.dataset.ready === '1') {
-            postAutoStart(iframe.contentWindow);
-            return;
-          }
-
-          iframe.addEventListener('load', function onReady() {
-            iframe.removeEventListener('load', onReady);
-            postAutoStart(iframe.contentWindow);
-          });
+        if (iframe.dataset.ready === '1') {
+          postAutoStart(iframe.contentWindow);
+          return;
         }
+
+        iframe.addEventListener('load', function onReady() {
+          iframe.removeEventListener('load', onReady);
+          postAutoStart(iframe.contentWindow);
+        });
       };
 
       primeMicrophone().then(afterMic);

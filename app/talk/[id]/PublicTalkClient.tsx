@@ -140,7 +140,7 @@ function TalkUi({
             <div>
               <Volume2 size={22} className="mx-auto mb-3 text-[#f0ebe0]/15" />
               <p className="text-xs font-mono text-[#f0ebe0]/30">
-                {busy ? "starting..." : active ? "listening..." : "tap start call · allow microphone"}
+                {busy ? "connecting..." : active ? "listening..." : autostart ? "starting..." : "start a web call"}
               </p>
             </div>
           </div>

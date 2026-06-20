@@ -158,9 +158,9 @@ export function usesTalkWidgetLocalAssist(_mode: WebVoiceMode): boolean {
   return false;
 }
 
-/** Mulberry uses the direct mic → LLM → silk-tts pipeline (no Vapi / WebRTC). */
-export function usesDirectVoicePipeline(mode: WebVoiceMode): boolean {
-  return mode === "silk-mulberry";
+/** Browser-only STT pipeline — disabled for Mulberry; Vapi + Deepgram captures voice reliably. */
+export function usesDirectVoicePipeline(_mode: WebVoiceMode): boolean {
+  return false;
 }
 
 export function vapiLlmVoiceQuery(mode: WebVoiceMode): string {
