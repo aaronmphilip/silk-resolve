@@ -48,8 +48,10 @@ import {
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
 import {
   isRumikCreditError,
+  isVapiCreditError,
   playBrowserSpeechFallback,
   rumikCreditErrorMessage,
+  vapiCreditErrorMessage,
 } from "@/lib/browser-speech-fallback";
 import { extractVoiceMeta, stripVoiceMarkers } from "@/lib/voice-emotion";
 
@@ -203,8 +205,8 @@ export function normalizeVoiceCallError(err: unknown): string {
   if (name === "NotReadableError" || name === "TrackStartError") {
     return "The microphone is already in use or blocked by the operating system. Close other apps using it and retry.";
   }
-  if (isRumikCreditError(lower)) {
-    return rumikCreditErrorMessage();
+  if (isVapiCreditError(message)) {
+    return vapiCreditErrorMessage();
   }
   if (lower.includes("invalid key")) {
     return "Vapi rejected the browser key. Check that VAPI_PUBLIC_KEY is the public key, not the private key.";
