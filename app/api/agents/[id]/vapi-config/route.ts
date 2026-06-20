@@ -48,10 +48,12 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const requestedVoice = voiceMode(req);
 
-  // Try service client first (bypasses RLS). If SUPABASE_SERVICE_ROLE_KEY isn't
-  // set in env, fall back to the anon client — migration 015 grants anon read.
-  let agent = null;
-  {
+  // NovaCare demo agent is bundled in code — never depend on Supabase for public talk.
+  let agent = isNovaCareAgentId(id) ? getNovaCareFallbackAgent() : null;
+
+  if (!agent) {
+    // Try service client first (bypasses RLS). If SUPABASE_SERVICE_ROLE_KEY isn't
+    // set in env, fall back to the anon client — migration 015 grants anon read.
     const svcResult = await createServiceClient()
       .from("agents")
       .select("id, name, client, description, status, system_prompt, first_message, llm_model")
@@ -60,7 +62,6 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     if (svcResult.data) {
       agent = svcResult.data;
     } else {
-      // Fallback: anon key (works when migration 015 RLS policy is applied)
       const anonResult = await createClient()
         .from("agents")
         .select("id, name, client, description, status, system_prompt, first_message, llm_model")
@@ -68,10 +69,6 @@ export async function GET(req: NextRequest, { params }: Ctx) {
         .single();
       agent = anonResult.data ?? null;
     }
-  }
-
-  if (!agent && isNovaCareAgentId(id)) {
-    agent = getNovaCareFallbackAgent();
   }
 
   if (!agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });

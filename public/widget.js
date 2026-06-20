@@ -46,8 +46,10 @@
     return value === 'vapi' ? 'vapi' : 'silk';
   }
 
-  function talkUrl(id) {
-    return origin + '/talk/' + encodeURIComponent(id) + '?voice=' + encodeURIComponent(cfg.voice);
+  function talkUrl(id, cacheBust) {
+    var url = origin + '/talk/' + encodeURIComponent(id) + '?voice=' + encodeURIComponent(cfg.voice);
+    if (cacheBust) url += '&_sr=' + encodeURIComponent(String(cacheBust));
+    return url;
   }
 
   // Global API — populated once the DOM is ready
@@ -137,7 +139,7 @@
 
     // ── Iframe (the full PublicTalkClient lives here) ─────────────────────────
     var iframe = document.createElement('iframe');
-    iframe.src = talkUrl(agentId);
+    iframe.src = talkUrl(agentId, Date.now());
     iframe.style.cssText = 'flex:1;width:100%;border:none;display:block;';
     iframe.allow = 'microphone; autoplay; clipboard-write';
     iframe.setAttribute('allowfullscreen', '');
@@ -153,6 +155,7 @@
 
     function open() {
       isOpen = true;
+      iframe.src = talkUrl(agentId, Date.now());
       overlay.style.display = 'flex';
       btn.style.display = 'none';
       panel.focus && panel.focus();
@@ -163,8 +166,8 @@
       isOpen = false;
       overlay.style.display = 'none';
       btn.style.display = 'inline-flex';
-      // Reset iframe so next open starts fresh (no lingering call state)
-      iframe.src = iframe.src;
+      // Reset iframe with a fresh cache-bust so stale 404/HTML never sticks around.
+      iframe.removeAttribute('src');
     }
 
     // ── Event wiring ──────────────────────────────────────────────────────────
@@ -186,7 +189,7 @@
     window.SilkResolve.start = function (id) {
       if (id && id !== agentId) {
         // Different agent — update iframe src before opening
-        iframe.src = talkUrl(id);
+        iframe.src = talkUrl(id, Date.now());
       }
       open();
     };

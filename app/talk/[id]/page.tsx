@@ -11,20 +11,24 @@ interface PageProps {
   searchParams?: Promise<{ voice?: string }>;
 }
 
+type TalkAgent = { id: string; name: string | null };
+
 export default async function PublicTalkPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const query = searchParams ? await searchParams : {};
   const voiceMode = normalizeWebVoiceMode(query.voice);
-  let agent = (
-    await createServiceClient()
-      .from("agents")
-      .select("id, name, status")
-      .eq("id", id)
-      .single()
-  ).data;
 
-  if (!agent && isNovaCareAgentId(id)) {
-    agent = getNovaCareFallbackAgent();
+  // NovaCare demo agent is bundled in code — never depend on Supabase for public talk.
+  let agent: TalkAgent | null = isNovaCareAgentId(id) ? getNovaCareFallbackAgent() : null;
+
+  if (!agent) {
+    agent = (
+      await createServiceClient()
+        .from("agents")
+        .select("id, name, status")
+        .eq("id", id)
+        .single()
+    ).data;
   }
 
   if (!agent) notFound();
