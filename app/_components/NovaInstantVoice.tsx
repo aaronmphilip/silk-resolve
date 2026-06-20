@@ -11,6 +11,7 @@ import {
   silkModelForVoiceMode,
   silkTtsQueryForMode,
   silkWarmPaths,
+  vapiLlmVoiceQuery,
   voiceModeLabel,
   type WebVoiceMode,
 } from "@/lib/silk-voice";
@@ -321,7 +322,7 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
   }
 
   async function streamServerAnswer(prompt: string, immediateBridge: string, runId: number) {
-    const res = await fetch("/api/voice/vapi-llm?voice=silk", {
+    const res = await fetch(`/api/voice/vapi-llm?${vapiLlmVoiceQuery(voiceMode)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -415,17 +416,11 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
       return;
     }
 
-    const immediateBridge = bridgeForPrompt(cleanPrompt);
-    if (immediateBridge) {
-      setState("speaking");
-      setAnswer(immediateBridge);
-      enqueueSpeech(silkModel === "muga" ? `[neutral] ${immediateBridge}` : immediateBridge, runId);
-    } else {
-      setState("thinking");
-    }
+    // Bridge phrases come from vapi-llm once (MUGA only). Local prefetch avoided double-speak.
+    setState("thinking");
 
     try {
-      await streamServerAnswer(cleanPrompt, immediateBridge, runId);
+      await streamServerAnswer(cleanPrompt, "", runId);
       await audioQueueRef.current;
       if (runId === runIdRef.current) setState("idle");
     } catch (err) {

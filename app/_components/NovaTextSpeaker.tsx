@@ -10,6 +10,7 @@ import {
   silkModelForVoiceMode,
   silkTtsQueryForMode,
   silkWarmPaths,
+  vapiLlmVoiceQuery,
   voiceModeLabel,
   type WebVoiceMode,
 } from "@/lib/silk-voice";
@@ -288,17 +289,8 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
     firstChunkLatencyRef.current = null;
     setState("thinking");
 
-    const immediateBridge = bridgeForPrompt(prompt);
-    let skippedServerBridge = false;
-    if (immediateBridge) {
-      setAnswer(immediateBridge);
-      setState("speaking");
-      const bridgeSpeech = silkModel === "muga" ? `[neutral] ${immediateBridge}` : immediateBridge;
-      enqueueSpeech(bridgeSpeech, runId);
-    }
-
     try {
-      const res = await fetch("/api/voice/vapi-llm?voice=silk", {
+      const res = await fetch(`/api/voice/vapi-llm?${vapiLlmVoiceQuery(voiceMode)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -346,16 +338,8 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
               const data = JSON.parse(payload) as {
                 choices?: Array<{ delta?: { content?: string } }>;
               };
-              let content = data.choices?.[0]?.delta?.content ?? "";
+              const content = data.choices?.[0]?.delta?.content ?? "";
               if (!content) continue;
-              if (immediateBridge && !skippedServerBridge) {
-                const stripped = stripLeadingBridge(content, immediateBridge);
-                if (stripped !== stripVoiceMarkers(content)) {
-                  skippedServerBridge = true;
-                  content = stripped;
-                  if (!content) continue;
-                }
-              }
               setAnswer((current) => appendText(current, content));
               chunker.push(content);
             } catch {}

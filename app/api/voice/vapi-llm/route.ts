@@ -54,15 +54,27 @@ function getConfig(req: NextRequest) {
   const silkDisabled = ["0", "false", "off", "no"].includes(
     process.env.SILK_VAPI_VOICE?.trim().toLowerCase() ?? ""
   );
-  const requestedVoice = req.nextUrl.searchParams.get("voice") === "vapi" ? "vapi" : "silk";
+  const voiceParam = req.nextUrl.searchParams.get("voice") ?? "silk";
+  const requestedVoice = voiceParam === "vapi" ? "vapi" : "silk";
   const clientLeadEnabled = req.nextUrl.searchParams.get("clientLead") === "1";
   const localClientEnabled = req.nextUrl.searchParams.get("local") === "1";
+  const mulberryVoice = voiceParam === "silk-mulberry";
   return {
     apiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
     silkEnabled: requestedVoice === "silk" && Boolean(process.env.SILK_API_KEY?.trim()) && !silkDisabled,
     clientLeadEnabled,
     localClientEnabled,
+    mulberryVoice,
   };
+}
+
+function shouldUseFastLead(
+  silkEnabled: boolean,
+  clientLeadEnabled: boolean,
+  mulberryVoice: boolean
+): boolean {
+  if (!silkEnabled || clientLeadEnabled || mulberryVoice) return false;
+  return true;
 }
 
 function normalizeMessages(input: unknown): OAIMessage[] {
@@ -532,10 +544,13 @@ function reply(
   model: string,
   silkEnabled: boolean,
   userText: string,
-  clientLeadEnabled: boolean
+  clientLeadEnabled: boolean,
+  mulberryVoice: boolean
 ): Response {
   const spoken = voiceText(text, silkEnabled, userText);
-  const lead = silkEnabled && !clientLeadEnabled ? fastLeadFor(userText, spoken) : "";
+  const lead = shouldUseFastLead(silkEnabled, clientLeadEnabled, mulberryVoice)
+    ? fastLeadFor(userText, spoken)
+    : "";
   return wantsStream ? toSSE(spoken, lead) : toJSON(spoken, model);
 }
 
@@ -585,8 +600,9 @@ function streamGemini(args: {
   silkEnabled: boolean;
   userText: string;
   clientLeadEnabled: boolean;
+  mulberryVoice: boolean;
 }): Response {
-  const { apiKey, model, systemContent, contents, fallback, silkEnabled, userText, clientLeadEnabled } = args;
+  const { apiKey, model, systemContent, contents, fallback, silkEnabled, userText, clientLeadEnabled, mulberryVoice } = args;
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const id = `chatcmpl-${Date.now()}`;
@@ -599,7 +615,9 @@ function streamGemini(args: {
       let pending = "";  // raw model text not yet emitted as a complete sentence
       const startedAt = Date.now();
       let firstChunkAt = 0;
-      const lead = silkEnabled && !clientLeadEnabled ? fastLeadFor(userText, "response") : "";
+      const lead = shouldUseFastLead(silkEnabled, clientLeadEnabled, mulberryVoice)
+        ? fastLeadFor(userText, "response")
+        : "";
 
       // Emit one speakable segment. We normalize a COMPLETE sentence at a time:
       // normalizing per raw token stripped inter-token spaces and merged words
@@ -736,7 +754,7 @@ export async function POST(req: NextRequest) {
   // this guarantees the thinking-disable config matches the model we actually call.
   const model = DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.5-flash-lite";
   const wantsStream = body.stream !== false;
-  const { apiKey, silkEnabled, clientLeadEnabled, localClientEnabled } = getConfig(req);
+  const { apiKey, silkEnabled, clientLeadEnabled, localClientEnabled, mulberryVoice } = getConfig(req);
 
   const systemContent = messages.find((message) => message.role === "system")?.content ?? "";
   const lastUser = lastUserText(messages);
@@ -746,17 +764,17 @@ export async function POST(req: NextRequest) {
   // Vapi call still needs a tiny response to keep the turn healthy, but it should
   // not trigger a duplicate full MUGA generation in the background.
   if (clientLeadEnabled && !localClientEnabled) {
-    return reply(browserHandledPlaceholder(lastUser), wantsStream, model, silkEnabled, lastUser, clientLeadEnabled);
+    return reply(browserHandledPlaceholder(lastUser), wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
   }
 
   // Company/site knowledge should not wait on Gemini. This is the path that
   // fixes the fake website agent answering from the saved agent prompt.
   if (promptAnswer) {
-    return reply(promptAnswer, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled);
+    return reply(promptAnswer, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
   }
 
   if (!canTryGeminiFromScript(systemContent, lastUser)) {
-    return reply(SCRIPT_MISSING_RESPONSE, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled);
+    return reply(SCRIPT_MISSING_RESPONSE, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
   }
 
   if (!apiKey) {
@@ -766,7 +784,8 @@ export async function POST(req: NextRequest) {
       model,
       silkEnabled,
       lastUser,
-      clientLeadEnabled
+      clientLeadEnabled,
+      mulberryVoice
     );
   }
 
@@ -778,7 +797,8 @@ export async function POST(req: NextRequest) {
       model,
       silkEnabled,
       lastUser,
-      clientLeadEnabled
+      clientLeadEnabled,
+      mulberryVoice
     );
   }
 
@@ -792,12 +812,13 @@ export async function POST(req: NextRequest) {
       silkEnabled,
       userText: lastUser,
       clientLeadEnabled,
+      mulberryVoice,
     });
   }
 
   try {
     const text = await callGemini({ apiKey, model, systemContent, contents });
-    return reply(text || SCRIPT_MISSING_RESPONSE, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled);
+    return reply(text || SCRIPT_MISSING_RESPONSE, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
   } catch (err) {
     console.error("[vapi-llm] upstream failed:", err);
     return reply(
@@ -806,7 +827,8 @@ export async function POST(req: NextRequest) {
       model,
       silkEnabled,
       lastUser,
-      clientLeadEnabled
+      clientLeadEnabled,
+      mulberryVoice
     );
   }
 }

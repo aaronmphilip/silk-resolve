@@ -98,7 +98,7 @@ VOICE CALL RULES:
     name: agent.name,
     model: {
       provider: "custom-llm",
-      url: `${origin}/api/voice/vapi-llm?voice=silk&clientLead=1`,
+      url: `${origin}/api/voice/vapi-llm?voice=silk`,
       timeoutSeconds: 6,
       model: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
       messages: [{ role: "system", content: voicePrompt }],

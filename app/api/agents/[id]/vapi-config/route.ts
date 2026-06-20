@@ -83,6 +83,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   // ── Voice provider ─────────────────────────────────────────────────────────
   const useSilkVoice = requestedVoice !== "vapi" && Boolean(silk.apiKey && silk.vapiEnabled);
   const silkModel = requestedVoice === "silk-mulberry" ? "mulberry" : "muga";
+  const isMulberry = silkModel === "mulberry";
   const silkQuery = useSilkVoice ? `?transport=ws&model=${silkModel}` : "";
   const voice = useSilkVoice
     ? {
@@ -121,7 +122,7 @@ VOICE CALL RULES:
     name: agent.name,
     model: {
       provider: "custom-llm",
-      url: `${origin}/api/voice/vapi-llm?voice=${requestedVoice}${useSilkVoice ? "&clientLead=1" : ""}`,
+      url: `${origin}/api/voice/vapi-llm?voice=${requestedVoice}`,
       timeoutSeconds: 6,
       model: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
       messages: [{ role: "system", content: voicePrompt }],
@@ -141,8 +142,8 @@ VOICE CALL RULES:
       language: "en",
       smartFormat: false,  // disabling saves ~40ms per transcription
       numerals: true,
-      eotThreshold: 0.55,
-      eotTimeoutMs: 1200,
+      eotThreshold: isMulberry ? 0.5 : 0.55,
+      eotTimeoutMs: isMulberry ? 600 : 1200,
     },
     silenceTimeoutSeconds: 60,
     maxDurationSeconds: 1800,
@@ -153,8 +154,8 @@ VOICE CALL RULES:
       waitSeconds: 0,
       transcriptionEndpointingPlan: {
         onPunctuationSeconds: 0.05,
-        onNoPunctuationSeconds: 0.3,
-        onNumberSeconds: 0.2,
+        onNoPunctuationSeconds: isMulberry ? 0.2 : 0.3,
+        onNumberSeconds: isMulberry ? 0.15 : 0.2,
       },
     },
     stopSpeakingPlan: {

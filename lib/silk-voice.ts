@@ -113,3 +113,12 @@ export function normalizeWebVoiceMode(value: string | undefined | null): WebVoic
   if (value === "silk-mulberry" || value === "mulberry") return "silk-mulberry";
   return "silk";
 }
+
+/** Talk-widget speech-to-speech stays on Vapi + silk-tts only — no browser-side bridge/cache layer. */
+export function usesTalkWidgetLocalAssist(_mode: WebVoiceMode): boolean {
+  return false;
+}
+
+export function vapiLlmVoiceQuery(mode: WebVoiceMode): string {
+  return `voice=${encodeURIComponent(mode)}`;
+}

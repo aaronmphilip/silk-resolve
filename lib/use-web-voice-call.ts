@@ -10,6 +10,8 @@ import {
   silkSpeechText,
   silkTtsQueryForMode,
   silkWarmPaths,
+  usesTalkWidgetLocalAssist,
+  vapiLlmVoiceQuery,
   type WebVoiceMode,
 } from "@/lib/silk-voice";
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
@@ -500,7 +502,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   }, [agentId]);
 
   const prefetchLocalAssistForText = useCallback((text: string) => {
-    if (voiceMode === "vapi" || text.trim().length < 10) return;
+    if (!usesTalkWidgetLocalAssist(voiceMode) || voiceMode === "vapi" || text.trim().length < 10) return;
     const answer = canUseNovaCareCache() ? answerNovaCareQuestion(text) : "";
     if (answer) {
       void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, answer)).catch(() => {});
@@ -603,7 +605,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       { role: "user", content: userText },
     ];
 
-    const response = await fetch("/api/voice/vapi-llm?voice=silk&clientLead=1&local=1", {
+    const response = await fetch(`/api/voice/vapi-llm?${vapiLlmVoiceQuery(voiceMode)}&clientLead=1&local=1`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ stream: true, messages }),
@@ -671,7 +673,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   }, [enqueueLocalSpeech, voiceMode]);
 
   const playLocalAssistForUserText = useCallback((userText: string, callRunId: number) => {
-    if (voiceMode === "vapi") return;
+    if (!usesTalkWidgetLocalAssist(voiceMode) || voiceMode === "vapi") return;
 
     const cachedAnswer = canUseNovaCareCache() ? answerNovaCareQuestion(userText) : "";
     const bridge = cachedAnswer ? "" : bridgeForVoicePrompt(userText);
@@ -780,7 +782,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     prewarmRef.current.assistant.catch(() => {});
     prewarmRef.current.voiceInfra.catch(() => {});
 
-    if (voiceMode !== "vapi") {
+    if (usesTalkWidgetLocalAssist(voiceMode)) {
       for (const phrase of PREFETCHED_LOCAL_MUGA_PHRASES) {
         void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, phrase)).catch(() => {});
       }
