@@ -139,6 +139,22 @@ function buildContents(messages: OAIMessage[]): GeminiTurn[] {
   return contents;
 }
 
+/** Nudge Gemini to answer advisory in-scope questions instead of script-missing refusal. */
+function augmentBrainContents(contents: GeminiTurn[], lastUser: string): GeminiTurn[] {
+  if (!needsNovaCareBrain(lastUser.toLowerCase())) return contents;
+  const last = contents[contents.length - 1];
+  if (!last || last.role !== "user") return contents;
+
+  const hint =
+    "Answer this NovaCare advisory question using plan prices, sum insured, and benefits from the script. " +
+    "Give a clear recommendation in one to three spoken sentences. Do not refuse with the script-missing line.";
+
+  return [
+    ...contents.slice(0, -1),
+    { role: "user", parts: [{ text: `${last.parts[0].text}\n\n${hint}` }] },
+  ];
+}
+
 function cleanPromptLine(line: string): string {
   return line
     .replace(/â|â€”/g, "—")
@@ -834,7 +850,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (localClientEnabled && systemContent.trim() && apiKey) {
-    const contents = buildContents(messages);
+    const contents = augmentBrainContents(buildContents(messages), lastUser);
     if (contents.length > 0) {
       if (wantsStream) {
         return streamGemini({
