@@ -588,11 +588,12 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const speculativeChunksReadyRef = useRef(0);
   const speculativePromiseRef = useRef<Promise<void> | null>(null);
   const speculativeRunIdRef = useRef(0);
+  const lastUserSpeechEndAtRef = useRef<number | null>(null);
   const lastUserFinalAtRef = useRef<number | null>(null);
   const latencyCapturedRef = useRef(false);
 
   const captureFirstAudioLatency = useCallback(() => {
-    const startedAt = lastUserFinalAtRef.current;
+    const startedAt = lastUserSpeechEndAtRef.current ?? lastUserFinalAtRef.current;
     if (!startedAt || latencyCapturedRef.current) return;
     latencyCapturedRef.current = true;
     setLatencyMs(Date.now() - startedAt);
@@ -1102,6 +1103,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       setTension(0);
       setDuration(0);
       setLatencyMs(null);
+      lastUserSpeechEndAtRef.current = null;
       lastUserFinalAtRef.current = null;
       latencyCapturedRef.current = false;
 
@@ -1186,6 +1188,20 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         if (!mountedRef.current || runId !== runIdRef.current || !message) return;
 
         const msg = message as Record<string, unknown>;
+
+        if (msg.type === "speech-update") {
+          const role = normalizeTranscriptRole(msg.role);
+          const status = typeof msg.status === "string" ? msg.status.toLowerCase() : "";
+          if (role === "user" && status === "started") {
+            lastUserSpeechEndAtRef.current = null;
+            latencyCapturedRef.current = false;
+          }
+          if (role === "user" && status === "stopped") {
+            lastUserSpeechEndAtRef.current = Date.now();
+            latencyCapturedRef.current = false;
+          }
+        }
+
         if (msg.type === "transcript") {
           const text = getTranscriptText(msg);
           if (!text) return;

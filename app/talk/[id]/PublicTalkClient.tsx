@@ -102,7 +102,7 @@ function TalkUi({
           <div className="mt-0.5">
             <p className="text-[10px] font-mono text-[#f0ebe0]/35 uppercase tracking-widest">
               {voiceModeLabel(voiceMode)}
-              {isSilkVoiceMode(voiceMode) ? " · speech-to-speech" : ""}
+              {isSilkVoiceMode(voiceMode) ? " · speech-to-speech (mic stop → audio)" : ""}
             </p>
             {isSilkVoiceMode(voiceMode) && (
               <div className="mt-1 [&_span]:text-[#f0ebe0]/55 [&_p]:text-[#f0ebe0]/35">
