@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { Loader2, Send, Square, Volume2 } from "lucide-react";
 import { playBufferedPcm, playStreamingPcmResponse } from "@/lib/silk-stream-player";
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
+import SilkLatencyBadge, { MUGA_DEMO_QUESTIONS } from "@/app/_components/SilkLatencyBadge";
 import {
   buildSilkTtsBody,
   fireSilkWarmPaths,
@@ -24,11 +25,7 @@ interface NovaTextSpeakerProps {
 
 type SpeakerState = "idle" | "thinking" | "speaking" | "error";
 
-const SAMPLE_QUESTIONS = [
-  "What are the plans?",
-  "How do claims work?",
-  "Do you have network hospitals?",
-];
+const SAMPLE_QUESTIONS = MUGA_DEMO_QUESTIONS;
 
 const PREFETCHED_BRIDGE_PHRASES = [
   "Let me check that.",
@@ -128,6 +125,10 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
   const [error, setError] = useState("");
   const [transport, setTransport] = useState("");
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [pcmChunks, setPcmChunks] = useState<number | null>(null);
+  const [speechChunks, setSpeechChunks] = useState<number | null>(null);
+  const speechChunkCountRef = useRef(0);
+  const pcmChunkTotalRef = useRef(0);
   const silkModel = silkModelForVoiceMode(voiceMode) ?? "muga";
   const audioContextRef = useRef<AudioContext | null>(null);
   const sourceRef = useRef<AudioBufferSourceNode | null>(null);
@@ -224,6 +225,7 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
     if (prefetched) {
       setTransport("prefetched-muga-audio");
       setLatencyMs(0);
+      setPcmChunks(1);
       return playBufferedPcm(
         prefetched.audio,
         prefetched.sampleRate,
@@ -247,6 +249,8 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
           audioContextRef.current
         );
         setTransport(playback.transport || "websocket");
+        pcmChunkTotalRef.current += playback.pcmChunks;
+        setPcmChunks(pcmChunkTotalRef.current);
         if (firstChunkLatencyRef.current === null) {
           firstChunkLatencyRef.current = Math.round(playback.firstFrameMs);
           setLatencyMs(firstChunkLatencyRef.current);
@@ -285,6 +289,10 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
     setError("");
     setTransport("");
     setLatencyMs(null);
+    setPcmChunks(null);
+    setSpeechChunks(null);
+    speechChunkCountRef.current = 0;
+    pcmChunkTotalRef.current = 0;
     firstChunkLatencyRef.current = null;
     setState("thinking");
 
@@ -314,6 +322,8 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
       const decoder = new TextDecoder();
       let buffer = "";
       const chunker = new StreamSpeechChunker((chunk) => {
+        speechChunkCountRef.current += 1;
+        setSpeechChunks(speechChunkCountRef.current);
         const spoken = silkModel === "muga" && !/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]/i.test(chunk)
           ? `[neutral] ${chunk}`
           : chunk;
@@ -373,9 +383,16 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
           <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: accentColor }}>Text a problem</p>
           <p className="text-xs text-gray-500 mt-0.5">{voiceModeLabel(voiceMode)}</p>
         </div>
-        <div className="flex items-center gap-2 text-[11px] font-medium text-gray-500">
-          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Volume2 className="h-3.5 w-3.5" />}
-          {state === "thinking" ? "thinking" : state === "speaking" ? "speaking" : latencyMs !== null ? `${transport} · ${latencyMs}ms` : transport || "ready"}
+        <div className="flex items-center gap-2">
+          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-500" /> : <Volume2 className="h-3.5 w-3.5 text-gray-500" />}
+          <SilkLatencyBadge
+            transport={transport}
+            firstChunkMs={latencyMs}
+            pcmChunks={pcmChunks}
+            speechChunks={speechChunks}
+            accentColor={accentColor}
+            statusLabel={state === "thinking" ? "thinking" : state === "speaking" ? "speaking" : undefined}
+          />
         </div>
       </div>
 
@@ -442,13 +459,13 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
         <div className="mt-3 flex flex-wrap gap-2">
           {SAMPLE_QUESTIONS.map((sample) => (
             <button
-              key={sample}
+              key={sample.text}
               type="button"
               disabled={busy}
-              onClick={() => void submit(sample)}
+              onClick={() => void submit(sample.text)}
               className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-500 hover:border-gray-300 disabled:opacity-40"
             >
-              {sample}
+              {sample.label}
             </button>
           ))}
         </div>

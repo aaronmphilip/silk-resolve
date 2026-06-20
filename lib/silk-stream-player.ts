@@ -9,6 +9,7 @@ export interface StreamPlaybackResult {
   transport: string;
   firstFrameMs: number;
   totalMs: number;
+  pcmChunks: number;
 }
 
 function int16ToFloat32(pcm: Int16Array, out: Float32Array) {
@@ -32,6 +33,7 @@ export async function playStreamingPcmResponse(
   const transport = response.headers.get("x-silk-transport") ?? "";
   const startedAt = performance.now();
   let firstFrameMs = 0;
+  let pcmChunks = 0;
 
   const AudioContextCtor =
     window.AudioContext ||
@@ -63,6 +65,7 @@ export async function playStreamingPcmResponse(
     source.start(playAt);
     playAt += buffer.duration;
     sources.push(source);
+    pcmChunks += 1;
 
     if (firstFrameMs === 0) firstFrameMs = performance.now() - startedAt;
   };
@@ -106,6 +109,7 @@ export async function playStreamingPcmResponse(
     transport,
     firstFrameMs,
     totalMs: performance.now() - startedAt,
+    pcmChunks,
   };
 }
 

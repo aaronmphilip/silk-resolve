@@ -152,6 +152,14 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
               {site.secondaryLabel}
             </a>
           </div>
+          {voiceMode === "silk-stream" && (
+            <p className="mt-6 text-sm text-gray-500 max-w-2xl mx-auto text-center leading-relaxed">
+              <strong className="text-gray-700">Latency demo:</strong> use <em>Text a problem</em> below.
+              Tap <strong>Plans (cached)</strong> — watch the badge flip to{" "}
+              <span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">cached · &lt;200ms · &lt;1s</span>{" "}
+              with PCM frames climbing as MUGA streams. Try <strong>Live stream</strong> for sentence-chunked websocket TTS.
+            </p>
+          )}
           {voiceMode !== "vapi" && (
             <div className="mt-10 space-y-4">
               {voiceMode !== "silk-mulberry" && (
