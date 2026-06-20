@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { answerNovaCareQuestion, isNovaCareAgentId, normalizeMugaCacheText, NOVACARE_AGENT_ID } from "@/lib/novacare-knowledge";
 import { buildNovaCareVapiAssistant } from "@/lib/novacare-vapi-config";
+import { loadSpeechLanguage, saveSpeechLanguage } from "@/lib/speech-languages";
 import {
   buildSilkTtsBody,
   isSilkVoiceMode,
@@ -357,18 +358,23 @@ function fetchVapiToken(): Promise<TokenResponse> {
   return cachedVapiTokenPromise;
 }
 
-function resolveAssistantConfig(agentId: string, voiceMode: WebVoiceMode): Promise<AssistantConfig> {
+function resolveAssistantConfig(
+  agentId: string,
+  voiceMode: WebVoiceMode,
+  speechLanguage: string
+): Promise<AssistantConfig> {
   if (isNovaCareAgentId(agentId) && typeof window !== "undefined") {
     return Promise.resolve(
       buildNovaCareVapiAssistant({
         origin: window.location.origin,
         voiceMode,
         useSilkVoice: voiceMode !== "vapi",
+        speechLanguage,
       }) as AssistantConfig
     );
   }
   return fetchJson<AssistantConfig>(
-    `/api/agents/${agentId}/vapi-config?voice=${encodeURIComponent(voiceMode)}`
+    `/api/agents/${agentId}/vapi-config?voice=${encodeURIComponent(voiceMode)}&lang=${encodeURIComponent(speechLanguage)}`
   );
 }
 
@@ -415,6 +421,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const [muted, setMuted] = useState(false);
   const [duration, setDuration] = useState(0);
   const [tension, setTension] = useState(0);
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [speechLanguage, setSpeechLanguage] = useState(() => loadSpeechLanguage());
   const [transcript, setTranscript] = useState<WebVoiceTranscript[]>([]);
   // Live caption for the turn currently being spoken — updated on every partial
   // transcript and cleared the moment the final arrives. This is what makes text
@@ -555,6 +563,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   }, [agentId]);
 
   const speculativePrefetchRef = useRef("");
+  const lastUserFinalAtRef = useRef<number | null>(null);
+  const latencyCapturedRef = useRef(false);
 
   const speculativePrefetchSilk = useCallback((partialText: string) => {
     if (!isSilkVoiceMode(voiceMode) || !canUseNovaCareCache()) return;
@@ -835,16 +845,29 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     }
   }, [cleanupCall]);
 
+  const captureSpeechLatency = useCallback(() => {
+    const startedAt = lastUserFinalAtRef.current;
+    if (!startedAt || latencyCapturedRef.current) return;
+    latencyCapturedRef.current = true;
+    setLatencyMs(Date.now() - startedAt);
+  }, []);
+
+  const changeSpeechLanguage = useCallback((code: string) => {
+    setSpeechLanguage(code);
+    saveSpeechLanguage(code);
+    prewarmRef.current = null;
+  }, []);
+
   const prewarm = useCallback(() => {
     if (!agentId || typeof window === "undefined") return;
-    const key = `${agentId}::${voiceMode}`;
+    const key = `${agentId}::${voiceMode}::${speechLanguage}`;
     if (prewarmRef.current?.key === key) return; // already warming/warm for this combo
 
     prewarmRef.current = {
       key,
       vapi: loadVapiCtor(),
       token: fetchVapiToken(),
-      assistant: resolveAssistantConfig(agentId, voiceMode),
+      assistant: resolveAssistantConfig(agentId, voiceMode, speechLanguage),
     };
     warmSilkVoiceInfra(voiceMode);
     // Swallow rejections now so React/browser don't flag unhandled rejections;
@@ -860,7 +883,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, phrase)).catch(() => {});
       }
     }
-  }, [agentId, getOrFetchLocalMugaClip, voiceMode]);
+  }, [agentId, getOrFetchLocalMugaClip, speechLanguage, voiceMode]);
 
   const startCall = useCallback(async () => {
     if (!agentId) {
@@ -884,8 +907,11 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       setInterim(null);
       setTension(0);
       setDuration(0);
+      setLatencyMs(null);
+      lastUserFinalAtRef.current = null;
+      latencyCapturedRef.current = false;
 
-      const key = `${agentId}::${voiceMode}`;
+      const key = `${agentId}::${voiceMode}::${speechLanguage}`;
       const warm = prewarmRef.current?.key === key ? prewarmRef.current : null;
 
       warmSilkVoiceInfra(voiceMode);
@@ -896,7 +922,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         Promise.all([
           cachedOrFetch(warm?.vapi, loadVapiCtor),
           cachedOrFetch(warm?.token, fetchVapiToken),
-          cachedOrFetch(warm?.assistant, () => resolveAssistantConfig(agentId, voiceMode)),
+          cachedOrFetch(warm?.assistant, () => resolveAssistantConfig(agentId, voiceMode, speechLanguage)),
         ]),
         CONFIG_TIMEOUT_MS,
         "Voice configuration took too long to load. Retry in a moment."
@@ -940,6 +966,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
       vapi.on("speech-start", () => {
         if (!mountedRef.current || runId !== runIdRef.current) return;
+        captureSpeechLatency();
         setState("active");
         startTimer();
       });
@@ -972,9 +999,14 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           setTranscript(lines => appendTranscriptLine(lines, role, text, ts));
           if (role === "user") {
             speculativePrefetchRef.current = "";
+            lastUserFinalAtRef.current = ts;
+            latencyCapturedRef.current = false;
             setTension(value => Math.min(10, value + 0.4));
             prefetchLocalAssistForText(text);
             playLocalAssistForUserText(text, runId);
+          }
+          if (role === "assistant") {
+            captureSpeechLatency();
           }
         }
 
@@ -1052,6 +1084,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     setInterim(null);
     setTension(0);
     setDuration(0);
+    setLatencyMs(null);
   }, [cleanupCall]);
 
   const toggleMute = useCallback(() => {
@@ -1099,6 +1132,9 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     muted,
     duration,
     tension,
+    latencyMs,
+    speechLanguage,
+    changeSpeechLanguage,
     transcript,
     interim,
     startCall,

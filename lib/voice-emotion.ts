@@ -158,6 +158,60 @@ export function buildProsodyStrategy(
   return { prefix: "", midPause: false };
 }
 
+// ── Intent classification ───────────────────────────────────────────────────
+export function classifyCallIntent(userText: string): CallIntent {
+  const text = userText.toLowerCase();
+  if (/\b(angry|furious|terrible|worst|scam|fraud|cheated)\b/.test(text)) return "angry";
+  if (/\b(frustrated|upset|not happy|complaint|annoyed)\b/.test(text)) return "frustrated";
+  if (/\b(thanks|thank you|appreciate|grateful)\b/.test(text)) return "grateful";
+  if (/\b(confused|don't understand|dont understand|what do you mean|unclear)\b/.test(text)) return "confused";
+  if (/\b(great|nice|good|resolved|sorted|perfect)\b/.test(text)) return "satisfied";
+  if (/\b(complaint|complain|unhappy|disappointed)\b/.test(text)) return "complaint";
+  if (/\b(how|what|which|when|where|why|can i|do you|does|is there)\b/.test(text)) return "query";
+  return "neutral";
+}
+
+// ── Mulberry instruct-TTS descriptions (Rumik docs: natural-language steering) ─
+export function buildMulberryDescription(tension: number, intent: CallIntent): string {
+  if (tension >= 8 || intent === "angry") {
+    return "soft, calm, reassuring female narrator — low energy, steady pace, empathetic gravitas";
+  }
+  if (tension >= 6 || intent === "frustrated" || intent === "complaint") {
+    return "warm, empathetic female health insurance agent — patient, understanding, gently reassuring";
+  }
+  if (intent === "grateful" || intent === "satisfied") {
+    return "bright, warm, upbeat female narrator — friendly closure, light enthusiasm";
+  }
+  if (intent === "confused" || intent === "query") {
+    return "clear, helpful female narrator — measured pace, thoughtful and easy to follow";
+  }
+  if (tension >= 4) {
+    return "calm, professional female narrator for health insurance support — steady and composed";
+  }
+  return "warm, calm, professional female narrator for health insurance support";
+}
+
+// ── Voice metadata prefix (parsed by silk-tts for Mulberry description) ─────
+const VOICE_DESC_PATTERN = /desc=([^;]+)/i;
+
+export function wrapMulberryVoiceMeta(description: string, text: string): string {
+  const clean = stripAll(text).trim();
+  if (!clean) return "";
+  const desc = description.trim();
+  return desc ? `[[voice:desc=${desc}]] ${clean}` : clean;
+}
+
+export function extractVoiceMeta(text: string): { description?: string; text: string } {
+  const match = text.match(VOICE_META_PATTERN);
+  if (!match) return { text };
+
+  const inner = match[1] ?? "";
+  const descMatch = inner.match(VOICE_DESC_PATTERN);
+  const description = descMatch?.[1]?.trim();
+  const remainder = text.slice(match[0].length).trim();
+  return { description: description || undefined, text: remainder || text };
+}
+
 // ── Master composer ───────────────────────────────────────────────────────────
 /**
  * Compose a final SILK-ready utterance:
@@ -168,6 +222,36 @@ export function buildProsodyStrategy(
  * @param intent   - Classified intent of the caller
  * @param useSilk  - Whether Rumik SILK is configured (if false, strip all markers)
  */
+/** Shared formatter for vapi-llm voice output — MUGA tones/prosody or Mulberry meta. */
+export function formatVoiceOutput(
+  rawText: string,
+  userText: string,
+  options: { silkEnabled: boolean; mulberryVoice: boolean }
+): string {
+  const clean = stripAll(rawText).trim();
+  if (!clean) return "";
+
+  const tension = estimateTension(userText);
+  const intent = classifyCallIntent(userText);
+
+  if (!options.silkEnabled) return clean;
+
+  if (options.mulberryVoice) {
+    return wrapMulberryVoiceMeta(buildMulberryDescription(tension, intent), clean);
+  }
+
+  return composeSilkUtterance(clean, tension, intent, true);
+}
+
+export function estimateTension(userText: string): number {
+  const text = userText.toLowerCase();
+  if (/\b(angry|furious|terrible|worst|useless|scam|fraud|cheated|complaint|cancel)\b/.test(text)) return 8;
+  if (/\b(frustrated|upset|not happy|problem|issue|wrong|again|repeat)\b/.test(text)) return 6;
+  if (/\b(confused|don't understand|dont understand|what do you mean|help)\b/.test(text)) return 3;
+  if (/\b(thanks|thank you|great|nice|good)\b/.test(text)) return 1;
+  return 2;
+}
+
 export function composeSilkUtterance(
   rawText: string,
   tension: number,

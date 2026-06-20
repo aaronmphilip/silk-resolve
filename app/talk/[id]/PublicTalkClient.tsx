@@ -240,6 +240,9 @@ function PublicTalkVapiClient({ agentId, agentName, voiceMode, autostart = false
     muted,
     duration,
     tension,
+    latencyMs,
+    speechLanguage,
+    changeSpeechLanguage,
     transcript,
     interim,
     startCall,
@@ -294,13 +297,16 @@ function PublicTalkVapiClient({ agentId, agentName, voiceMode, autostart = false
       muted={muted}
       duration={duration}
       tension={tension}
-      latencyMs={null}
+      latencyMs={latencyMs}
       transcript={transcript}
       interim={interim}
       onStart={startCall}
       onEnd={endCall}
       onToggleMute={toggleMute}
       onResetAndStart={resetAndStart}
+      showLanguagePicker
+      speechLanguage={speechLanguage}
+      onSpeechLanguageChange={changeSpeechLanguage}
     />
   );
 }

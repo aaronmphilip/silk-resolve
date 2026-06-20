@@ -6,7 +6,8 @@
  * a deterministic answer from the agent's saved system prompt for company facts.
  */
 import { NextRequest } from "next/server";
-import { stripAll, tensionToTone, withSilkTone, type SilkTone } from "@/lib/voice-emotion";
+import { DEFAULT_SPEECH_LANGUAGE, replyLanguagePrompt } from "@/lib/speech-languages";
+import { formatVoiceOutput, stripAll, tensionToTone, withSilkTone, type SilkTone } from "@/lib/voice-emotion";
 import { answerNovaCareQuestion, cachedAudioText, cachedMugaAudioForText } from "@/lib/novacare-knowledge";
 import { splitSpeakableSentences } from "@/lib/speakable-sentences";
 import { isSilkVoiceMode, normalizeWebVoiceMode } from "@/lib/silk-voice";
@@ -65,6 +66,7 @@ function getConfig(req: NextRequest) {
   const localClientEnabled = req.nextUrl.searchParams.get("local") === "1";
   const mulberryVoice = voiceMode === "silk-mulberry";
   const fastMode = req.nextUrl.searchParams.get("fast") === "1";
+  const speechLanguage = req.nextUrl.searchParams.get("lang")?.trim() || DEFAULT_SPEECH_LANGUAGE;
   return {
     apiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
     silkEnabled: isSilkVoiceMode(voiceMode) && Boolean(process.env.SILK_API_KEY?.trim()) && !silkDisabled,
@@ -72,6 +74,7 @@ function getConfig(req: NextRequest) {
     localClientEnabled,
     mulberryVoice,
     fastMode,
+    speechLanguage,
   };
 }
 
@@ -386,11 +389,15 @@ function answerFromSystemPrompt(systemPrompt: string, userText: string): string 
   return scoredPromptAnswer(systemPrompt, userText);
 }
 
-function geminiSystemInstruction(systemContent: string): string {
+function geminiSystemInstruction(systemContent: string, speechLanguage: string): string {
   const base = systemContent ||
     "You are a helpful voice assistant. Reply in 1 to 3 plain spoken sentences. No markdown.";
 
   return `${base}
+
+LANGUAGE:
+- ${replyLanguagePrompt(speechLanguage)}
+- If the caller switches language, follow their latest utterance.
 
 STRICT ANSWER SELECTION:
 - Answer the caller's exact question first.
@@ -445,9 +452,8 @@ function voiceText(text: string, silkEnabled: boolean, userText: string, mulberr
   const clean = normalizeSpeechText(stripAll(text)).trim();
   if (!clean) return OUT_OF_SCOPE_RESPONSE;
   const human = mulberryVoice ? clean : humanizeForVoice(clean, userText);
-  return silkEnabled && !mulberryVoice
-    ? withSilkTone(toneFor(userText, human), human)
-    : human;
+  if (!silkEnabled) return human;
+  return formatVoiceOutput(human, userText, { silkEnabled, mulberryVoice });
 }
 
 function fastLeadFor(userText: string, answer: string): string {
@@ -561,8 +567,9 @@ async function callGemini(args: {
   systemContent: string;
   contents: GeminiTurn[];
   fastMode?: boolean;
+  speechLanguage: string;
 }): Promise<string> {
-  const { apiKey, model, systemContent, contents, fastMode = false } = args;
+  const { apiKey, model, systemContent, contents, fastMode = false, speechLanguage } = args;
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${apiKey}`,
     {
@@ -571,7 +578,7 @@ async function callGemini(args: {
       signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
       body: JSON.stringify({
         systemInstruction: {
-          parts: [{ text: geminiSystemInstruction(systemContent) }],
+          parts: [{ text: geminiSystemInstruction(systemContent, speechLanguage) }],
         },
         contents,
         generationConfig: geminiGenerationConfig(model, fastMode),
@@ -604,8 +611,21 @@ function streamGemini(args: {
   clientLeadEnabled: boolean;
   mulberryVoice: boolean;
   fastMode?: boolean;
+  speechLanguage: string;
 }): Response {
-  const { apiKey, model, systemContent, contents, fallback, silkEnabled, userText, clientLeadEnabled, mulberryVoice, fastMode = false } = args;
+  const {
+    apiKey,
+    model,
+    systemContent,
+    contents,
+    fallback,
+    silkEnabled,
+    userText,
+    clientLeadEnabled,
+    mulberryVoice,
+    fastMode = false,
+    speechLanguage,
+  } = args;
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const id = `chatcmpl-${Date.now()}`;
@@ -634,8 +654,8 @@ function streamGemini(args: {
         if (!emittedText) {
           emittedText = true;
           firstChunkAt = Date.now();
-          const spoken = silkEnabled && !mulberryVoice
-            ? withSilkTone(toneFor(userText, clean), clean)
+          const spoken = silkEnabled
+            ? formatVoiceOutput(clean, userText, { silkEnabled, mulberryVoice })
             : clean;
           controller.enqueue(encoder.encode(sseChunk(id, { content: spoken }, null)));
           return;
@@ -689,7 +709,7 @@ function streamGemini(args: {
             signal: AbortSignal.timeout(GEMINI_TIMEOUT_MS),
             body: JSON.stringify({
               systemInstruction: {
-                parts: [{ text: geminiSystemInstruction(systemContent) }],
+                parts: [{ text: geminiSystemInstruction(systemContent, speechLanguage) }],
               },
               contents,
               generationConfig: geminiGenerationConfig(model, fastMode),
@@ -762,7 +782,7 @@ export async function POST(req: NextRequest) {
   // this guarantees the thinking-disable config matches the model we actually call.
   const model = DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.5-flash-lite";
   const wantsStream = body.stream !== false;
-  const { apiKey, silkEnabled, clientLeadEnabled, localClientEnabled, mulberryVoice, fastMode } = getConfig(req);
+  const { apiKey, silkEnabled, clientLeadEnabled, localClientEnabled, mulberryVoice, fastMode, speechLanguage } = getConfig(req);
 
   const systemContent = messages.find((message) => message.role === "system")?.content ?? "";
   const lastUser = lastUserText(messages);
@@ -822,11 +842,12 @@ export async function POST(req: NextRequest) {
       clientLeadEnabled,
       mulberryVoice,
       fastMode,
+      speechLanguage,
     });
   }
 
   try {
-    const text = await callGemini({ apiKey, model, systemContent, contents, fastMode });
+    const text = await callGemini({ apiKey, model, systemContent, contents, fastMode, speechLanguage });
     return reply(text || SCRIPT_MISSING_RESPONSE, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
   } catch (err) {
     console.error("[vapi-llm] upstream failed:", err);

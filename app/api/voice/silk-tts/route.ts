@@ -21,7 +21,7 @@ import { MUGA_CACHED_AUDIO, NOVACARE_FAQ_AUDIO, cachedMugaAudioForText } from "@
 import { MULBERRY_DEFAULTS, type SilkModel } from "@/lib/silk-voice";
 import { getPlatformVoiceConfig } from "@/lib/platform";
 import { splitSpeakableSentences } from "@/lib/speakable-sentences";
-import { extractSilkTone, stripAll, stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
+import { buildMulberryDescription, classifyCallIntent, estimateTension, extractSilkTone, extractVoiceMeta, stripAll, stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
@@ -400,11 +400,20 @@ function resolveSilkModel(req: NextRequest, body: VoiceRequestBody): SilkModel {
   return "muga";
 }
 
+function resolveMulberryDescription(body: VoiceRequestBody, text: string): string {
+  const { description } = extractVoiceMeta(text);
+  if (description) return description;
+  if (typeof body.description === "string" && body.description.trim()) return body.description.trim();
+  return buildMulberryDescription(estimateTension(""), classifyCallIntent(""));
+}
+
 function buildRumikPayload(body: VoiceRequestBody, text: string, modelOverride?: SilkModel): Record<string, unknown> {
   const model = modelOverride ?? body.model ?? "muga";
+  const { text: voiceText } = extractVoiceMeta(text);
+  const speakable = model === "muga" ? ensureMugaTone(voiceText) : stripVoiceMarkers(voiceText);
   const payload: Record<string, unknown> = {
     model,
-    text: model === "muga" ? ensureMugaTone(text) : stripVoiceMarkers(text),
+    text: speakable,
     temperature: body.temperature ?? (model === "muga" ? 0.55 : undefined),
     top_p: body.top_p ?? (model === "muga" ? 0.92 : undefined),
     top_k: body.top_k,
@@ -413,7 +422,7 @@ function buildRumikPayload(body: VoiceRequestBody, text: string, modelOverride?:
   };
 
   if (model === "mulberry") {
-    payload.description = body.description || MULBERRY_DEFAULTS.description;
+    payload.description = resolveMulberryDescription(body, text);
     payload.speaker = body.speaker || MULBERRY_DEFAULTS.speaker;
     payload.f0_up_key = typeof body.f0_up_key === "number" ? body.f0_up_key : MULBERRY_DEFAULTS.f0_up_key;
   }
@@ -960,17 +969,22 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Malformed request body" }, { status: 400 });
   }
 
-  const { text, sampleRate } = extractTextAndSampleRate(body);
-  if (!text) return NextResponse.json({ error: "text required" }, { status: 400 });
+  const { text: rawText, sampleRate } = extractTextAndSampleRate(body);
+  if (!rawText) return NextResponse.json({ error: "text required" }, { status: 400 });
   if (!SUPPORTED_TARGET_RATES.has(sampleRate)) {
     return NextResponse.json({ error: `Unsupported sampleRate ${sampleRate}` }, { status: 400 });
+  }
+
+  const model = resolveSilkModel(req, body);
+  const { description: voiceDescription, text } = extractVoiceMeta(rawText);
+  if (voiceDescription && model === "mulberry") {
+    body = { ...body, description: voiceDescription };
   }
 
   // WebSocket streaming is the realtime path: Rumik MUGA audio is piped to Vapi
   // as it is generated (resampled on the fly to whatever rate Vapi asked for),
   // so speech starts on the first frame instead of waiting for the whole WAV.
   // Any setup failure falls through to the buffered REST path below.
-  const model = resolveSilkModel(req, body);
   const wantsStream = req.nextUrl.searchParams.get("transport") === "ws";
   if (wantsStream && req.nextUrl.searchParams.get("format") !== "wav") {
     const cached =

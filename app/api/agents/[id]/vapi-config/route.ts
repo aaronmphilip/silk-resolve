@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
 import { isNovaCareAgentId } from "@/lib/novacare-knowledge";
+import { DEFAULT_SPEECH_LANGUAGE } from "@/lib/speech-languages";
 import { buildNovaCareVapiAssistant } from "@/lib/novacare-vapi-config";
 import { MULBERRY_DEFAULTS, SILK_REALTIME_EOT, normalizeWebVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
 import { withSilkTone, stripAll } from "@/lib/voice-emotion";
@@ -58,6 +59,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
         useSilkVoice,
         aiProvider: aiConfig.provider,
         geminiModel: process.env.GEMINI_MODEL,
+        speechLanguage: req.nextUrl.searchParams.get("lang")?.trim() || DEFAULT_SPEECH_LANGUAGE,
       }),
       { headers: { "Cache-Control": "private, max-age=300" } }
     );

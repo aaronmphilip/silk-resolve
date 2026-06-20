@@ -1,6 +1,11 @@
 import { getNovaCareFallbackAgent } from "@/lib/novacare-knowledge";
+import {
+  deepgramTranscriberForSpeech,
+  DEFAULT_SPEECH_LANGUAGE,
+  replyLanguagePrompt,
+} from "@/lib/speech-languages";
 import { MULBERRY_DEFAULTS, SILK_REALTIME_EOT, type WebVoiceMode } from "@/lib/silk-voice";
-import { stripAll, withSilkTone } from "@/lib/voice-emotion";
+import { buildMulberryDescription, classifyCallIntent, estimateTension, stripAll, withSilkTone, wrapMulberryVoiceMeta } from "@/lib/voice-emotion";
 
 function cleanSpokenText(text: string): string {
   return text
@@ -18,12 +23,16 @@ export type NovaCareVapiAssistantOptions = {
   useSilkVoice?: boolean;
   aiProvider?: string;
   geminiModel?: string;
+  /** BCP-47 speech language for STT + reply language (e.g. en-IN, hi-IN). */
+  speechLanguage?: string;
 };
 
 /** Single source of truth for NovaCare Vapi assistant config — safe on client + server. */
 export function buildNovaCareVapiAssistant(options: NovaCareVapiAssistantOptions) {
   const agent = getNovaCareFallbackAgent();
   const { origin, voiceMode } = options;
+  const speechLanguage = options.speechLanguage?.trim() || DEFAULT_SPEECH_LANGUAGE;
+  const deepgram = deepgramTranscriberForSpeech(speechLanguage);
   const useSilkVoice = options.useSilkVoice ?? voiceMode !== "vapi";
   const silkModel = voiceMode === "silk-mulberry" ? "mulberry" : "muga";
   const isMulberry = silkModel === "mulberry";
@@ -39,6 +48,10 @@ export function buildNovaCareVapiAssistant(options: NovaCareVapiAssistantOptions
   const basePrompt = agent.system_prompt;
   const voicePrompt = `${basePrompt}
 
+LANGUAGE:
+- ${replyLanguagePrompt(speechLanguage)}
+- If the caller switches language mid-call, follow their latest utterance.
+
 VOICE CALL RULES:
 - Reply in plain spoken sentences. NO markdown, bullets, headers, or lists — ever.
 - Short questions: 1–2 sentences. Detailed questions (pricing, process, coverage): 2–3 sentences.
@@ -52,7 +65,10 @@ VOICE CALL RULES:
   const rawFirst = cleanSpokenText(agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`);
   const spokenFirstMessage = useSilkVoice
     ? isMulberry
-      ? stripAll(rawFirst)
+      ? wrapMulberryVoiceMeta(
+          buildMulberryDescription(estimateTension(""), classifyCallIntent("")),
+          stripAll(rawFirst)
+        )
       : withSilkTone("happy", stripAll(rawFirst))
     : stripAll(rawFirst);
 
@@ -60,7 +76,7 @@ VOICE CALL RULES:
     name: agent.name,
     model: {
       provider: "custom-llm",
-      url: `${origin}/api/voice/vapi-llm?voice=${voiceMode}${useFastLlm ? "&fast=1" : ""}`,
+      url: `${origin}/api/voice/vapi-llm?voice=${voiceMode}${useFastLlm ? "&fast=1" : ""}&lang=${encodeURIComponent(speechLanguage)}`,
       timeoutSeconds: 5,
       model: options.geminiModel?.trim() || "gemini-2.5-flash-lite",
       messages: [{ role: "system", content: voicePrompt }],
@@ -76,8 +92,8 @@ VOICE CALL RULES:
     endCallMessage: "",
     transcriber: {
       provider: "deepgram",
-      model: "flux-general-en",
-      language: "en",
+      model: deepgram.model,
+      language: deepgram.language,
       smartFormat: false,
       numerals: true,
       eotThreshold: useSilkVoice ? SILK_REALTIME_EOT.eotThreshold : 0.55,
@@ -127,6 +143,7 @@ VOICE CALL RULES:
           }
         : {}),
       callDirection: "inbound",
+      speechLanguage,
     },
   };
 }

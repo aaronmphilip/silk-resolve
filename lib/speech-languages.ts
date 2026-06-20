@@ -39,6 +39,51 @@ export function saveSpeechLanguage(code: string): void {
   } catch {}
 }
 
+/** Deepgram transcriber settings for Vapi web calls. */
+export function deepgramTranscriberForSpeech(code: string): { model: string; language: string } {
+  const normalized = SPEECH_LANGUAGES.some((item) => item.code === code) ? code : DEFAULT_SPEECH_LANGUAGE;
+  const base = normalized.split("-")[0]?.toLowerCase() ?? "en";
+  if (base === "en") {
+    return { model: "flux-general-en", language: "en" };
+  }
+
+  const languageByBase: Record<string, string> = {
+    hi: "hi",
+    ta: "ta",
+    te: "te",
+    kn: "kn",
+    ml: "ml",
+    mr: "mr",
+    bn: "bn",
+    gu: "gu",
+    pa: "pa",
+  };
+
+  return {
+    model: "nova-2",
+    language: languageByBase[base] ?? base,
+  };
+}
+
+export function speechLanguageLabel(code: string): string {
+  return SPEECH_LANGUAGES.find((item) => item.code === code)?.label ?? code;
+}
+
+/** LLM + voice prompt snippet: reply in the caller's selected language. */
+export function replyLanguagePrompt(code: string): string {
+  const label = speechLanguageLabel(code);
+  if (code === "en-IN") {
+    return "Reply in Indian English — warm, clear, natural contractions. Use spoken numbers, not digits.";
+  }
+  if (code.startsWith("en")) {
+    return `Reply in ${label}. Use plain spoken sentences and natural contractions.`;
+  }
+  if (code === "hi-IN") {
+    return "Reply in Hindi (Devanagari). Warm, respectful customer-support tone. Keep sentences short and spoken.";
+  }
+  return `Reply in ${label}. Match the caller's language naturally. Keep answers short and spoken aloud.`;
+}
+
 export function speechRecognitionErrorMessage(code: string): string {
   switch (code) {
     case "network":
