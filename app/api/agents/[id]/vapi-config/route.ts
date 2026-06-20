@@ -11,7 +11,7 @@ import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
 import { isNovaCareAgentId } from "@/lib/novacare-knowledge";
 import { DEFAULT_SPEECH_LANGUAGE } from "@/lib/speech-languages";
 import { buildNovaCareVapiAssistant } from "@/lib/novacare-vapi-config";
-import { MULBERRY_DEFAULTS, SILK_REALTIME_EOT, normalizeWebVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
+import { MULBERRY_DEFAULTS, SILK_DEFAULT_EOT, normalizeWebVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
 import { withSilkTone, stripAll } from "@/lib/voice-emotion";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -149,8 +149,8 @@ VOICE CALL RULES:
       language: "en",
       smartFormat: false,
       numerals: true,
-      eotThreshold: useSilkVoice ? SILK_REALTIME_EOT.eotThreshold : 0.55,
-      eotTimeoutMs: useSilkVoice ? SILK_REALTIME_EOT.eotTimeoutMs : 1200,
+      eotThreshold: useSilkVoice ? SILK_DEFAULT_EOT.eotThreshold : 0.55,
+      eotTimeoutMs: useSilkVoice ? SILK_DEFAULT_EOT.eotTimeoutMs : 1200,
     },
     silenceTimeoutSeconds: 60,
     maxDurationSeconds: 1800,
@@ -158,9 +158,9 @@ VOICE CALL RULES:
     startSpeakingPlan: {
       waitSeconds: 0,
       transcriptionEndpointingPlan: {
-        onPunctuationSeconds: useSilkVoice ? SILK_REALTIME_EOT.onPunctuationSeconds : 0.05,
-        onNoPunctuationSeconds: useSilkVoice ? SILK_REALTIME_EOT.onNoPunctuationSeconds : 0.3,
-        onNumberSeconds: useSilkVoice ? SILK_REALTIME_EOT.onNumberSeconds : 0.2,
+        onPunctuationSeconds: useSilkVoice ? SILK_DEFAULT_EOT.onPunctuationSeconds : 0.05,
+        onNoPunctuationSeconds: useSilkVoice ? SILK_DEFAULT_EOT.onNoPunctuationSeconds : 0.3,
+        onNumberSeconds: useSilkVoice ? SILK_DEFAULT_EOT.onNumberSeconds : 0.2,
       },
     },
     stopSpeakingPlan: {

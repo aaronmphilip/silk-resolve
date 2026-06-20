@@ -4,7 +4,7 @@ import {
   DEFAULT_SPEECH_LANGUAGE,
   replyLanguagePrompt,
 } from "@/lib/speech-languages";
-import { MULBERRY_DEFAULTS, SILK_REALTIME_EOT, usesBrowserSilkPlayback, type WebVoiceMode } from "@/lib/silk-voice";
+import { MULBERRY_DEFAULTS, SILK_DEFAULT_EOT, usesBrowserSilkPlayback, type WebVoiceMode } from "@/lib/silk-voice";
 import { buildMulberryDescription, classifyCallIntent, estimateTension, stripAll, withSilkTone, wrapMulberryVoiceMeta } from "@/lib/voice-emotion";
 
 function cleanSpokenText(text: string): string {
@@ -84,7 +84,7 @@ VOICE CALL RULES:
     name: agent.name,
     model: {
       provider: "custom-llm",
-      url: `${origin}/api/voice/vapi-llm?voice=${voiceMode}${useFastLlm ? "&fast=1" : ""}&lang=${encodeURIComponent(speechLanguage)}`,
+      url: `${origin}/api/voice/vapi-llm?voice=${voiceMode}${useFastLlm ? "&fast=1" : ""}${browserSilkPlayback ? "&clientLead=1" : ""}&lang=${encodeURIComponent(speechLanguage)}`,
       timeoutSeconds: 5,
       model: options.geminiModel?.trim() || "gemini-2.5-flash-lite",
       messages: [{ role: "system", content: voicePrompt }],
@@ -104,8 +104,8 @@ VOICE CALL RULES:
       language: deepgram.language,
       smartFormat: false,
       numerals: true,
-      eotThreshold: useSilkVoice ? SILK_REALTIME_EOT.eotThreshold : 0.55,
-      eotTimeoutMs: useSilkVoice ? SILK_REALTIME_EOT.eotTimeoutMs : 1200,
+      eotThreshold: useSilkVoice ? SILK_DEFAULT_EOT.eotThreshold : 0.55,
+      eotTimeoutMs: useSilkVoice ? SILK_DEFAULT_EOT.eotTimeoutMs : 1200,
     },
     silenceTimeoutSeconds: 60,
     maxDurationSeconds: 1800,
@@ -113,9 +113,9 @@ VOICE CALL RULES:
     startSpeakingPlan: {
       waitSeconds: 0,
       transcriptionEndpointingPlan: {
-        onPunctuationSeconds: useSilkVoice ? SILK_REALTIME_EOT.onPunctuationSeconds : 0.05,
-        onNoPunctuationSeconds: useSilkVoice ? SILK_REALTIME_EOT.onNoPunctuationSeconds : 0.3,
-        onNumberSeconds: useSilkVoice ? SILK_REALTIME_EOT.onNumberSeconds : 0.2,
+        onPunctuationSeconds: useSilkVoice ? SILK_DEFAULT_EOT.onPunctuationSeconds : 0.05,
+        onNoPunctuationSeconds: useSilkVoice ? SILK_DEFAULT_EOT.onNoPunctuationSeconds : 0.3,
+        onNumberSeconds: useSilkVoice ? SILK_DEFAULT_EOT.onNumberSeconds : 0.2,
       },
     },
     stopSpeakingPlan: {

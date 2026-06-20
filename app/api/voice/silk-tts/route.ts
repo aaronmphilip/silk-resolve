@@ -617,15 +617,17 @@ async function synthesizeSentenceResponse(
   sentence: string,
   sampleRate: number,
   model: SilkModel,
-  tone: ReturnType<typeof extractSilkTone>["tone"] = "neutral"
+  tone: ReturnType<typeof extractSilkTone>["tone"] = "neutral",
+  forceLive = false
 ): Promise<NextResponse | { error: string; status: 502 }> {
   const speakable =
     model === "muga"
       ? withSilkTone(tone, stripAll(sentence))
       : stripVoiceMarkers(sentence);
 
-  const cached =
-    model === "muga"
+  const cached = forceLive
+    ? null
+    : model === "muga"
       ? getCachedMugaAudio(speakable, sampleRate)
       : getCachedMulberryFaqAudio(stripVoiceMarkers(sentence), sampleRate);
 
@@ -658,7 +660,8 @@ async function streamChainedSentences(
   sentences: string[],
   sampleRate: number,
   model: SilkModel,
-  tone: ReturnType<typeof extractSilkTone>["tone"] = "neutral"
+  tone: ReturnType<typeof extractSilkTone>["tone"] = "neutral",
+  forceLive = false
 ): Promise<NextResponse | { error: string; status: 502 }> {
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -670,7 +673,8 @@ async function streamChainedSentences(
             sentence,
             sampleRate,
             model,
-            tone
+            tone,
+            forceLive
           );
           if ("error" in response) {
             controller.error(new Error(response.error));
@@ -692,7 +696,7 @@ async function streamChainedSentences(
       "X-Audio-Format": "pcm_s16le",
       "X-Audio-Sample-Rate": String(sampleRate),
       "X-Audio-Channels": "1",
-      "X-Silk-Transport": "websocket-chained",
+      "X-Silk-Transport": forceLive ? "mulberry-live" : "websocket-chained",
     },
   });
 }
@@ -1008,43 +1012,46 @@ export async function POST(req: NextRequest) {
   // so speech starts on the first frame instead of waiting for the whole WAV.
   // Any setup failure falls through to the buffered REST path below.
   const wantsStream = req.nextUrl.searchParams.get("transport") === "ws";
+  const forceLive = req.nextUrl.searchParams.get("live") === "1";
   if (wantsStream && req.nextUrl.searchParams.get("format") !== "wav") {
-    const cached =
-      model === "muga"
-        ? getCachedMugaAudio(text, sampleRate)
-        : model === "mulberry"
-          ? getCachedMulberryFaqAudio(text, sampleRate)
-          : null;
-    if (cached) {
-      return new NextResponse(new Uint8Array(cached.pcm), {
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "Cache-Control": "no-store",
-          "X-Audio-Format": "pcm_s16le",
-          "X-Audio-Sample-Rate": String(sampleRate),
-          "X-Audio-Channels": "1",
-          "X-Silk-Transport": model === "mulberry" ? "cached-mulberry-faq" : "cached-muga-audio",
-          "X-Silk-Cache-Key": cached.id,
-          "Content-Length": String(cached.pcm.byteLength),
-        },
-      });
-    }
-
-    if (model === "mulberry") {
-      const lazyCached = await ensureMulberryFaqCached(text, sampleRate, silk.apiKey);
-      if (lazyCached) {
-        return new NextResponse(new Uint8Array(lazyCached.pcm), {
+    if (!forceLive) {
+      const cached =
+        model === "muga"
+          ? getCachedMugaAudio(text, sampleRate)
+          : model === "mulberry"
+            ? getCachedMulberryFaqAudio(text, sampleRate)
+            : null;
+      if (cached) {
+        return new NextResponse(new Uint8Array(cached.pcm), {
           headers: {
             "Content-Type": "application/octet-stream",
             "Cache-Control": "no-store",
             "X-Audio-Format": "pcm_s16le",
             "X-Audio-Sample-Rate": String(sampleRate),
             "X-Audio-Channels": "1",
-            "X-Silk-Transport": "cached-mulberry-faq",
-            "X-Silk-Cache-Key": lazyCached.id,
-            "Content-Length": String(lazyCached.pcm.byteLength),
+            "X-Silk-Transport": model === "mulberry" ? "cached-mulberry-faq" : "cached-muga-audio",
+            "X-Silk-Cache-Key": cached.id,
+            "Content-Length": String(cached.pcm.byteLength),
           },
         });
+      }
+
+      if (model === "mulberry") {
+        const lazyCached = await ensureMulberryFaqCached(text, sampleRate, silk.apiKey);
+        if (lazyCached) {
+          return new NextResponse(new Uint8Array(lazyCached.pcm), {
+            headers: {
+              "Content-Type": "application/octet-stream",
+              "Cache-Control": "no-store",
+              "X-Audio-Format": "pcm_s16le",
+              "X-Audio-Sample-Rate": String(sampleRate),
+              "X-Audio-Channels": "1",
+              "X-Silk-Transport": "cached-mulberry-faq",
+              "X-Silk-Cache-Key": lazyCached.id,
+              "Content-Length": String(lazyCached.pcm.byteLength),
+            },
+          });
+        }
       }
     }
 
@@ -1057,7 +1064,8 @@ export async function POST(req: NextRequest) {
         sentences,
         sampleRate,
         model,
-        tone
+        tone,
+        forceLive
       );
       if (!("error" in chained)) return chained;
       console.warn(`[silk-tts] chained stream failed (${model}), falling back to single stream`);

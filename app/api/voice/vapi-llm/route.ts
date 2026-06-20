@@ -8,7 +8,14 @@
 import { NextRequest } from "next/server";
 import { DEFAULT_SPEECH_LANGUAGE, replyLanguagePrompt } from "@/lib/speech-languages";
 import { formatVoiceOutput, stripAll, tensionToTone, withSilkTone, type SilkTone } from "@/lib/voice-emotion";
-import { answerNovaCareQuestion, cachedAudioText, cachedMugaAudioForText } from "@/lib/novacare-knowledge";
+import {
+  answerNovaCareQuestion,
+  cachedAudioText,
+  cachedMugaAudioForText,
+  needsNovaCareBrain,
+  novaCareConversationalReply,
+  shouldRouteNovaCareToGemini,
+} from "@/lib/novacare-knowledge";
 import { splitSpeakableSentences } from "@/lib/speakable-sentences";
 import { isSilkVoiceMode, normalizeWebVoiceMode } from "@/lib/silk-voice";
 
@@ -38,7 +45,7 @@ const GEMINI_TIMEOUT_MS = 5_500;
 // so first-token latency stays low for voice. Override via GEMINI_MODEL if needed.
 const DEFAULT_MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite";
 const MAX_OUTPUT_TOKENS = 90;
-const FAST_OUTPUT_TOKENS = 48;
+const FAST_OUTPUT_TOKENS = 72;
 
 // Gemini 2.5/3 models "think" before answering by default, adding 2–4s of dead
 // air before the first token — fatal for a voice call. thinkingBudget:0 disables
@@ -342,12 +349,16 @@ function scriptEvidenceScore(systemPrompt: string, userText: string): number {
 
 function canTryGeminiFromScript(systemPrompt: string, userText: string): boolean {
   if (!systemPrompt.trim()) return false;
+  if (/\bnovacare\b/i.test(systemPrompt)) {
+    return shouldRouteNovaCareToGemini(userText);
+  }
   return scriptEvidenceScore(systemPrompt, userText) > 0;
 }
 
 function answerFromSystemPrompt(systemPrompt: string, userText: string): string {
   const text = userText.toLowerCase();
   if (!systemPrompt.trim()) return "";
+  if (needsNovaCareBrain(userText)) return "";
 
   if (/\bnovacare\b/i.test(systemPrompt)) {
     const specificAnswer = specificNovaCareScriptAnswer(userText);
@@ -401,11 +412,19 @@ LANGUAGE:
 
 STRICT ANSWER SELECTION:
 - Answer the caller's exact question first.
-- Do not mention plan names, prices, or coverage amounts unless the caller asks about plans, prices, coverage, or limits.
 - Do not paste unrelated facts from the script just because they share generic words like health or insurance.
 - Do not invent app screens, recovery flows, benefit definitions, or operational steps that are not stated in the script.
 - If the exact detail is not in the script, say: "I don't have the answer to this question from my support script, so I cannot help you with that."
-- Keep the answer to one or two spoken sentences.`;
+- Keep the answer to one to three spoken sentences.
+
+GREETINGS & SMALL TALK:
+- For hi, hello, thanks, or goodbye: reply warmly in one short sentence and invite them to ask about plans, claims, coverage, or hospitals.
+
+ADVISORY & COMPARISON (use your reasoning on script facts only):
+- When the caller compares plans, asks which is better, or describes a situation (surgery, treatment, family need, renewal change), give a clear recommendation with a brief reason drawn from the script.
+- Example: major hospitalization often points to Premium for higher sum insured and private-room eligibility; a couple with children often fits Standard unless they need the higher limit.
+- Only compare the plans or topics they asked about — do not recite every plan unless they asked for a full list.
+- For medical situations, recommend the plan that fits the coverage limit and benefits in the script; do not diagnose or promise claim approval.`;
 }
 
 function estimateTension(userText: string): number {
@@ -786,6 +805,8 @@ export async function POST(req: NextRequest) {
 
   const systemContent = messages.find((message) => message.role === "system")?.content ?? "";
   const lastUser = lastUserText(messages);
+  const conversational =
+    /\bnovacare\b/i.test(systemContent) ? novaCareConversationalReply(lastUser) : "";
   const promptAnswer = answerFromSystemPrompt(systemContent, lastUser);
 
   // The web client can handle fast local MUGA playback itself. In that mode the
@@ -801,7 +822,14 @@ export async function POST(req: NextRequest) {
     return reply(promptAnswer, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
   }
 
+  if (conversational && localClientEnabled) {
+    return reply(conversational, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
+  }
+
   if (!canTryGeminiFromScript(systemContent, lastUser)) {
+    if (conversational) {
+      return reply(conversational, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
+    }
     return reply(SCRIPT_MISSING_RESPONSE, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
   }
 

@@ -36,10 +36,11 @@ export function isSilkVoiceMode(mode: WebVoiceMode): boolean {
   return mode !== "vapi";
 }
 
-export function silkTtsQueryForMode(mode: WebVoiceMode): string {
+export function silkTtsQueryForMode(mode: WebVoiceMode, live = false): string {
   const model = silkModelForVoiceMode(mode);
   if (!model) return "";
   const params = new URLSearchParams({ transport: "ws", model });
+  if (live) params.set("live", "1");
   return `?${params.toString()}`;
 }
 
@@ -163,9 +164,19 @@ export function silkWarmPaths(origin = ""): string[] {
 }
 
 /**
- * Aggressive Flux EOT for MUGA + Mulberry.
- * Vapi enforces eotThreshold >= 0.5 and eotTimeoutMs >= 500 — lower values fail web-call creation.
+ * Noise-aware Flux EOT — waits for real end-of-turn instead of firing on background hum.
+ * Vapi enforces eotThreshold >= 0.5 and eotTimeoutMs >= 500.
+ * Speculative LLM prefetch keeps perceived latency low despite the longer floor.
  */
+export const SILK_NOISE_AWARE_EOT = {
+  eotThreshold: 0.82,
+  eotTimeoutMs: 750,
+  onPunctuationSeconds: 0.12,
+  onNoPunctuationSeconds: 0.38,
+  onNumberSeconds: 0.28,
+} as const;
+
+/** @deprecated Latency-demo tuning — prefer SILK_NOISE_AWARE_EOT in production. */
 export const SILK_REALTIME_EOT = {
   eotThreshold: 0.5,
   eotTimeoutMs: 500,
@@ -174,8 +185,24 @@ export const SILK_REALTIME_EOT = {
   onNumberSeconds: 0.1,
 } as const;
 
-/** @deprecated Use SILK_REALTIME_EOT */
-export const MULBERRY_REALTIME_EOT = SILK_REALTIME_EOT;
+/** Default EOT for Silk voice calls — ignores background noise, responds after real silence. */
+export const SILK_DEFAULT_EOT = SILK_NOISE_AWARE_EOT;
+
+/**
+ * Client mic gate paired with Deepgram EOT.
+ * Levels must stay below speechRmsThreshold (~−35 dBFS) for silenceMs before the agent speaks.
+ */
+export const SILK_MIC_SILENCE = {
+  /** Background hum stays below this; only your voice crosses it (~−35 dBFS). */
+  speechRmsThreshold: 0.018,
+  /** Mic must stay quiet this long before the agent replies. */
+  silenceMs: 580,
+  /** Voice must stay above threshold this long before we count it as you speaking. */
+  speechConfirmMs: 140,
+} as const;
+
+/** @deprecated Use SILK_DEFAULT_EOT */
+export const MULBERRY_REALTIME_EOT = SILK_DEFAULT_EOT;
 
 export function normalizeWebVoiceMode(value: string | undefined | null): WebVoiceMode {
   if (value === "vapi") return "vapi";

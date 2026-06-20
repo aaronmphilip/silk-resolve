@@ -1,4 +1,4 @@
-import { answerNovaCareQuestion, cachedAudioText } from "@/lib/novacare-knowledge";
+import { answerNovaCareQuestion, cachedAudioText, needsNovaCareBrain } from "@/lib/novacare-knowledge";
 import { splitSpeakableSentences } from "@/lib/speakable-sentences";
 
 /**
@@ -8,6 +8,7 @@ import { splitSpeakableSentences } from "@/lib/speakable-sentences";
 export function speculativeNovaCareAnswer(partialText: string): string {
   const text = partialText.trim();
   if (text.length < 8) return "";
+  if (needsNovaCareBrain(text)) return "";
 
   const direct = answerNovaCareQuestion(text);
   if (direct) return direct;

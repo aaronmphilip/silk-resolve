@@ -358,6 +358,49 @@ function planByText(text: string) {
   return null;
 }
 
+/**
+ * Questions that need Gemini reasoning — not a canned FAQ clip.
+ * Compare/advise, medical scenarios, conditionals, and multi-step NovaCare help.
+ */
+export function needsNovaCareBrain(text: string): boolean {
+  const t = text.toLowerCase().trim();
+  if (!t) return false;
+
+  if (
+    /\b(which|what)\s+(plan|option|one)\s+(is\s+)?(better|best|right|suitable|recommended|worth)\b/.test(t) ||
+    /\b(better|best|recommend|suggest|advise|should i|ought to|help me (?:choose|pick|decide|select))\b/.test(t) ||
+    /\b(compare|comparison|versus|vs\.?)\b/.test(t) ||
+    /\b(difference|differ|different)\s+between\b/.test(t) ||
+    /\b(basic|standard|premium)\s+or\s+(basic|standard|premium)\b/.test(t) ||
+    /\b(downgrade|upgrade|switch(?:ing)?)\s+(?:from|to)\b/.test(t)
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(surgery|operation|procedure|treatment|diagnosis|condition|disease|illness|injury|fracture|pregnant|pregnancy|maternity|cancer|cardiac|heart|knee|hip|dental|hospitalization)\b/.test(t) &&
+    /\b(plan|cover|coverage|need|which|better|enough|afford|choose|recommend|suitable|sum insured|limit)\b/.test(t)
+  ) {
+    return true;
+  }
+
+  if (/\b(if\s+(?:i|we|my)|before\s+renewal|mid[- ]?year|while\s+(?:i'm|im|abroad)|what\s+if)\b/.test(t)) {
+    return true;
+  }
+
+  if (
+    /\b(frustrated|angry|upset|annoyed|pending|still waiting)\b/.test(t) &&
+    /\b(claim|policy|what should|what do i|help me)\b/.test(t)
+  ) {
+    return true;
+  }
+
+  if (/\bwhy\s+(?:should|would|is|are|not|can't|cant)\b/.test(t)) return true;
+  if (/\bhow\s+(?:do i decide|should i choose|would i know|can i tell)\b/.test(t)) return true;
+
+  return false;
+}
+
 function planLine(plan: typeof NOVACARE_PLANS[number]): string {
   return `${plan.name} is ${plan.spokenPrice}, with ${plan.sumInsured} sum insured for ${plan.audience}.`;
 }
@@ -628,6 +671,8 @@ export function mulberryFaqAudioFile(id: string): string {
 }
 
 function cachedIntentIdForQuestion(text: string): MugaCachedAudioId | null {
+  if (needsNovaCareBrain(text)) return null;
+
   const selectedPlan = planByText(text);
   if (selectedPlan && hasAny(text, ["price", "cost", "premium", "coverage", "cover", "insured", "benefit", "include", "plan"])) {
     if (selectedPlan.name.endsWith("Basic")) return "plan-basic";
@@ -688,8 +733,36 @@ export function answerNovaCareQuestion(userText: string): string {
   const text = userText.toLowerCase();
   if (!text.trim()) return "";
   if (isClearlyOutOfScope(text)) return cachedAudioText("out-of-scope");
+  if (needsNovaCareBrain(text)) return "";
   if (!isSmallTalk(text) && !isLikelyNovaCareSupportIntent(text)) return cachedAudioText("out-of-scope");
 
   const intentId = cachedIntentIdForQuestion(text);
   return intentId ? cachedAudioText(intentId) : "";
+}
+
+/** Instant spoken reply for greetings — no FAQ clip, no Gemini wait. */
+export function novaCareConversationalReply(userText: string): string {
+  const t = userText.trim();
+  if (/^(hi|hello|hey|good morning|good evening)[\s.!?]*$/i.test(t)) {
+    return "Hi! What would you like to check — plans, claims, coverage, or network hospitals?";
+  }
+  if (/^(thanks|thank you)[\s.!?]*$/i.test(t)) {
+    return "Glad to help. What else would you like me to check?";
+  }
+  if (/^(bye|goodbye|see you)[\s.!?]*$/i.test(t)) {
+    return "Take care. Reach out anytime if you need NovaCare support.";
+  }
+  return "";
+}
+
+/** Route to Gemini when there is no exact canned FAQ clip to play. */
+export function shouldRouteNovaCareToGemini(userText: string): boolean {
+  const text = userText.toLowerCase().trim();
+  if (!text) return false;
+  if (isClearlyOutOfScope(text)) return false;
+  if (isSmallTalk(text)) return true;
+  if (novaCareConversationalReply(userText)) return true;
+  if (needsNovaCareBrain(text)) return true;
+  if (answerNovaCareQuestion(userText)) return false;
+  return isLikelyNovaCareSupportIntent(text);
 }
