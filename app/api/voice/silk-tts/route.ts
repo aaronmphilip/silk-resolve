@@ -12,6 +12,7 @@
  * Vapi expects:
  *   raw PCM int16 little-endian mono at message.sampleRate
  */
+import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import WebSocket from "ws";
 import { readFileSync } from "fs";
@@ -114,6 +115,62 @@ function getCachedMulberryFaqAudio(text: string, targetRate: number): { id: stri
   return { id: cached.id, pcm };
 }
 
+function mulberryFaqWarmBody(): VoiceRequestBody {
+  return {
+    model: "mulberry",
+    description: MULBERRY_DEFAULTS.description,
+    speaker: MULBERRY_DEFAULTS.speaker,
+    f0_up_key: MULBERRY_DEFAULTS.f0_up_key,
+    temperature: 0.6,
+    top_p: 0.95,
+    repetition_penalty: 1.2,
+  };
+}
+
+async function warmSingleMulberryFaqItem(
+  item: (typeof NOVACARE_FAQ_AUDIO)[number],
+  apiKey: string,
+  targetRates = [8000, 16000, 24000]
+): Promise<boolean> {
+  const missingRates = targetRates.filter(
+    (rate) => !mulberryFaqPcmVariants.has(mulberryFaqVariantKey(item.id, rate))
+  );
+  if (missingRates.length === 0) return true;
+
+  const rumik = await callRumik(apiKey, mulberryFaqWarmBody(), item.text);
+  if ("error" in rumik) return false;
+
+  try {
+    const wav = parseWav(rumik.wav);
+    for (const targetRate of missingRates) {
+      const pcm = resamplePcm16Mono(wav.pcm, wav.sampleRate, targetRate);
+      mulberryFaqPcmVariants.set(mulberryFaqVariantKey(item.id, targetRate), pcm);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureMulberryFaqCached(
+  text: string,
+  targetRate: number,
+  apiKey: string
+): Promise<{ id: string; pcm: Buffer } | null> {
+  const existing = getCachedMulberryFaqAudio(text, targetRate);
+  if (existing) return existing;
+
+  const cached = cachedMugaAudioForText(text);
+  if (!cached || cached.id.startsWith("lead-")) return null;
+
+  const item = NOVACARE_FAQ_AUDIO.find((entry) => entry.id === cached.id);
+  if (!item) return null;
+
+  const warmed = await warmSingleMulberryFaqItem(item, apiKey, [targetRate]);
+  if (!warmed) return null;
+  return getCachedMulberryFaqAudio(text, targetRate);
+}
+
 async function warmMulberryFaqCache(apiKey: string, targetRates = [8000, 16000, 24000]) {
   if (mulberryFaqWarmPromise) return mulberryFaqWarmPromise;
 
@@ -122,32 +179,9 @@ async function warmMulberryFaqCache(apiKey: string, targetRates = [8000, 16000, 
     let failed = 0;
 
     for (const item of NOVACARE_FAQ_AUDIO) {
-      const body: VoiceRequestBody = {
-        model: "mulberry",
-        description: MULBERRY_DEFAULTS.description,
-        speaker: MULBERRY_DEFAULTS.speaker,
-        f0_up_key: MULBERRY_DEFAULTS.f0_up_key,
-        temperature: 0.6,
-        top_p: 0.95,
-        repetition_penalty: 1.2,
-      };
-
-      const rumik = await callRumik(apiKey, body, item.text);
-      if ("error" in rumik) {
-        failed++;
-        continue;
-      }
-
-      try {
-        const wav = parseWav(rumik.wav);
-        for (const targetRate of targetRates) {
-          const pcm = resamplePcm16Mono(wav.pcm, wav.sampleRate, targetRate);
-          mulberryFaqPcmVariants.set(mulberryFaqVariantKey(item.id, targetRate), pcm);
-        }
-        warmed++;
-      } catch {
-        failed++;
-      }
+      const ok = await warmSingleMulberryFaqItem(item, apiKey, targetRates);
+      if (ok) warmed++;
+      else failed++;
     }
 
     return { warmed, failed };
@@ -827,6 +861,24 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    if (model === "mulberry") {
+      const lazyCached = await ensureMulberryFaqCached(text, sampleRate, silk.apiKey);
+      if (lazyCached) {
+        return new NextResponse(new Uint8Array(lazyCached.pcm), {
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Cache-Control": "no-store",
+            "X-Audio-Format": "pcm_s16le",
+            "X-Audio-Sample-Rate": String(sampleRate),
+            "X-Audio-Channels": "1",
+            "X-Silk-Transport": "cached-mulberry-faq",
+            "X-Silk-Cache-Key": lazyCached.id,
+            "Content-Length": String(lazyCached.pcm.byteLength),
+          },
+        });
+      }
+    }
+
     const reusable = await streamRumikReusable(silk.apiKey, body, text, sampleRate, model);
     if (!("skipped" in reusable) && !("error" in reusable)) return reusable;
     if ("error" in reusable) {
@@ -885,15 +937,33 @@ export async function GET(req: NextRequest) {
 
   const warmFaq = req.nextUrl.searchParams.get("warmFaq") === "1" ||
     warmModels.includes("mulberry");
+  const warmFaqId = req.nextUrl.searchParams.get("faqId")?.trim() || "";
 
   try {
     const cacheWarm = preloadCachedMugaAudio([8000, 16000, 24000]);
-    const mulberryFaqWarm = warmFaq
-      ? warmMulberryFaqCache(silk.apiKey, [8000, 16000, 24000]).catch((err) => {
-          console.error("[silk-tts] mulberry FAQ warm failed:", err);
-          return { warmed: 0, failed: NOVACARE_FAQ_AUDIO.length };
-        })
-      : Promise.resolve(null);
+    const targetRates = [8000, 16000, 24000];
+    let mulberryFaqWarm: { warmed?: number; failed?: number; id?: string; ok?: boolean; background?: boolean } | null =
+      null;
+
+    if (warmFaq && warmFaqId) {
+      const item = NOVACARE_FAQ_AUDIO.find((entry) => entry.id === warmFaqId);
+      if (item) {
+        const ok = await warmSingleMulberryFaqItem(item, silk.apiKey, targetRates);
+        mulberryFaqWarm = { id: warmFaqId, ok };
+      } else {
+        mulberryFaqWarm = { id: warmFaqId, ok: false };
+      }
+    } else if (warmFaq) {
+      after(async () => {
+        try {
+          await warmMulberryFaqCache(silk.apiKey, targetRates);
+        } catch (err) {
+          console.error("[silk-tts] background mulberry FAQ warm failed:", err);
+        }
+      });
+      mulberryFaqWarm = { background: true };
+    }
+
     const sockets = await Promise.all(
       warmModels.map(async (model) => {
         const socket = await getReusableRumikSocket(silk.apiKey, model, WARM_TEXT);
@@ -901,7 +971,6 @@ export async function GET(req: NextRequest) {
         return socket;
       })
     );
-    const faqWarm = await mulberryFaqWarm;
     const reusable: Record<string, { open: boolean; busy: boolean }> = {};
     for (let i = 0; i < warmModels.length; i++) {
       reusable[warmModels[i]] = {
@@ -913,7 +982,7 @@ export async function GET(req: NextRequest) {
       {
         ok: true,
         reusable,
-        mulberryFaqWarm: faqWarm,
+        mulberryFaqWarm,
         mulberryFaqCached: mulberryFaqPcmVariants.size,
         ...cacheWarm,
         warmedMs: Date.now() - startedAt,

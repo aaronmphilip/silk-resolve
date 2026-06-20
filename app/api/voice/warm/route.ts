@@ -49,7 +49,9 @@ export async function GET(req: NextRequest) {
         ping(`${origin}/api/voice/vapi-llm?voice=silk`, controller.signal),
         ping(`${origin}/api/voice/silk-tts?all=1`, controller.signal),
         ping(`${origin}/api/voice/silk-tts?model=muga`, controller.signal),
-        ping(`${origin}/api/voice/silk-tts?model=mulberry&warmFaq=1`, controller.signal),
+        ping(`${origin}/api/voice/silk-tts?model=mulberry`, controller.signal),
+        ping(`${origin}/api/voice/silk-tts?model=mulberry&warmFaq=1&faqId=plans`, controller.signal),
+        ping(`${origin}/api/voice/silk-tts?model=mulberry&warmFaq=1&faqId=claims`, controller.signal),
         ping(`${origin}/api/voice/vapi-llm?voice=silk-mulberry`, controller.signal),
       ])
     : [];

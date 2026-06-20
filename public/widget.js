@@ -208,13 +208,17 @@
   }
 
   function warmVoiceInfra() {
+    var faqIds = ['plans', 'claims', 'coverage', 'network-hospitals', 'support', 'reimbursement', 'waiting', 'about'];
     var paths = [
       origin + '/api/voice/vapi-llm?voice=silk',
       origin + '/api/voice/silk-tts?all=1',
       origin + '/api/voice/silk-tts?model=muga',
-      origin + '/api/voice/silk-tts?model=mulberry&warmFaq=1',
+      origin + '/api/voice/silk-tts?model=mulberry',
       origin + '/api/voice/vapi-llm?voice=silk-mulberry'
     ];
+    for (var j = 0; j < faqIds.length; j++) {
+      paths.push(origin + '/api/voice/silk-tts?model=mulberry&warmFaq=1&faqId=' + encodeURIComponent(faqIds[j]));
+    }
     for (var i = 0; i < paths.length; i++) {
       try {
         fetch(paths[i], { method: 'GET', cache: 'no-store', keepalive: true }).catch(function() {});

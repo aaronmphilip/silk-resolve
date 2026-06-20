@@ -98,13 +98,28 @@ export function silkSpeechText(mode: WebVoiceMode, text: string): string {
 export const SILK_WARM_INTERVAL_MS = 20_000;
 export const SILK_WARM_MODELS: SilkModel[] = ["muga", "mulberry"];
 
+/** High-traffic NovaCare FAQs warmed one-at-a-time to stay under Vercel timeouts. */
+export const MULBERRY_WARM_FAQ_IDS = [
+  "plans",
+  "claims",
+  "coverage",
+  "network-hospitals",
+  "support",
+  "reimbursement",
+  "waiting",
+  "about",
+] as const;
+
 export function silkWarmPaths(origin = ""): string[] {
   const base = origin.replace(/\/$/, "");
   return [
     `${base}/api/voice/vapi-llm?voice=silk-mulberry`,
     `${base}/api/voice/vapi-llm?voice=silk`,
     `${base}/api/voice/silk-tts?all=1`,
-    `${base}/api/voice/silk-tts?model=mulberry&warmFaq=1`,
+    `${base}/api/voice/silk-tts?model=mulberry`,
+    ...MULBERRY_WARM_FAQ_IDS.map(
+      (id) => `${base}/api/voice/silk-tts?model=mulberry&warmFaq=1&faqId=${id}`
+    ),
     ...SILK_WARM_MODELS.map((model) => `${base}/api/voice/silk-tts?model=${model}`),
   ];
 }
