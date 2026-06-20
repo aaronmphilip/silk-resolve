@@ -4,7 +4,7 @@ import {
   DEFAULT_SPEECH_LANGUAGE,
   replyLanguagePrompt,
 } from "@/lib/speech-languages";
-import { MULBERRY_DEFAULTS, SILK_REALTIME_EOT, type WebVoiceMode } from "@/lib/silk-voice";
+import { MULBERRY_DEFAULTS, SILK_REALTIME_EOT, usesBrowserSilkPlayback, type WebVoiceMode } from "@/lib/silk-voice";
 import { buildMulberryDescription, classifyCallIntent, estimateTension, stripAll, withSilkTone, wrapMulberryVoiceMeta } from "@/lib/voice-emotion";
 
 function cleanSpokenText(text: string): string {
@@ -25,6 +25,8 @@ export type NovaCareVapiAssistantOptions = {
   geminiModel?: string;
   /** BCP-47 speech language for STT + reply language (e.g. en-IN, hi-IN). */
   speechLanguage?: string;
+  /** Browser plays Rumik audio; Vapi gets a silence stub instead of silk-tts. */
+  browserSilkPlayback?: boolean;
 };
 
 /** Single source of truth for NovaCare Vapi assistant config — safe on client + server. */
@@ -34,15 +36,21 @@ export function buildNovaCareVapiAssistant(options: NovaCareVapiAssistantOptions
   const speechLanguage = options.speechLanguage?.trim() || DEFAULT_SPEECH_LANGUAGE;
   const deepgram = deepgramTranscriberForSpeech(speechLanguage);
   const useSilkVoice = options.useSilkVoice ?? voiceMode !== "vapi";
+  const browserSilkPlayback = options.browserSilkPlayback ?? usesBrowserSilkPlayback(voiceMode);
   const silkModel = voiceMode === "silk-mulberry" ? "mulberry" : "muga";
   const isMulberry = silkModel === "mulberry";
   const useFastLlm = useSilkVoice && voiceMode !== "vapi";
   const silkQuery = useSilkVoice ? `?transport=ws&model=${silkModel}` : "";
   const voice = useSilkVoice
-    ? {
-        provider: "custom-voice",
-        server: { url: `${origin}/api/voice/silk-tts${silkQuery}`, timeoutSeconds: 45 },
-      }
+    ? browserSilkPlayback
+      ? {
+          provider: "custom-voice",
+          server: { url: `${origin}/api/voice/silence-tts`, timeoutSeconds: 10 },
+        }
+      : {
+          provider: "custom-voice",
+          server: { url: `${origin}/api/voice/silk-tts${silkQuery}`, timeoutSeconds: 45 },
+        }
     : { provider: "vapi", voiceId: "Neha" };
 
   const basePrompt = agent.system_prompt;
