@@ -1,7 +1,6 @@
 /**
  * Browser-side incremental PCM playback for Rumik SILK WebSocket streams.
- * Schedules each chunk on the Web Audio API timeline so audio starts on the
- * first frame instead of waiting for the full synthesis buffer.
+ * Uses a shared playhead per AudioContext so sequential TTS requests never overlap.
  */
 
 export interface StreamPlaybackResult {
@@ -10,6 +9,28 @@ export interface StreamPlaybackResult {
   firstFrameMs: number;
   totalMs: number;
   pcmChunks: number;
+}
+
+const playheadByContext = new WeakMap<AudioContext, number>();
+
+/** Reset the shared timeline when a new reply starts — prevents overlapping voices. */
+export function resetAudioPlayhead(ctx: AudioContext | null | undefined) {
+  if (!ctx) return;
+  playheadByContext.set(ctx, ctx.currentTime);
+}
+
+function scheduleOnPlayhead(
+  ctx: AudioContext,
+  buffer: AudioBuffer
+): { source: AudioBufferSourceNode; endAt: number } {
+  const startAt = Math.max(ctx.currentTime, playheadByContext.get(ctx) ?? ctx.currentTime);
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.connect(ctx.destination);
+  source.start(startAt);
+  const endAt = startAt + buffer.duration;
+  playheadByContext.set(ctx, endAt);
+  return { source, endAt };
 }
 
 function int16ToFloat32(pcm: Int16Array, out: Float32Array) {
@@ -44,8 +65,8 @@ export async function playStreamingPcmResponse(
   const ctx = existingCtx ?? new AudioContextCtor();
   if (ctx.state === "suspended") await ctx.resume();
 
-  let playAt = ctx.currentTime;
   const sources: AudioBufferSourceNode[] = [];
+  let endAt = playheadByContext.get(ctx) ?? ctx.currentTime;
   const reader = response.body.getReader();
   let pending = new Uint8Array(0);
 
@@ -59,13 +80,9 @@ export async function playStreamingPcmResponse(
     const buffer = ctx.createBuffer(1, pcm.length, sampleRate);
     int16ToFloat32(pcm, buffer.getChannelData(0));
 
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
-    playAt = Math.max(playAt, ctx.currentTime);
-    source.start(playAt);
-    playAt += buffer.duration;
-    sources.push(source);
+    const scheduled = scheduleOnPlayhead(ctx, buffer);
+    sources.push(scheduled.source);
+    endAt = scheduled.endAt;
     pcmChunks += 1;
 
     if (firstFrameMs === 0) {
@@ -101,7 +118,7 @@ export async function playStreamingPcmResponse(
       await new Promise<void>((resolve) => {
         const last = sources[sources.length - 1];
         last.onended = () => resolve();
-        setTimeout(resolve, Math.max(0, (playAt - ctx.currentTime) * 1000) + 50);
+        setTimeout(resolve, Math.max(0, (endAt - ctx.currentTime) * 1000) + 80);
       });
     }
   } finally {
@@ -141,11 +158,8 @@ export async function playBufferedPcm(
 
   await new Promise<void>((resolve) => {
     if (!isActive()) return resolve();
-    const source = ctx.createBufferSource();
-    source.buffer = buffer;
-    source.connect(ctx.destination);
+    const { source } = scheduleOnPlayhead(ctx, buffer);
     source.onended = () => resolve();
     onFirstFrame?.();
-    source.start();
   });
 }

@@ -2,8 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Loader2, Send, Square, Volume2 } from "lucide-react";
-import { playBufferedPcm, playStreamingPcmResponse } from "@/lib/silk-stream-player";
-import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
+import { playBufferedPcm, playStreamingPcmResponse, resetAudioPlayhead } from "@/lib/silk-stream-player";
 import SilkLatencyBadge, { MUGA_DEMO_QUESTIONS } from "@/app/_components/SilkLatencyBadge";
 import {
   buildSilkTtsBody,
@@ -294,6 +293,7 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
     speechChunkCountRef.current = 0;
     pcmChunkTotalRef.current = 0;
     firstChunkLatencyRef.current = null;
+    resetAudioPlayhead(audioContextRef.current);
     setState("thinking");
 
     try {
@@ -321,14 +321,7 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      const chunker = new StreamSpeechChunker((chunk) => {
-        speechChunkCountRef.current += 1;
-        setSpeechChunks(speechChunkCountRef.current);
-        const spoken = silkModel === "muga" && !/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]/i.test(chunk)
-          ? `[neutral] ${chunk}`
-          : chunk;
-        enqueueSpeech(spoken, runId);
-      });
+      let fullAnswer = "";
 
       for (;;) {
         const { done, value } = await reader.read();
@@ -352,14 +345,23 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
               };
               const content = data.choices?.[0]?.delta?.content ?? "";
               if (!content) continue;
-              setAnswer((current) => appendText(current, content));
-              chunker.push(content);
+              fullAnswer = appendText(fullAnswer, content);
+              setAnswer(fullAnswer);
             } catch {}
           }
         }
       }
 
-      chunker.finish();
+      const spoken = stripVoiceMarkers(fullAnswer).trim();
+      if (spoken) {
+        speechChunkCountRef.current = 1;
+        setSpeechChunks(1);
+        const voiceText =
+          silkModel === "muga" && !/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]/i.test(spoken)
+            ? `[neutral] ${spoken}`
+            : spoken;
+        enqueueSpeech(voiceText, runId);
+      }
       await audioQueueRef.current;
       if (runId === runIdRef.current) setState("idle");
     } catch (err) {

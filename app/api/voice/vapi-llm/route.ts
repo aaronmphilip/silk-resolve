@@ -813,6 +813,9 @@ export async function POST(req: NextRequest) {
   // Vapi call still needs a tiny response to keep the turn healthy, but it should
   // not trigger a duplicate full MUGA generation in the background.
   if (clientLeadEnabled && !localClientEnabled) {
+    if (conversational) {
+      return reply(conversational, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
+    }
     return reply(browserHandledPlaceholder(lastUser), wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
   }
 

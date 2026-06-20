@@ -16,7 +16,7 @@ import {
   speculativeNovaCareAnswer,
   transcriptsAlign,
 } from "@/lib/realtime-voice";
-import { playBufferedPcm, playStreamingPcmResponse } from "@/lib/silk-stream-player";
+import { playBufferedPcm, playStreamingPcmResponse, resetAudioPlayhead } from "@/lib/silk-stream-player";
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
 import {
   buildSilkTtsBody,
@@ -430,13 +430,7 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    let skippedServerBridge = false;
-    const chunker = new StreamSpeechChunker((chunk) => {
-      const spoken = silkModel === "muga" && !/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]/i.test(chunk)
-        ? `[neutral] ${chunk}`
-        : chunk;
-      enqueueSpeech(spoken, runId);
-    });
+    let fullAnswer = "";
 
     for (;;) {
       const { done, value } = await reader.read();
@@ -458,24 +452,23 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
             const data = JSON.parse(payload) as {
               choices?: Array<{ delta?: { content?: string } }>;
             };
-            let content = data.choices?.[0]?.delta?.content ?? "";
+            const content = data.choices?.[0]?.delta?.content ?? "";
             if (!content) continue;
-            if (immediateBridge && !skippedServerBridge) {
-              const stripped = stripLeadingBridge(content, immediateBridge);
-              if (stripped !== stripVoiceMarkers(content)) {
-                skippedServerBridge = true;
-                content = stripped;
-                if (!content) continue;
-              }
-            }
-            setAnswer((current) => appendText(current, content));
-            chunker.push(content);
+            fullAnswer = appendText(fullAnswer, content);
+            setAnswer(fullAnswer);
           } catch {}
         }
       }
     }
 
-    chunker.finish();
+    const spoken = stripVoiceMarkers(fullAnswer).trim();
+    if (spoken) {
+      const voiceText =
+        silkModel === "muga" && !/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]/i.test(spoken)
+          ? `[neutral] ${spoken}`
+          : spoken;
+      enqueueSpeech(voiceText, runId);
+    }
   }
 
   async function answerPrompt(prompt: string) {
@@ -493,6 +486,7 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
     setTransport("");
     setLatencyMs(null);
     firstChunkLatencyRef.current = null;
+    resetAudioPlayhead(audioContextRef.current);
 
     const specPartial = speculativePartialRef.current;
     const specAligned = isMulberry && specPartial && transcriptsAlign(specPartial, cleanPrompt);
