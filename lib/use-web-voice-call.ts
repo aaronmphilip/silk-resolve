@@ -638,6 +638,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const playLocalAssistFnRef = useRef<(userText: string, callRunId: number) => void>(() => {});
   const lastDispatchedUtteranceRef = useRef("");
   const forceBrainNextRef = useRef(false);
+  /** Demo chips must not reuse speculative mic partials — avoids overlapping brain playback. */
+  const demoAssistNextRef = useRef(false);
 
   const commitTranscript = useCallback((
     role: "user" | "assistant",
@@ -835,6 +837,22 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     if (bridge) void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, bridge)).catch(() => {});
   }, [canUseNovaCareCache, getOrFetchLocalMugaClip, speculativePrefetchSilk, speechRouteCtx, voiceMode]);
 
+  const ensureLocalAudioContext = useCallback(async (): Promise<AudioContext> => {
+    const AudioContextCtor =
+      window.AudioContext ||
+      (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) throw new Error("Audio playback is not supported in this browser.");
+
+    let ctx = localAudioContextRef.current;
+    if (!ctx || ctx.state === "closed") {
+      ctx = new AudioContextCtor();
+      localAudioContextRef.current = ctx;
+      resetAudioPlayhead(ctx);
+    }
+    if (ctx.state === "suspended") await ctx.resume();
+    return ctx;
+  }, []);
+
   const playLocalPcm = useCallback(async (
     clip: LocalMugaClip,
     localRunId: number,
@@ -842,15 +860,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   ) => {
     if (localRunId !== localAssistRunRef.current || !mountedRef.current) return;
 
-    const AudioContextCtor =
-      window.AudioContext ||
-      (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextCtor) throw new Error("Audio playback is not supported in this browser.");
-
-    const ctx = localAudioContextRef.current ?? new AudioContextCtor();
-    localAudioContextRef.current = ctx;
-    if (ctx.state === "suspended") await ctx.resume();
-
+    const ctx = await ensureLocalAudioContext();
     await playBufferedPcm(
       clip.audio,
       clip.sampleRate,
@@ -859,7 +869,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       ctx,
       onFirstFrame
     );
-  }, []);
+  }, [ensureLocalAudioContext]);
 
   const isLocalSpeechActive = useCallback(
     (callRunId: number, localRunId: number) =>
@@ -886,64 +896,72 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     const query = silkTtsQueryForMode(voiceMode, forceLive);
     const cachedClip = forceLive ? undefined : localAudioCacheRef.current.get(speechKey);
 
-    const job = (cachedClip
-      ? cachedClip.then(async (clip) => {
-          if (!isLocalSpeechActive(callRunId, localRunId)) return;
-          setSpeechTransport("cached-local-pcm");
-          await playLocalPcm(clip, localRunId, onFirstFrame);
-        })
-      : fetch(`/api/voice/silk-tts${query}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          signal: localTtsAbortRef.current?.signal,
-          body: JSON.stringify(buildSilkTtsBody(voiceMode, speakable)),
-        }).then(async (response) => {
-          if (!isLocalSpeechActive(callRunId, localRunId)) return;
+    const job = (async () => {
+      if (!isLocalSpeechActive(callRunId, localRunId)) return;
+      const ctx = await ensureLocalAudioContext();
 
-          const transport = response.headers.get("x-silk-transport") ?? "";
-          if (!response.ok) {
-            const detail = await response.text().catch(() => "");
-            throw new Error(detail || "SILK speech failed.");
-          }
+      if (cachedClip) {
+        const clip = await cachedClip;
+        if (!isLocalSpeechActive(callRunId, localRunId)) return;
+        setSpeechTransport("cached-local-pcm");
+        await playBufferedPcm(
+          clip.audio,
+          clip.sampleRate,
+          localRunId,
+          () => isLocalSpeechActive(callRunId, localRunId),
+          ctx,
+          onFirstFrame
+        );
+        return;
+      }
 
-          setSpeechTransport(
-            forceLive ? "mulberry-live" : transport || "websocket"
-          );
+      const response = await fetch(`/api/voice/silk-tts${query}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: localTtsAbortRef.current?.signal,
+        body: JSON.stringify(buildSilkTtsBody(voiceMode, speakable)),
+      });
+      if (!isLocalSpeechActive(callRunId, localRunId)) return;
 
-          if (!forceLive && transport.includes("cached")) {
-            const buf = await response.arrayBuffer();
-            await playBufferedPcm(
-              buf,
-              Number(response.headers.get("x-audio-sample-rate") ?? LOCAL_MUGA_SAMPLE_RATE),
-              localRunId,
-              () => isLocalSpeechActive(callRunId, localRunId),
-              localAudioContextRef.current,
-              onFirstFrame
-            );
-            return;
-          }
+      const transport = response.headers.get("x-silk-transport") ?? "";
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        throw new Error(detail || "SILK speech failed.");
+      }
 
-          const playback = await playStreamingPcmResponse(
-            response,
-            localRunId,
-            () => isLocalSpeechActive(callRunId, localRunId),
-            localAudioContextRef.current,
-            onFirstFrame
-          );
-          setSpeechTransport(
-            forceLive
-              ? "mulberry-live"
-              : playback.transport || transport || "websocket"
-          );
-        })
-    ).catch((err) => {
+      setSpeechTransport(forceLive ? "mulberry-live" : transport || "websocket");
+
+      if (!forceLive && transport.includes("cached")) {
+        const buf = await response.arrayBuffer();
+        await playBufferedPcm(
+          buf,
+          Number(response.headers.get("x-audio-sample-rate") ?? LOCAL_MUGA_SAMPLE_RATE),
+          localRunId,
+          () => isLocalSpeechActive(callRunId, localRunId),
+          ctx,
+          onFirstFrame
+        );
+        return;
+      }
+
+      const playback = await playStreamingPcmResponse(
+        response,
+        localRunId,
+        () => isLocalSpeechActive(callRunId, localRunId),
+        ctx,
+        onFirstFrame
+      );
+      setSpeechTransport(
+        forceLive ? "mulberry-live" : playback.transport || transport || "websocket"
+      );
+    })().catch((err) => {
       if (!isLocalSpeechActive(callRunId, localRunId)) return;
       console.warn("[voice] browser SILK speech failed", err);
       setError(err instanceof Error ? err.message.slice(0, 240) : "Speech playback failed.");
     });
 
     localAudioQueueRef.current = localAudioQueueRef.current.then(() => job);
-  }, [captureFirstAudioLatency, isLocalSpeechActive, playLocalPcm, voiceMode]);
+  }, [captureFirstAudioLatency, ensureLocalAudioContext, isLocalSpeechActive, voiceMode]);
 
   const streamLocalAnswer = useCallback(async (
     userText: string,
@@ -1096,6 +1114,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       if (!text) return;
 
       forceBrainNextRef.current = Boolean(opts?.forceBrain);
+      demoAssistNextRef.current = true;
       lastUserFinalAtRef.current = Date.now();
       lastUserSpeechEndAtRef.current = Date.now();
       latencyCapturedRef.current = false;
@@ -1134,6 +1153,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     const specAnswer = stripVoiceMarkers(speculativeAnswerRef.current).trim();
     const partialRoute = specPartial ? resolveSpeechRoute(specPartial, speechRouteCtx()) : null;
     const useSpeculative =
+      !demoAssistNextRef.current &&
       route.kind === "brain" &&
       partialRoute?.kind === "brain" &&
       specAligned &&
@@ -1154,7 +1174,10 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     localStreamAbortRef.current = new AbortController();
     localTtsAbortRef.current?.abort();
     localTtsAbortRef.current = new AbortController();
-    resetAudioPlayhead(localAudioContextRef.current);
+    stopAllScheduledSources();
+    if (localAudioContextRef.current) {
+      resetAudioPlayhead(localAudioContextRef.current);
+    }
 
     muteMicForLocalOutput();
     suppressAssistantAudio();
@@ -1167,11 +1190,12 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
         if (route.kind === "cached-faq" || route.kind === "out-of-scope") {
           commitTranscript("assistant", route.answer);
-          const speakable = silkSpeechText(voiceMode, route.answer);
-          const clip = await getOrFetchLocalMugaClip(speakable);
-          if (!isLocalSpeechActive(callRunId, localRunId) || playbackGen !== playbackGenerationRef.current) return;
           setSpeechTransport(speechRouteLabel(route));
-          await playLocalPcm(clip, localRunId, () => captureFirstAudioLatency());
+          const speakable = silkSpeechText(voiceMode, route.answer);
+          void getOrFetchLocalMugaClip(speakable).catch(() => {});
+          enqueueLocalSpeech(route.answer, callRunId, localRunId);
+          await localAudioQueueRef.current;
+          if (!isLocalSpeechActive(callRunId, localRunId) || playbackGen !== playbackGenerationRef.current) return;
           if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
             restoreMicAfterLocalOutput();
           }
@@ -1212,6 +1236,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         restoreMicAfterLocalOutput();
       } finally {
         forceBrainNextRef.current = false;
+        demoAssistNextRef.current = false;
       }
     })();
   }, [
