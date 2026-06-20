@@ -578,9 +578,14 @@ function isAboutIntent(text: string): boolean {
   return hasAny(text, ["who are you", "about", "company", "novacare"]);
 }
 
-function cachedAudioText(id: MugaCachedAudioId): string {
+export function cachedAudioText(id: MugaCachedAudioId): string {
   return MUGA_CACHED_AUDIO.find((item) => item.id === id)?.text ?? "";
 }
+
+/** FAQ clips used for instant Mulberry/MUGA playback (excludes short bridge leads). */
+export const NOVACARE_FAQ_AUDIO = MUGA_CACHED_AUDIO.filter(
+  (item) => !item.id.startsWith("lead-")
+);
 
 function cachedIntentIdForQuestion(text: string): MugaCachedAudioId | null {
   const selectedPlan = planByText(text);

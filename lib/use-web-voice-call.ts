@@ -14,6 +14,7 @@ import {
   vapiLlmVoiceQuery,
   type WebVoiceMode,
 } from "@/lib/silk-voice";
+import { prefetchSilkTts, speculativeNovaCareAnswer } from "@/lib/realtime-voice";
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
 import { stripVoiceMarkers } from "@/lib/voice-emotion";
 
@@ -501,7 +502,29 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     return agentId === NOVACARE_AGENT_ID || /\bnovacare\b/i.test(assistantSystemPromptRef.current);
   }, [agentId]);
 
+  const speculativePrefetchRef = useRef("");
+
+  const speculativePrefetchMulberry = useCallback((partialText: string) => {
+    if (voiceMode !== "silk-mulberry" || !canUseNovaCareCache()) return;
+    const answer = speculativeNovaCareAnswer(partialText);
+    if (!answer) return;
+
+    const key = normalizeMugaCacheText(answer);
+    if (speculativePrefetchRef.current === key) return;
+    speculativePrefetchRef.current = key;
+
+    prefetchSilkTts(
+      window.location.origin,
+      silkTtsQueryForMode(voiceMode).slice(1),
+      buildSilkTtsBody(voiceMode, answer)
+    );
+  }, [canUseNovaCareCache, voiceMode]);
+
   const prefetchLocalAssistForText = useCallback((text: string) => {
+    if (voiceMode === "silk-mulberry") {
+      speculativePrefetchMulberry(text);
+      return;
+    }
     if (!usesTalkWidgetLocalAssist(voiceMode) || voiceMode === "vapi" || text.trim().length < 10) return;
     const answer = canUseNovaCareCache() ? answerNovaCareQuestion(text) : "";
     if (answer) {
@@ -511,7 +534,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
     const bridge = bridgeForVoicePrompt(text);
     if (bridge) void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, bridge)).catch(() => {});
-  }, [canUseNovaCareCache, getOrFetchLocalMugaClip, voiceMode]);
+  }, [canUseNovaCareCache, getOrFetchLocalMugaClip, speculativePrefetchMulberry, voiceMode]);
 
   const playLocalPcm = useCallback(async (clip: LocalMugaClip, localRunId: number) => {
     if (localRunId !== localAssistRunRef.current || !mountedRef.current) return;
@@ -881,7 +904,9 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
           // Partials stream in as the speaker talks — show them live, don't commit.
           if (msg.transcriptType !== "final") {
-            if (role === "user") prefetchLocalAssistForText(text);
+            if (role === "user") {
+              prefetchLocalAssistForText(text);
+            }
             if (role === "assistant" && Date.now() < assistantTranscriptSuppressUntilRef.current) return;
             setInterim({ role, text });
             return;
@@ -893,6 +918,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           setInterim(null);
           setTranscript(lines => appendTranscriptLine(lines, role, text, ts));
           if (role === "user") {
+            speculativePrefetchRef.current = "";
             setTension(value => Math.min(10, value + 0.4));
             prefetchLocalAssistForText(text);
             playLocalAssistForUserText(text, runId);

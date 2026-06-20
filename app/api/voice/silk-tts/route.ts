@@ -16,7 +16,7 @@ import { NextRequest, NextResponse } from "next/server";
 import WebSocket from "ws";
 import { readFileSync } from "fs";
 import path from "path";
-import { MUGA_CACHED_AUDIO, cachedMugaAudioForText } from "@/lib/novacare-knowledge";
+import { MUGA_CACHED_AUDIO, NOVACARE_FAQ_AUDIO, cachedMugaAudioForText } from "@/lib/novacare-knowledge";
 import { MULBERRY_DEFAULTS, type SilkModel } from "@/lib/silk-voice";
 import { getPlatformVoiceConfig } from "@/lib/platform";
 import { extractSilkTone, stripAll, stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
@@ -74,6 +74,8 @@ const reusableRumikSockets = new Map<SilkModel, ReusableRumikSocket>();
 const reusableRumikConnecting = new Map<SilkModel, Promise<ReusableRumikSocket>>();
 const cachedAudioFiles = new Map<string, Buffer>();
 const cachedAudioVariants = new Map<string, Buffer>();
+const mulberryFaqPcmVariants = new Map<string, Buffer>();
+let mulberryFaqWarmPromise: Promise<{ warmed: number; failed: number }> | null = null;
 
 function extractTextAndSampleRate(body: VoiceRequestBody) {
   const message = body.message;
@@ -96,6 +98,65 @@ function ensureMugaTone(text: string): string {
 
 function cachedVariantKey(id: string, targetRate: number): string {
   return `${id}:${targetRate}`;
+}
+
+function mulberryFaqVariantKey(id: string, targetRate: number): string {
+  return `mulberry:${id}:${targetRate}`;
+}
+
+function getCachedMulberryFaqAudio(text: string, targetRate: number): { id: string; pcm: Buffer } | null {
+  const cached = cachedMugaAudioForText(text);
+  if (!cached || cached.id.startsWith("lead-")) return null;
+
+  const variantKey = mulberryFaqVariantKey(cached.id, targetRate);
+  const pcm = mulberryFaqPcmVariants.get(variantKey);
+  if (!pcm) return null;
+  return { id: cached.id, pcm };
+}
+
+async function warmMulberryFaqCache(apiKey: string, targetRates = [8000, 16000, 24000]) {
+  if (mulberryFaqWarmPromise) return mulberryFaqWarmPromise;
+
+  mulberryFaqWarmPromise = (async () => {
+    let warmed = 0;
+    let failed = 0;
+
+    for (const item of NOVACARE_FAQ_AUDIO) {
+      const body: VoiceRequestBody = {
+        model: "mulberry",
+        description: MULBERRY_DEFAULTS.description,
+        speaker: MULBERRY_DEFAULTS.speaker,
+        f0_up_key: MULBERRY_DEFAULTS.f0_up_key,
+        temperature: 0.6,
+        top_p: 0.95,
+        repetition_penalty: 1.2,
+      };
+
+      const rumik = await callRumik(apiKey, body, item.text);
+      if ("error" in rumik) {
+        failed++;
+        continue;
+      }
+
+      try {
+        const wav = parseWav(rumik.wav);
+        for (const targetRate of targetRates) {
+          const pcm = resamplePcm16Mono(wav.pcm, wav.sampleRate, targetRate);
+          mulberryFaqPcmVariants.set(mulberryFaqVariantKey(item.id, targetRate), pcm);
+        }
+        warmed++;
+      } catch {
+        failed++;
+      }
+    }
+
+    return { warmed, failed };
+  })().catch((err) => {
+    mulberryFaqWarmPromise = null;
+    throw err;
+  });
+
+  return mulberryFaqWarmPromise;
 }
 
 function getCachedMugaAudio(text: string, targetRate: number): { id: string; pcm: Buffer } | null {
@@ -745,7 +806,12 @@ export async function POST(req: NextRequest) {
   const model = resolveSilkModel(req, body);
   const wantsStream = req.nextUrl.searchParams.get("transport") === "ws";
   if (wantsStream && req.nextUrl.searchParams.get("format") !== "wav") {
-    const cached = model === "muga" ? getCachedMugaAudio(text, sampleRate) : null;
+    const cached =
+      model === "muga"
+        ? getCachedMugaAudio(text, sampleRate)
+        : model === "mulberry"
+          ? getCachedMulberryFaqAudio(text, sampleRate)
+          : null;
     if (cached) {
       return new NextResponse(new Uint8Array(cached.pcm), {
         headers: {
@@ -754,7 +820,7 @@ export async function POST(req: NextRequest) {
           "X-Audio-Format": "pcm_s16le",
           "X-Audio-Sample-Rate": String(sampleRate),
           "X-Audio-Channels": "1",
-          "X-Silk-Transport": "cached-muga-audio",
+          "X-Silk-Transport": model === "mulberry" ? "cached-mulberry-faq" : "cached-muga-audio",
           "X-Silk-Cache-Key": cached.id,
           "Content-Length": String(cached.pcm.byteLength),
         },
@@ -817,8 +883,17 @@ export async function GET(req: NextRequest) {
   const warmModels: SilkModel[] =
     req.nextUrl.searchParams.get("all") === "1" ? ["muga", "mulberry"] : [warmModel];
 
+  const warmFaq = req.nextUrl.searchParams.get("warmFaq") === "1" ||
+    warmModels.includes("mulberry");
+
   try {
     const cacheWarm = preloadCachedMugaAudio([8000, 16000, 24000]);
+    const mulberryFaqWarm = warmFaq
+      ? warmMulberryFaqCache(silk.apiKey, [8000, 16000, 24000]).catch((err) => {
+          console.error("[silk-tts] mulberry FAQ warm failed:", err);
+          return { warmed: 0, failed: NOVACARE_FAQ_AUDIO.length };
+        })
+      : Promise.resolve(null);
     const sockets = await Promise.all(
       warmModels.map(async (model) => {
         const socket = await getReusableRumikSocket(silk.apiKey, model, WARM_TEXT);
@@ -826,6 +901,7 @@ export async function GET(req: NextRequest) {
         return socket;
       })
     );
+    const faqWarm = await mulberryFaqWarm;
     const reusable: Record<string, { open: boolean; busy: boolean }> = {};
     for (let i = 0; i < warmModels.length; i++) {
       reusable[warmModels[i]] = {
@@ -837,6 +913,8 @@ export async function GET(req: NextRequest) {
       {
         ok: true,
         reusable,
+        mulberryFaqWarm: faqWarm,
+        mulberryFaqCached: mulberryFaqPcmVariants.size,
         ...cacheWarm,
         warmedMs: Date.now() - startedAt,
       },

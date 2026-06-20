@@ -212,7 +212,8 @@
       origin + '/api/voice/vapi-llm?voice=silk',
       origin + '/api/voice/silk-tts?all=1',
       origin + '/api/voice/silk-tts?model=muga',
-      origin + '/api/voice/silk-tts?model=mulberry'
+      origin + '/api/voice/silk-tts?model=mulberry&warmFaq=1',
+      origin + '/api/voice/vapi-llm?voice=silk-mulberry'
     ];
     for (var i = 0; i < paths.length; i++) {
       try {

@@ -445,11 +445,13 @@ function humanizeForVoice(answer: string, userText: string): string {
   return clean;
 }
 
-function voiceText(text: string, silkEnabled: boolean, userText: string): string {
+function voiceText(text: string, silkEnabled: boolean, userText: string, mulberryVoice: boolean): string {
   const clean = normalizeSpeechText(stripAll(text)).trim();
   if (!clean) return OUT_OF_SCOPE_RESPONSE;
-  const human = humanizeForVoice(clean, userText);
-  return silkEnabled ? withSilkTone(toneFor(userText, human), human) : human;
+  const human = mulberryVoice ? clean : humanizeForVoice(clean, userText);
+  return silkEnabled && !mulberryVoice
+    ? withSilkTone(toneFor(userText, human), human)
+    : human;
 }
 
 function fastLeadFor(userText: string, answer: string): string {
@@ -547,7 +549,7 @@ function reply(
   clientLeadEnabled: boolean,
   mulberryVoice: boolean
 ): Response {
-  const spoken = voiceText(text, silkEnabled, userText);
+  const spoken = voiceText(text, silkEnabled, userText, mulberryVoice);
   const lead = shouldUseFastLead(silkEnabled, clientLeadEnabled, mulberryVoice)
     ? fastLeadFor(userText, spoken)
     : "";
@@ -631,7 +633,10 @@ function streamGemini(args: {
         if (!emittedText) {
           emittedText = true;
           firstChunkAt = Date.now();
-          controller.enqueue(encoder.encode(sseChunk(id, { content: silkEnabled ? withSilkTone(toneFor(userText, clean), clean) : clean }, null)));
+          const spoken = silkEnabled && !mulberryVoice
+            ? withSilkTone(toneFor(userText, clean), clean)
+            : clean;
+          controller.enqueue(encoder.encode(sseChunk(id, { content: spoken }, null)));
           return;
         }
 

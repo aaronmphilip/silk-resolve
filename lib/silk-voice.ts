@@ -101,11 +101,22 @@ export const SILK_WARM_MODELS: SilkModel[] = ["muga", "mulberry"];
 export function silkWarmPaths(origin = ""): string[] {
   const base = origin.replace(/\/$/, "");
   return [
+    `${base}/api/voice/vapi-llm?voice=silk-mulberry`,
     `${base}/api/voice/vapi-llm?voice=silk`,
     `${base}/api/voice/silk-tts?all=1`,
+    `${base}/api/voice/silk-tts?model=mulberry&warmFaq=1`,
     ...SILK_WARM_MODELS.map((model) => `${base}/api/voice/silk-tts?model=${model}`),
   ];
 }
+
+/** GPT Realtime-style Mulberry endpointing — semantic VAD approximated with aggressive Flux EOT. */
+export const MULBERRY_REALTIME_EOT = {
+  eotThreshold: 0.42,
+  eotTimeoutMs: 200,
+  onPunctuationSeconds: 0.03,
+  onNoPunctuationSeconds: 0.1,
+  onNumberSeconds: 0.12,
+} as const;
 
 export function normalizeWebVoiceMode(value: string | undefined | null): WebVoiceMode {
   if (value === "vapi") return "vapi";

@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
 import { getNovaCareFallbackAgent, isNovaCareAgentId } from "@/lib/novacare-knowledge";
-import { MULBERRY_DEFAULTS, normalizeWebVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
+import { MULBERRY_DEFAULTS, MULBERRY_REALTIME_EOT, normalizeWebVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
 import { withSilkTone, stripAll } from "@/lib/voice-emotion";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -142,8 +142,8 @@ VOICE CALL RULES:
       language: "en",
       smartFormat: false,  // disabling saves ~40ms per transcription
       numerals: true,
-      eotThreshold: isMulberry ? 0.5 : 0.55,
-      eotTimeoutMs: isMulberry ? 600 : 1200,
+      eotThreshold: isMulberry ? MULBERRY_REALTIME_EOT.eotThreshold : 0.55,
+      eotTimeoutMs: isMulberry ? MULBERRY_REALTIME_EOT.eotTimeoutMs : 1200,
     },
     silenceTimeoutSeconds: 60,
     maxDurationSeconds: 1800,
@@ -153,9 +153,9 @@ VOICE CALL RULES:
     startSpeakingPlan: {
       waitSeconds: 0,
       transcriptionEndpointingPlan: {
-        onPunctuationSeconds: 0.05,
-        onNoPunctuationSeconds: isMulberry ? 0.2 : 0.3,
-        onNumberSeconds: isMulberry ? 0.15 : 0.2,
+        onPunctuationSeconds: isMulberry ? MULBERRY_REALTIME_EOT.onPunctuationSeconds : 0.05,
+        onNoPunctuationSeconds: isMulberry ? MULBERRY_REALTIME_EOT.onNoPunctuationSeconds : 0.3,
+        onNumberSeconds: isMulberry ? MULBERRY_REALTIME_EOT.onNumberSeconds : 0.2,
       },
     },
     stopSpeakingPlan: {
