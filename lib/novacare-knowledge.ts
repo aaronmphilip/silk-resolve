@@ -911,7 +911,7 @@ export function novaCareBrainFallback(
   if (followUp) return followUp;
 
   const t = userText.toLowerCase().trim();
-  if (!t || !needsNovaCareBrain(t)) return "";
+  if (!t) return "";
 
   if (
     /\b(compare|comparison|versus|vs\.?|difference)\b/.test(t) &&
@@ -970,7 +970,42 @@ export function novaCareBrainFallback(
     return "If you use O P D often, Premium gives up to twenty five thousand rupees per year versus ten thousand on Standard. Premium also raises sum insured to ten lakh — worth it if outpatient visits are frequent.";
   }
 
+  if (/\b(abroad|overseas|international|foreign country|going abroad|travel(?:ing)?\s+abroad)\b/.test(t)) {
+    return "For travel abroad, NovaCare Premium is the best fit. It includes international emergency support, O P D cover up to twenty five thousand rupees per year, and ten lakh rupees sum insured for the full family at one thousand four hundred ninety nine rupees per month.";
+  }
+
+  if (/\bdowngrade\b/.test(t) && /\b(basic|standard|premium)\b/.test(t)) {
+    return "You can change plans before renewal in the NovaCare app. Downgrading from Premium to Basic moves you to four hundred ninety nine rupees per month with three lakh sum insured — open renewal settings at least thirty days early to confirm the switch.";
+  }
+
   return "";
+}
+
+/** Last-resort spoken answer — demo-safe when Gemini refuses or the API stalls. */
+export function novaCareLastResortFallback(userText: string): string {
+  const text = userText.toLowerCase().trim();
+  if (!text) {
+    return "I can help with NovaCare plans, claims, coverage, and network hospitals. What would you like to check?";
+  }
+  if (isClearlyOutOfScope(text)) return cachedAudioText("out-of-scope");
+  return "NovaCare offers Basic at four hundred ninety nine rupees per month for one adult, Standard at eight hundred ninety nine for a young family, and Premium at one thousand four hundred ninety nine for full family cover. Tell me who you need to cover and I will recommend the right plan.";
+}
+
+/**
+ * Layered local answer for brain routes — never empty for in-scope NovaCare demo turns.
+ * Order: advisory scripts → FAQ text → greetings → last resort.
+ */
+export function resolveNovaCareAssistFallback(
+  userText: string,
+  history: NovaCareConversationTurn[] = []
+): string {
+  return (
+    novaCareBrainFallback(userText, history) ||
+    novaCareFollowUpAnswer(userText, history) ||
+    answerNovaCareQuestion(userText) ||
+    novaCareConversationalReply(userText) ||
+    novaCareLastResortFallback(userText)
+  );
 }
 
 /** Instant spoken reply for greetings — no FAQ clip, no Gemini wait. */

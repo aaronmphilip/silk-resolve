@@ -13,8 +13,8 @@ import {
   cachedAudioText,
   cachedMugaAudioForText,
   needsNovaCareBrain,
-  novaCareBrainFallback,
   novaCareConversationalReply,
+  resolveNovaCareAssistFallback,
   type NovaCareConversationTurn,
   shouldRouteNovaCareToGemini,
 } from "@/lib/novacare-knowledge";
@@ -168,7 +168,7 @@ function brainHistoryFromMessages(messages: OAIMessage[]): NovaCareConversationT
 }
 
 function localBrainSafetyNet(userText: string, messages: OAIMessage[]): string {
-  return novaCareBrainFallback(userText, brainHistoryFromMessages(messages));
+  return resolveNovaCareAssistFallback(userText, brainHistoryFromMessages(messages));
 }
 
 function cleanPromptLine(line: string): string {
@@ -904,7 +904,7 @@ export async function POST(req: NextRequest) {
           model,
           systemContent,
           contents,
-          fallback: conversational || "I'm here to help. What would you like to know?",
+          fallback: resolveNovaCareAssistFallback(lastUser, brainHistoryFromMessages(messages)),
           silkEnabled,
           userText: lastUser,
           clientLeadEnabled,

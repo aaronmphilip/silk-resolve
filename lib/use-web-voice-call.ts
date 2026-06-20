@@ -6,8 +6,7 @@ import {
   isNovaCareAgentId,
   normalizeMugaCacheText,
   NOVACARE_AGENT_ID,
-  novaCareBrainFallback,
-  novaCareFollowUpAnswer,
+  resolveNovaCareAssistFallback,
 } from "@/lib/novacare-knowledge";
 import {
   isGenericBrainFallback,
@@ -1055,23 +1054,20 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     if (!speechStarted) {
       const spoken = stripVoiceMarkers(answerText).trim();
       if (spoken && !isScriptMissingResponse(spoken) && !isGenericBrainFallback(spoken)) {
+        setSpeechTransport("gemini-live");
         enqueueLocalSpeech(spoken, callRunId, localRunId, { forceLive: true });
       } else {
-        const safety =
-          novaCareBrainFallback(userText, transcriptRef.current) ||
-          novaCareFollowUpAnswer(userText, transcriptRef.current);
-        if (safety) {
-          commitTranscript("assistant", safety);
-          setSpeechTransport("gemini-live (fallback)");
-          enqueueLocalSpeech(safety, callRunId, localRunId, { forceLive: true });
-        } else if (isScriptMissingResponse(rawBrainText) || isGenericBrainFallback(rawBrainText || spoken)) {
-          console.warn("[voice] brain declined or returned empty", { raw: rawBrainText.slice(0, 120) });
-          setError("Gemini did not answer. Retry once, or use a cached FAQ chip.");
+        if (isScriptMissingResponse(rawBrainText) || isGenericBrainFallback(rawBrainText || spoken)) {
+          console.warn("[voice] brain declined — using local fallback", { raw: rawBrainText.slice(0, 120) });
         }
+        const safety = resolveNovaCareAssistFallback(userText, transcriptRef.current);
+        commitTranscript("assistant", safety);
+        setSpeechTransport("gemini-live (fallback)");
+        enqueueLocalSpeech(safety, callRunId, localRunId, { forceLive: true });
       }
     }
     return answerText;
-  }, [buildBrainMessages, commitTranscript, enqueueLocalSpeech, speechLanguage, voiceMode]);
+  }, [buildBrainMessages, commitTranscript, enqueueLocalSpeech, resolveNovaCareAssistFallback, speechLanguage, voiceMode]);
 
   const stopMicSilenceGate = useCallback(() => {
     micSilenceGateRef.current?.stop();
@@ -1222,7 +1218,16 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           setSpeechTransport("gemini-live (brain)");
           enqueueLocalSpeech(specAnswer, callRunId, localRunId, { forceLive: true });
         } else {
-          await streamLocalAnswer(userText, "", callRunId, localRunId);
+          try {
+            await streamLocalAnswer(userText, "", callRunId, localRunId);
+          } catch (brainErr) {
+            if (!isLocalSpeechActive(callRunId, localRunId) || playbackGen !== playbackGenerationRef.current) return;
+            console.warn("[voice] brain stream failed — using local fallback", brainErr);
+            const safety = resolveNovaCareAssistFallback(userText, transcriptRef.current);
+            commitTranscript("assistant", safety);
+            setSpeechTransport("gemini-live (fallback)");
+            enqueueLocalSpeech(safety, callRunId, localRunId, { forceLive: true });
+          }
         }
         await localAudioQueueRef.current;
         if (!isLocalSpeechActive(callRunId, localRunId) || playbackGen !== playbackGenerationRef.current) return;

@@ -18,7 +18,7 @@ import {
   type WebVoiceMode,
 } from "@/lib/silk-voice";
 import { isGenericBrainFallback, isScriptMissingResponse, resolveSpeechRoute, speechRouteLabel } from "@/lib/speech-route";
-import { NOVACARE_AGENT_ID, novaCareBrainFallback, novaCareFollowUpAnswer } from "@/lib/novacare-knowledge";
+import { NOVACARE_AGENT_ID, resolveNovaCareAssistFallback } from "@/lib/novacare-knowledge";
 import { stripVoiceMarkers } from "@/lib/voice-emotion";
 
 interface NovaTextSpeakerProps {
@@ -384,7 +384,11 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
       }
 
       const spoken = stripVoiceMarkers(fullAnswer).trim();
-      if (spoken && !isGenericBrainFallback(spoken)) {
+      const usable =
+        spoken && !isGenericBrainFallback(spoken) && !isScriptMissingResponse(spoken);
+
+      if (usable) {
+        setTransport("gemini-live");
         speechChunkCountRef.current = 1;
         setSpeechChunks(1);
         const voiceText =
@@ -397,35 +401,46 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
           { role: "user", content: prompt },
           { role: "assistant", content: spoken },
         ]);
-      } else if (spoken && (isGenericBrainFallback(spoken) || isScriptMissingResponse(spoken))) {
-        const safety = novaCareBrainFallback(prompt, routeHistory) || novaCareFollowUpAnswer(prompt, routeHistory);
-        if (safety) {
-          setAnswer(safety);
-          setTransport("gemini-live (fallback)");
-          speechChunkCountRef.current = 1;
-          setSpeechChunks(1);
-          const voiceText =
-            silkModel === "muga" && !/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]/i.test(safety)
-              ? `[neutral] ${safety}`
-              : safety;
-          enqueueSpeech(voiceText, runId);
-          setHistory((prev) => [
-            ...prev,
-            { role: "user", content: prompt },
-            { role: "assistant", content: safety },
-          ]);
-        } else {
-          setError("Gemini did not answer. Retry once, or use a cached FAQ chip.");
-          setState("error");
-          return;
-        }
+      } else {
+        const safety = resolveNovaCareAssistFallback(prompt, routeHistory);
+        setAnswer(safety);
+        setTransport("gemini-live (fallback)");
+        speechChunkCountRef.current = 1;
+        setSpeechChunks(1);
+        const voiceText =
+          silkModel === "muga" && !/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]/i.test(safety)
+            ? `[neutral] ${safety}`
+            : safety;
+        enqueueSpeech(voiceText, runId);
+        setHistory((prev) => [
+          ...prev,
+          { role: "user", content: prompt },
+          { role: "assistant", content: safety },
+        ]);
       }
       await audioQueueRef.current;
       if (runId === runIdRef.current) setState("idle");
     } catch (err) {
       if (runId !== runIdRef.current) return;
-      setError(err instanceof Error ? err.message : "AI response failed.");
-      setState("error");
+      console.warn("[nova-text] brain failed — using local fallback", err);
+      const safety = resolveNovaCareAssistFallback(prompt, routeHistory);
+      setAnswer(safety);
+      setTransport("gemini-live (fallback)");
+      setState("speaking");
+      speechChunkCountRef.current = 1;
+      setSpeechChunks(1);
+      const voiceText =
+        silkModel === "muga" && !/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]/i.test(safety)
+          ? `[neutral] ${safety}`
+          : safety;
+      enqueueSpeech(voiceText, runId);
+      setHistory((prev) => [
+        ...prev,
+        { role: "user", content: prompt },
+        { role: "assistant", content: safety },
+      ]);
+      await audioQueueRef.current;
+      if (runId === runIdRef.current) setState("idle");
     }
   }
 
