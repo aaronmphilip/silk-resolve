@@ -13,6 +13,16 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  async headers() {
+    return [
+      {
+        source: "/talk/:path*",
+        headers: [
+          { key: "Permissions-Policy", value: "microphone=(self), autoplay=(self)" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -58,10 +58,6 @@ export function speechRecognitionErrorMessage(code: string): string {
 }
 
 export async function ensureMicrophoneAccess(): Promise<void> {
-  if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-    throw new Error("Microphone access is not supported in this browser.");
-  }
-
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  for (const track of stream.getTracks()) track.stop();
+  const { acquireMicrophoneStream } = await import("@/lib/mic-session");
+  await acquireMicrophoneStream();
 }

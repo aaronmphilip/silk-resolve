@@ -140,7 +140,7 @@ function TalkUi({
             <div>
               <Volume2 size={22} className="mx-auto mb-3 text-[#f0ebe0]/15" />
               <p className="text-xs font-mono text-[#f0ebe0]/30">
-                {busy ? "starting..." : active ? "listening..." : autostart ? "starting..." : "start a web call"}
+                {busy ? "starting..." : active ? "listening..." : "tap start call · allow microphone"}
               </p>
             </div>
           </div>
@@ -305,9 +305,7 @@ function PublicTalkVapiClient({ agentId, agentName, voiceMode, autostart = false
   );
 }
 
-function PublicTalkDirectClient({ agentId, agentName, voiceMode, autostart = false }: PublicTalkClientProps) {
-  const autoStartAttemptedRef = useRef(false);
-  const startCallRef = useRef<() => Promise<void>>(async () => {});
+function PublicTalkDirectClient({ agentId, agentName, voiceMode }: PublicTalkClientProps) {
   const {
     state,
     error,
@@ -325,30 +323,6 @@ function PublicTalkDirectClient({ agentId, agentName, voiceMode, autostart = fal
     changeSpeechLanguage,
   } = useDirectVoiceCall(agentId, voiceMode, { autostart: false, playGreeting: true });
 
-  startCallRef.current = startCall;
-
-  const tryAutoStart = () => {
-    if (autoStartAttemptedRef.current) return;
-    autoStartAttemptedRef.current = true;
-    void startCallRef.current();
-  };
-
-  useEffect(() => {
-    if (!autostart) return;
-    const timer = window.setTimeout(tryAutoStart, 0);
-    return () => window.clearTimeout(timer);
-  }, [autostart]);
-
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      const data = event.data as { type?: string } | null;
-      if (data?.type === "silk-resolve-autostart") tryAutoStart();
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
-
   const busy = state === "thinking" || state === "speaking";
   const active = state === "listening" || state === "thinking" || state === "speaking";
   const canStart = state === "idle" || state === "error";
@@ -362,7 +336,7 @@ function PublicTalkDirectClient({ agentId, agentName, voiceMode, autostart = fal
     <TalkUi
       agentName={agentName}
       voiceMode={voiceMode}
-      autostart={autostart}
+      autostart={false}
       state={directStateLabel[state]}
       busy={busy}
       active={active}

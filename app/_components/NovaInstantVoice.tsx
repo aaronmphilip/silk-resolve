@@ -377,10 +377,12 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
         const decoder = new TextDecoder();
         let buffer = "";
         const chunker = new StreamSpeechChunker((chunk) => {
-          if (speculativeChunksRef.current === 0) speculativeChunksRef.current += 1;
-          enqueueSpeech(chunk, runIdRef.current);
-          setState("speaking");
-        }, { minChars: 12, maxChars: 72 });
+          speculativeChunksRef.current += 1;
+          if (speculativeChunksRef.current === 1) {
+            const query = silkTtsQueryForMode(voiceMode).slice(1);
+            prefetchSilkTts(window.location.origin, query, buildSilkTtsBody(voiceMode, chunk));
+          }
+        }, { minChars: 8, maxChars: 64 });
 
         for (;;) {
           const { done, value } = await reader.read();
