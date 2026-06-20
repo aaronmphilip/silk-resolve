@@ -272,7 +272,7 @@ function WidgetScript({ agentId, voiceMode, label, color }: { agentId: string; v
   const snippet = `
 (function() {
   var s = document.createElement('script');
-  s.src = window.location.origin + '/widget.js?v=25';
+  s.src = window.location.origin + '/widget.js?v=26';
   s.setAttribute('data-agent-id', '${agentId}');
   s.setAttribute('data-position', 'bottom-right');
   s.setAttribute('data-greeting', '${label}');

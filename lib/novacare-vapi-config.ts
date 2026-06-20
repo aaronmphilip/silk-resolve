@@ -71,14 +71,16 @@ VOICE CALL RULES:
 - If you cannot answer something account-specific, say "I'll connect you with a specialist who can look that up — they'll reach out within 2 hours" and keep the conversation going.`;
 
   const rawFirst = cleanSpokenText(agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`);
-  const spokenFirstMessage = useSilkVoice
-    ? isMulberry
-      ? wrapMulberryVoiceMeta(
-          buildMulberryDescription(estimateTension(""), classifyCallIntent("")),
-          stripAll(rawFirst)
-        )
-      : withSilkTone("happy", stripAll(rawFirst))
-    : stripAll(rawFirst);
+  const spokenFirstMessage = browserSilkPlayback
+    ? stripAll(rawFirst)
+    : useSilkVoice
+      ? isMulberry
+        ? wrapMulberryVoiceMeta(
+            buildMulberryDescription(estimateTension(""), classifyCallIntent("")),
+            stripAll(rawFirst)
+          )
+        : withSilkTone("happy", stripAll(rawFirst))
+      : stripAll(rawFirst);
 
   return {
     name: agent.name,

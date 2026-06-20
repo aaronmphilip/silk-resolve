@@ -60,9 +60,9 @@ export function buildSilkTtsBody(
     body.description = MULBERRY_DEFAULTS.description;
     body.speaker = MULBERRY_DEFAULTS.speaker;
     body.f0_up_key = MULBERRY_DEFAULTS.f0_up_key;
-    body.temperature = 0.6;
-    body.top_p = 0.95;
-    body.repetition_penalty = 1.2;
+    body.temperature = 0.45;
+    body.top_p = 0.9;
+    body.repetition_penalty = 1.15;
   } else {
     body.temperature = 0.55;
     body.top_p = 0.92;
@@ -195,10 +195,10 @@ export const SILK_DEFAULT_EOT = SILK_NOISE_AWARE_EOT;
 export const SILK_MIC_SILENCE = {
   /** Background hum stays below this; only your voice crosses it (~−35 dBFS). */
   speechRmsThreshold: 0.018,
-  /** Mic must stay quiet this long before the agent replies. */
-  silenceMs: 580,
+  /** Mic must stay quiet this long before the agent replies. Vapi EOT already waits. */
+  silenceMs: 280,
   /** Voice must stay above threshold this long before we count it as you speaking. */
-  speechConfirmMs: 140,
+  speechConfirmMs: 100,
 } as const;
 
 /** @deprecated Use SILK_DEFAULT_EOT */

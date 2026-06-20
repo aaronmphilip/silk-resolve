@@ -199,3 +199,22 @@ export function micConfirmsUserSpeech(
   if (!gate) return true;
   return gate.hasConfirmedSpeechWithin(withinMs);
 }
+
+/**
+ * Accept a user utterance for speech-to-speech playback.
+ * Deepgram finals are trusted when substantive — the local MicSilenceGate uses a
+ * second mic stream and often misses the first turn on Windows.
+ */
+export function shouldAcceptUserUtterance(
+  text: string,
+  gate: MicSilenceGate | null | undefined,
+  opts?: { isFinal?: boolean }
+): boolean {
+  const clean = text.trim();
+  if (!clean) return false;
+  if (!gate || micConfirmsUserSpeech(gate)) return true;
+  if (!opts?.isFinal) return false;
+
+  const words = clean.split(/\s+/).filter(Boolean);
+  return clean.length >= 4 && words.length >= 1;
+}

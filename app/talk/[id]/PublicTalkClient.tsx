@@ -100,7 +100,7 @@ function TalkUi({
             {isSilkVoiceMode(voiceMode) && (
               <div className="mt-1 [&_span]:text-[#f0ebe0]/55 [&_p]:text-[#f0ebe0]/35">
                 <SilkLatencyBadge
-                  transport={speechTransport || "waiting"}
+                  transport={speechTransport || (active ? "listening…" : "ready")}
                   firstChunkMs={latencyMs}
                   accentColor="#34d399"
                 />

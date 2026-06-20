@@ -628,6 +628,7 @@ function streamGemini(args: {
   silkEnabled: boolean;
   userText: string;
   clientLeadEnabled: boolean;
+  localClientEnabled?: boolean;
   mulberryVoice: boolean;
   fastMode?: boolean;
   speechLanguage: string;
@@ -641,6 +642,7 @@ function streamGemini(args: {
     silkEnabled,
     userText,
     clientLeadEnabled,
+    localClientEnabled = false,
     mulberryVoice,
     fastMode = false,
     speechLanguage,
@@ -657,9 +659,10 @@ function streamGemini(args: {
       let pending = "";  // raw model text not yet emitted as a complete sentence
       const startedAt = Date.now();
       let firstChunkAt = 0;
-      const lead = shouldUseFastLead(silkEnabled, clientLeadEnabled, mulberryVoice)
-        ? fastLeadFor(userText, "response")
-        : "";
+      const lead =
+        localClientEnabled || !shouldUseFastLead(silkEnabled, clientLeadEnabled, mulberryVoice)
+          ? ""
+          : fastLeadFor(userText, "response");
 
       // Emit one speakable segment. We normalize a COMPLETE sentence at a time:
       // normalizing per raw token stripped inter-token spaces and merged words
@@ -673,9 +676,10 @@ function streamGemini(args: {
         if (!emittedText) {
           emittedText = true;
           firstChunkAt = Date.now();
-          const spoken = silkEnabled
-            ? formatVoiceOutput(clean, userText, { silkEnabled, mulberryVoice })
-            : clean;
+          const spoken =
+            silkEnabled && !localClientEnabled
+              ? formatVoiceOutput(clean, userText, { silkEnabled, mulberryVoice })
+              : clean;
           controller.enqueue(encoder.encode(sseChunk(id, { content: spoken }, null)));
           return;
         }
@@ -838,6 +842,7 @@ export async function POST(req: NextRequest) {
           silkEnabled,
           userText: lastUser,
           clientLeadEnabled,
+          localClientEnabled: true,
           mulberryVoice,
           fastMode,
           speechLanguage,

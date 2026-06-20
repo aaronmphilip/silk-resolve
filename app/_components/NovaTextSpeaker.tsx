@@ -290,7 +290,7 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
     setState("thinking");
 
     try {
-      const res = await fetch(`/api/voice/vapi-llm?${vapiLlmVoiceQuery(voiceMode)}`, {
+      const res = await fetch(`/api/voice/vapi-llm?${vapiLlmVoiceQuery(voiceMode)}&fast=1&local=1`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

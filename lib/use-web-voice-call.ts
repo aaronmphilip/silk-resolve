@@ -10,7 +10,7 @@ import {
 import { isScriptMissingResponse, resolveSpeechRoute, speechRouteLabel } from "@/lib/speech-route";
 import { buildNovaCareVapiAssistant } from "@/lib/novacare-vapi-config";
 import { DEFAULT_SPEECH_LANGUAGE } from "@/lib/speech-languages";
-import { MicSilenceGate, micConfirmsUserSpeech } from "@/lib/mic-silence-gate";
+import { MicSilenceGate, micConfirmsUserSpeech, shouldAcceptUserUtterance } from "@/lib/mic-silence-gate";
 import {
   buildSilkTtsBody,
   isSilkVoiceMode,
@@ -941,6 +941,14 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     let buffer = "";
     let strippedBridge = false;
     let answerText = "";
+    let speechStarted = false;
+    const chunker = new StreamSpeechChunker((chunk) => {
+      const spoken = stripVoiceMarkers(chunk).trim();
+      if (!spoken || isScriptMissingResponse(spoken)) return;
+      if (!mountedRef.current || callRunId !== runIdRef.current || localRunId !== localAssistRunRef.current) return;
+      speechStarted = true;
+      enqueueLocalSpeech(spoken, callRunId, localRunId, { forceLive: true });
+    }, FAST_CHUNKER);
 
     for (;;) {
       const { done, value } = await reader.read();
@@ -978,15 +986,19 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
             if (transcriptText && !isScriptMissingResponse(transcriptText)) {
               answerText = `${answerText} ${transcriptText}`.replace(/\s+/g, " ").trim();
               setTranscript(lines => appendTranscriptLine(lines, "assistant", transcriptText, Date.now()));
+              chunker.push(transcriptText);
             }
           } catch {}
         }
       }
     }
 
-    const spoken = stripVoiceMarkers(answerText).trim();
-    if (spoken && !isScriptMissingResponse(spoken)) {
-      enqueueLocalSpeech(spoken, callRunId, localRunId, { forceLive: true });
+    chunker.finish();
+    if (!speechStarted) {
+      const spoken = stripVoiceMarkers(answerText).trim();
+      if (spoken && !isScriptMissingResponse(spoken)) {
+        enqueueLocalSpeech(spoken, callRunId, localRunId, { forceLive: true });
+      }
     }
     return answerText;
   }, [enqueueLocalSpeech, speechLanguage, voiceMode]);
@@ -1075,6 +1087,10 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     muteMicForLocalOutput();
     suppressAssistantAudio();
 
+    setSpeechTransport(
+      route.kind === "brain" ? "thinking…" : speechRouteLabel(route)
+    );
+
     void (async () => {
       try {
         if (playbackGen !== playbackGenerationRef.current) return;
@@ -1106,7 +1122,6 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           return;
         }
 
-        setSpeechTransport(speechRouteLabel(route));
         if (useSpeculative) {
           await speculativePromiseRef.current?.catch(() => {});
           speculativeAbortRef.current?.abort();
@@ -1354,11 +1369,11 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
           // Partials stream in as the speaker talks — show them live, don't commit.
           if (msg.transcriptType !== "final") {
-            if (role === "user") {
-              if (!micConfirmsUserSpeech(micSilenceGateRef.current)) return;
-              prefetchLocalAssistForText(text);
-              scheduleSpeculativeLlm(text);
-            }
+          if (role === "user") {
+            if (!shouldAcceptUserUtterance(text, micSilenceGateRef.current)) return;
+            prefetchLocalAssistForText(text);
+            scheduleSpeculativeLlm(text);
+          }
             if (role === "assistant" && Date.now() < assistantTranscriptSuppressUntilRef.current) return;
             setInterim({ role, text });
             return;
@@ -1371,7 +1386,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           setInterim(null);
           setTranscript(lines => appendTranscriptLine(lines, role, text, ts));
           if (role === "user") {
-            if (!micConfirmsUserSpeech(micSilenceGateRef.current)) return;
+            if (!shouldAcceptUserUtterance(text, micSilenceGateRef.current, { isFinal: true })) return;
             if (usesBrowserSilkPlayback(voiceMode)) {
               interruptPlayback();
               suppressAssistantAudio();
@@ -1380,7 +1395,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
             lastUserFinalAtRef.current = ts;
             latencyCapturedRef.current = false;
             setLatencyMs(null);
-            setSpeechTransport("");
+            setSpeechTransport("listening…");
             setTension(value => Math.min(10, value + 0.4));
             prefetchLocalAssistForText(text);
             pendingUserUtteranceRef.current = { text, runId };

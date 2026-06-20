@@ -172,23 +172,8 @@ export function classifyCallIntent(userText: string): CallIntent {
 }
 
 // ── Mulberry instruct-TTS descriptions (Rumik docs: natural-language steering) ─
-export function buildMulberryDescription(tension: number, intent: CallIntent): string {
-  if (tension >= 8 || intent === "angry") {
-    return "soft, calm, reassuring female narrator, low energy, steady pace, empathetic gravitas";
-  }
-  if (tension >= 6 || intent === "frustrated" || intent === "complaint") {
-    return "warm, empathetic female health insurance agent — patient, understanding, gently reassuring";
-  }
-  if (intent === "grateful" || intent === "satisfied") {
-    return "bright, warm, upbeat female narrator — friendly closure, light enthusiasm";
-  }
-  if (intent === "confused" || intent === "query") {
-    return "clear, helpful female narrator — measured pace, thoughtful and easy to follow";
-  }
-  if (tension >= 4) {
-    return "calm, professional female narrator for health insurance support — steady and composed";
-  }
-  return "warm, calm, professional female narrator for health insurance support";
+export function buildMulberryDescription(_tension: number, _intent: CallIntent): string {
+  return "calm, clear, professional female support agent — steady pace, neutral warmth, no dramatic emphasis";
 }
 
 // ── Voice metadata prefix (parsed by silk-tts for Mulberry description) ─────
@@ -237,7 +222,7 @@ export function formatVoiceOutput(
   if (!options.silkEnabled) return clean;
 
   if (options.mulberryVoice) {
-    return wrapMulberryVoiceMeta(buildMulberryDescription(tension, intent), clean);
+    return clean;
   }
 
   return composeSilkUtterance(clean, tension, intent, true);
