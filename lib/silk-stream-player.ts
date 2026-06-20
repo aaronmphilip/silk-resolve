@@ -22,7 +22,8 @@ export async function playStreamingPcmResponse(
   response: Response,
   runId: number,
   isActive: () => boolean,
-  existingCtx?: AudioContext | null
+  existingCtx?: AudioContext | null,
+  onFirstFrame?: () => void
 ): Promise<StreamPlaybackResult> {
   if (!response.ok || !response.body) {
     const detail = await response.text().catch(() => "");
@@ -67,7 +68,10 @@ export async function playStreamingPcmResponse(
     sources.push(source);
     pcmChunks += 1;
 
-    if (firstFrameMs === 0) firstFrameMs = performance.now() - startedAt;
+    if (firstFrameMs === 0) {
+      firstFrameMs = performance.now() - startedAt;
+      onFirstFrame?.();
+    }
   };
 
   try {
@@ -118,7 +122,8 @@ export async function playBufferedPcm(
   sampleRate: number,
   runId: number,
   isActive: () => boolean,
-  existingCtx?: AudioContext | null
+  existingCtx?: AudioContext | null,
+  onFirstFrame?: () => void
 ): Promise<void> {
   if (!isActive()) return;
 
@@ -140,6 +145,7 @@ export async function playBufferedPcm(
     source.buffer = buffer;
     source.connect(ctx.destination);
     source.onended = () => resolve();
+    onFirstFrame?.();
     source.start();
   });
 }

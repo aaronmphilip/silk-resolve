@@ -243,7 +243,9 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
             Test this version now.
           </h2>
           <p className="text-gray-500 text-sm max-w-xl mx-auto mb-7">
-            Try: "Help me with the plans", "How do claims work?", or "Do you cover network hospitals?"
+            {voiceMode === "silk-stream"
+              ? 'Speech-to-speech demo: start a call, then say "What plans do you offer?" — header shows latency from your last word to first MUGA audio (target under 1s on cached FAQs).'
+              : 'Try: "Help me with the plans", "How do claims work?", or "Do you cover network hospitals?"'}
           </p>
           <div className="flex flex-col items-center gap-8">
             <TalkButton label={site.cta} />

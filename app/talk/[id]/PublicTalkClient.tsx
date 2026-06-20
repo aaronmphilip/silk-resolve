@@ -2,8 +2,9 @@
 
 import { useEffect, useRef } from "react";
 import { Loader2, Mic, MicOff, Phone, PhoneOff, Volume2 } from "lucide-react";
+import SilkLatencyBadge from "@/app/_components/SilkLatencyBadge";
 import { SPEECH_LANGUAGES } from "@/lib/speech-languages";
-import { usesDirectVoicePipeline, voiceModeLabel } from "@/lib/silk-voice";
+import { isSilkVoiceMode, usesDirectVoicePipeline, voiceModeLabel } from "@/lib/silk-voice";
 import { useDirectVoiceCall, type DirectVoiceCallState } from "@/lib/use-direct-voice-call";
 import { useWebVoiceCall, type WebVoiceCallState, type WebVoiceMode } from "@/lib/use-web-voice-call";
 
@@ -27,6 +28,7 @@ interface TalkUiProps {
   duration: number;
   tension: number;
   latencyMs: number | null;
+  speechTransport?: string;
   transcript: Array<{ role: "user" | "assistant"; text: string; ts: number }>;
   interim: { role: "user" | "assistant"; text: string } | null;
   onStart: () => void;
@@ -73,6 +75,7 @@ function TalkUi({
   duration,
   tension,
   latencyMs,
+  speechTransport = "",
   transcript,
   interim,
   onStart,
@@ -96,10 +99,21 @@ function TalkUi({
         <div className="min-w-0">
           <p className="text-[10px] font-mono text-[#f0ebe0]/35 uppercase tracking-widest">silk resolve</p>
           <h1 className="text-base font-bold truncate">{agentName}</h1>
-          <p className="text-[10px] font-mono text-[#f0ebe0]/35 uppercase tracking-widest mt-0.5">
-            {voiceModeLabel(voiceMode)}
-            {latencyMs !== null ? ` · ${latencyMs}ms` : ""}
-          </p>
+          <div className="mt-0.5">
+            <p className="text-[10px] font-mono text-[#f0ebe0]/35 uppercase tracking-widest">
+              {voiceModeLabel(voiceMode)}
+              {isSilkVoiceMode(voiceMode) ? " · speech-to-speech" : ""}
+            </p>
+            {isSilkVoiceMode(voiceMode) && (
+              <div className="mt-1 [&_span]:text-[#f0ebe0]/55 [&_p]:text-[#f0ebe0]/35">
+                <SilkLatencyBadge
+                  transport={speechTransport || "waiting"}
+                  firstChunkMs={latencyMs}
+                  accentColor="#34d399"
+                />
+              </div>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2 border border-[#f0ebe0]/15 px-3 py-1.5">
           <span className={`w-2 h-2 rounded-full ${active ? "bg-emerald-400" : busy ? "bg-amber-400 animate-pulse" : "bg-[#f0ebe0]/25"}`} />
@@ -142,6 +156,11 @@ function TalkUi({
               <p className="text-xs font-mono text-[#f0ebe0]/30">
                 {busy ? "connecting..." : active ? "listening..." : autostart ? "starting..." : "start a web call"}
               </p>
+              {active && isSilkVoiceMode(voiceMode) && (
+                <p className="text-[10px] font-mono text-[#f0ebe0]/25 mt-3 max-w-xs mx-auto leading-relaxed">
+                  Demo: say &quot;What plans do you offer?&quot; — latency measures your last word → first MUGA audio.
+                </p>
+              )}
             </div>
           </div>
         ) : (
@@ -241,6 +260,7 @@ function PublicTalkVapiClient({ agentId, agentName, voiceMode, autostart = false
     duration,
     tension,
     latencyMs,
+    speechTransport,
     speechLanguage,
     changeSpeechLanguage,
     transcript,
@@ -298,6 +318,7 @@ function PublicTalkVapiClient({ agentId, agentName, voiceMode, autostart = false
       duration={duration}
       tension={tension}
       latencyMs={latencyMs}
+      speechTransport={speechTransport}
       transcript={transcript}
       interim={interim}
       onStart={startCall}
