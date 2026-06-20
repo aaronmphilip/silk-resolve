@@ -18,7 +18,7 @@ import {
   type WebVoiceMode,
 } from "@/lib/silk-voice";
 import { isGenericBrainFallback, isScriptMissingResponse, resolveSpeechRoute, speechRouteLabel } from "@/lib/speech-route";
-import { NOVACARE_AGENT_ID, novaCareFollowUpAnswer } from "@/lib/novacare-knowledge";
+import { NOVACARE_AGENT_ID, novaCareBrainFallback, novaCareFollowUpAnswer } from "@/lib/novacare-knowledge";
 import { stripVoiceMarkers } from "@/lib/voice-emotion";
 
 interface NovaTextSpeakerProps {
@@ -397,29 +397,25 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
           { role: "user", content: prompt },
           { role: "assistant", content: spoken },
         ]);
-      } else if (spoken && isGenericBrainFallback(spoken)) {
-        const followUp = opts?.forceBrain ? "" : novaCareFollowUpAnswer(prompt, routeHistory);
-        if (followUp) {
-          setAnswer(followUp);
-          setTransport("gemini-live (context)");
+      } else if (spoken && (isGenericBrainFallback(spoken) || isScriptMissingResponse(spoken))) {
+        const safety = novaCareBrainFallback(prompt, routeHistory) || novaCareFollowUpAnswer(prompt, routeHistory);
+        if (safety) {
+          setAnswer(safety);
+          setTransport("gemini-live (fallback)");
           speechChunkCountRef.current = 1;
           setSpeechChunks(1);
           const voiceText =
-            silkModel === "muga" && !/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]/i.test(followUp)
-              ? `[neutral] ${followUp}`
-              : followUp;
+            silkModel === "muga" && !/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]/i.test(safety)
+              ? `[neutral] ${safety}`
+              : safety;
           enqueueSpeech(voiceText, runId);
           setHistory((prev) => [
             ...prev,
             { role: "user", content: prompt },
-            { role: "assistant", content: followUp },
+            { role: "assistant", content: safety },
           ]);
         } else {
-          setError(
-            isScriptMissingResponse(spoken)
-              ? "Gemini declined this question (script guard). Try a Gemini advisory chip or a cached FAQ."
-              : "Gemini returned no answer. Check GEMINI_API_KEY on Vercel and retry."
-          );
+          setError("Gemini did not answer. Retry once, or use a cached FAQ chip.");
           setState("error");
           return;
         }

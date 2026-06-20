@@ -6,6 +6,7 @@ import {
   isNovaCareAgentId,
   normalizeMugaCacheText,
   NOVACARE_AGENT_ID,
+  novaCareBrainFallback,
   novaCareFollowUpAnswer,
 } from "@/lib/novacare-knowledge";
 import {
@@ -973,6 +974,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     let buffer = "";
     let strippedBridge = false;
     let answerText = "";
+    let rawBrainText = "";
     let speechStarted = false;
     const chunker = new StreamSpeechChunker((chunk) => {
       const spoken = stripVoiceMarkers(chunk).trim();
@@ -1005,6 +1007,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
             };
             let content = data.choices?.[0]?.delta?.content ?? "";
             if (!content) continue;
+            rawBrainText = `${rawBrainText} ${stripVoiceMarkers(content)}`.replace(/\s+/g, " ").trim();
 
             if (bridge && !strippedBridge) {
               const withoutBridge = stripLeadingBridge(content, bridge);
@@ -1036,20 +1039,16 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       if (spoken && !isScriptMissingResponse(spoken) && !isGenericBrainFallback(spoken)) {
         enqueueLocalSpeech(spoken, callRunId, localRunId, { forceLive: true });
       } else {
-        const followUp = forceBrainNextRef.current
-          ? ""
-          : novaCareFollowUpAnswer(userText, transcriptRef.current);
-        if (followUp) {
-          commitTranscript("assistant", followUp);
-          setSpeechTransport("gemini-live (context)");
-          enqueueLocalSpeech(followUp, callRunId, localRunId, { forceLive: true });
-        } else if (isScriptMissingResponse(spoken) || isGenericBrainFallback(spoken)) {
-          console.warn("[voice] brain declined or returned empty", { spoken: spoken.slice(0, 120) });
-          setError(
-            isScriptMissingResponse(spoken)
-              ? "Gemini declined this question (script guard). Try a Gemini advisory chip or a cached FAQ."
-              : "Gemini returned no answer. Check GEMINI_API_KEY on Vercel and retry."
-          );
+        const safety =
+          novaCareBrainFallback(userText, transcriptRef.current) ||
+          novaCareFollowUpAnswer(userText, transcriptRef.current);
+        if (safety) {
+          commitTranscript("assistant", safety);
+          setSpeechTransport("gemini-live (fallback)");
+          enqueueLocalSpeech(safety, callRunId, localRunId, { forceLive: true });
+        } else if (isScriptMissingResponse(rawBrainText) || isGenericBrainFallback(rawBrainText || spoken)) {
+          console.warn("[voice] brain declined or returned empty", { raw: rawBrainText.slice(0, 120) });
+          setError("Gemini did not answer. Retry once, or use a cached FAQ chip.");
         }
       }
     }

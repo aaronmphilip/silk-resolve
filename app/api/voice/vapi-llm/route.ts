@@ -13,9 +13,12 @@ import {
   cachedAudioText,
   cachedMugaAudioForText,
   needsNovaCareBrain,
+  novaCareBrainFallback,
   novaCareConversationalReply,
+  type NovaCareConversationTurn,
   shouldRouteNovaCareToGemini,
 } from "@/lib/novacare-knowledge";
+import { isUnusableBrainResponse } from "@/lib/speech-route";
 import { splitSpeakableSentences } from "@/lib/speakable-sentences";
 import { isSilkVoiceMode, normalizeWebVoiceMode } from "@/lib/silk-voice";
 
@@ -38,7 +41,7 @@ interface VapiReq {
   stream?: boolean;
 }
 
-const GEMINI_TIMEOUT_MS = 5_500;
+const GEMINI_TIMEOUT_MS = 8_000;
 // Default to gemini-2.5-flash-lite: the fastest FREE model on this account —
 // measured ~800ms server-side TTFT vs ~1.2s (2.5-flash) and ~1.65s (flash-latest);
 // 2.0-flash is 429 "limit: 0". geminiGenerationConfig() disables its thinking stage
@@ -153,6 +156,19 @@ function augmentBrainContents(contents: GeminiTurn[], lastUser: string): GeminiT
     ...contents.slice(0, -1),
     { role: "user", parts: [{ text: `${last.parts[0].text}\n\n${hint}` }] },
   ];
+}
+
+function brainHistoryFromMessages(messages: OAIMessage[]): NovaCareConversationTurn[] {
+  return messages
+    .filter((message) => message.role !== "system")
+    .map((message) => ({
+      role: message.role === "assistant" ? ("assistant" as const) : ("user" as const),
+      text: message.content,
+    }));
+}
+
+function localBrainSafetyNet(userText: string, messages: OAIMessage[]): string {
+  return novaCareBrainFallback(userText, brainHistoryFromMessages(messages));
 }
 
 function cleanPromptLine(line: string): string {
@@ -639,6 +655,28 @@ async function callGemini(args: {
   return data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
 }
 
+async function callGeminiWithRetry(args: {
+  apiKey: string;
+  model: string;
+  systemContent: string;
+  contents: GeminiTurn[];
+  fastMode?: boolean;
+  speechLanguage: string;
+  userText: string;
+  messages: OAIMessage[];
+}): Promise<string> {
+  const { userText, messages, ...geminiArgs } = args;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const text = await callGemini(geminiArgs);
+      if (!isUnusableBrainResponse(text)) return text;
+    } catch (err) {
+      if (attempt === 1) console.error("[vapi-llm] Gemini retry failed:", err);
+    }
+  }
+  return localBrainSafetyNet(userText, messages);
+}
+
 function streamGemini(args: {
   apiKey: string;
   model: string;
@@ -652,6 +690,7 @@ function streamGemini(args: {
   mulberryVoice: boolean;
   fastMode?: boolean;
   speechLanguage: string;
+  messages?: OAIMessage[];
 }): Response {
   const {
     apiKey,
@@ -666,7 +705,9 @@ function streamGemini(args: {
     mulberryVoice,
     fastMode = false,
     speechLanguage,
+    messages = [],
   } = args;
+  const safetyNet = localBrainSafetyNet(userText, messages);
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const id = `chatcmpl-${Date.now()}`;
@@ -691,6 +732,7 @@ function streamGemini(args: {
         let clean = normalizeSpeechText(raw);
         if (!isLead && lead) clean = stripLeadingFastLead(clean, lead);
         if (!clean.trim()) return;
+        if (!isLead && localClientEnabled && isUnusableBrainResponse(clean)) return;
         if (!isLead) emittedAnswerText = true;
 
         if (!emittedText) {
@@ -795,12 +837,16 @@ function streamGemini(args: {
         }
 
         flushPending(true);
-        if (!emittedAnswerText) emitSegment(fallback || OUT_OF_SCOPE_RESPONSE);
+        if (!emittedAnswerText) {
+          emitSegment(safetyNet || fallback || OUT_OF_SCOPE_RESPONSE);
+        }
         console.log(`[vapi-llm] gemini stream first-chunk=${firstChunkAt ? firstChunkAt - startedAt : -1}ms total=${Date.now() - startedAt}ms`);
       } catch (err) {
         console.error("[vapi-llm] Gemini stream failed:", err);
         flushPending(true);
-        if (!emittedAnswerText) emitSegment(fallback || OUT_OF_SCOPE_RESPONSE);
+        if (!emittedAnswerText) {
+          emitSegment(safetyNet || fallback || OUT_OF_SCOPE_RESPONSE);
+        }
       } finally {
         controller.enqueue(encoder.encode(sseChunk(id, {}, "stop")));
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -866,12 +912,22 @@ export async function POST(req: NextRequest) {
           mulberryVoice,
           fastMode,
           speechLanguage,
+          messages,
         });
       }
       try {
-        const text = await callGemini({ apiKey, model, systemContent, contents, fastMode, speechLanguage });
+        const text = await callGeminiWithRetry({
+          apiKey,
+          model,
+          systemContent,
+          contents,
+          fastMode,
+          speechLanguage,
+          userText: lastUser,
+          messages,
+        });
         return reply(
-          text || conversational || "I'm here to help. What would you like to know?",
+          text || localBrainSafetyNet(lastUser, messages) || conversational || OUT_OF_SCOPE_RESPONSE,
           wantsStream,
           model,
           silkEnabled,
@@ -881,6 +937,10 @@ export async function POST(req: NextRequest) {
         );
       } catch (err) {
         console.error("[vapi-llm] local brain failed:", err);
+        const safety = localBrainSafetyNet(lastUser, messages);
+        if (safety) {
+          return reply(safety, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
+        }
       }
     }
   }

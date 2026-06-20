@@ -899,6 +899,80 @@ export function novaCareFollowUpAnswer(
   return "";
 }
 
+/**
+ * Deterministic brain fallback when Gemini refuses, times out, or returns empty.
+ * Covers cold-start advisory questions (compare, recommend, frustrated claim, etc.).
+ */
+export function novaCareBrainFallback(
+  userText: string,
+  history: NovaCareConversationTurn[] = []
+): string {
+  const followUp = novaCareFollowUpAnswer(userText, history);
+  if (followUp) return followUp;
+
+  const t = userText.toLowerCase().trim();
+  if (!t || !needsNovaCareBrain(t)) return "";
+
+  if (
+    /\b(compare|comparison|versus|vs\.?|difference)\b/.test(t) &&
+    /\b(basic|standard|premium|plan)\b/.test(t)
+  ) {
+    if (/\bfamily of four\b|\bfour people\b|\btwo adults and two children\b/.test(t)) {
+      return "For a family of four, NovaCare Standard at eight hundred ninety nine rupees per month is usually the best fit — two adults and two children with five lakh sum insured. Premium adds ten lakh cover and international emergency support if you want more headroom.";
+    }
+    if (/\bbasic\b/.test(t) && /\bpremium\b/.test(t)) {
+      return "NovaCare Basic is four hundred ninety nine rupees per month for one adult with three lakh cover. Premium is one thousand four hundred ninety nine rupees for the full family with ten lakh sum insured and international emergency support — Basic for budget, Premium for maximum cover.";
+    }
+    if (/\bstandard\b/.test(t) && /\bpremium\b/.test(t)) {
+      return "Standard is eight hundred ninety nine rupees per month with five lakh sum insured and O P D up to ten thousand rupees per year. Premium is one thousand four hundred ninety nine rupees with ten lakh cover, a critical illness rider, and international emergency support.";
+    }
+    return "Basic suits one adult on a budget, Standard fits two adults and two children, and Premium covers the full family with the highest limits. Tell me your family size and I can narrow it down.";
+  }
+
+  if (/\b(which|what)\s+plan\s+(is\s+)?(better|best)\b/.test(t) || /\bbetter for\b/.test(t)) {
+    if (/\bcouple\b/.test(t) && /\b(child|children|one child)\b/.test(t)) {
+      return "For a couple with one child, NovaCare Standard at eight hundred ninety nine rupees per month is usually the right fit — five lakh sum insured with O P D cover and tele-consultations.";
+    }
+    return "For most families, Standard at eight hundred ninety nine rupees per month is the practical starting point. Choose Premium if you need ten lakh cover or travel abroad often.";
+  }
+
+  if (/\b(recommend|suggest|advise)\b/.test(t)) {
+    if (/\bself[- ]?employed\b/.test(t) || /\bno dependents\b/.test(t)) {
+      return "For a self-employed person with no dependents, NovaCare Basic at four hundred ninety nine rupees per month is the economical choice — three lakh sum insured for one adult with cashless hospitalization.";
+    }
+    return "For most callers, NovaCare Standard at eight hundred ninety nine rupees per month balances price and cover. Premium makes sense if you want ten lakh sum insured or international emergency support.";
+  }
+
+  if (/\bwhy should i\b/.test(t) && /\bpremium\b/.test(t)) {
+    return "Premium gives ten lakh sum insured, O P D up to twenty five thousand rupees per year, a critical illness rider, and international emergency support — worth it if you want higher limits and family-wide cover.";
+  }
+
+  if (/\bhow should i choose\b/.test(t) || /\bhow do i decide\b/.test(t)) {
+    return "Match the plan to who you cover: Basic for one adult, Standard for two adults and two children, Premium for full family with the highest limits. Then check sum insured against hospital costs in your city.";
+  }
+
+  if (
+    /\b(frustrated|angry|upset|annoyed|pending|still waiting)\b/.test(t) &&
+    /\b(reimburse|claim)\b/.test(t)
+  ) {
+    return "I understand the wait is frustrating. For a pending reimbursement, confirm bills, discharge summary, prescriptions, and bank details are uploaded in the NovaCare app. For status, call one eight zero zero, six six eight, two two seven three.";
+  }
+
+  if (/\b(basic|standard|premium)\s+or\s+(basic|standard|premium)\b/.test(t)) {
+    return "Basic is best for one adult on a tight budget. Standard fits a young family with O P D needs. Premium is for full family cover with the highest sum insured — say who you need to cover and I will point to one plan.";
+  }
+
+  if (/\b(should i get|maternity)\b/.test(t)) {
+    return "Maternity cover is an add-on on Standard and Premium at one hundred ninety nine rupees per month with a two year waiting period. Standard already includes O P D and tele-consultations if maternity is not your main need yet.";
+  }
+
+  if (/\b(is premium )?worth\b/.test(t) && /\bopd\b/.test(t)) {
+    return "If you use O P D often, Premium gives up to twenty five thousand rupees per year versus ten thousand on Standard. Premium also raises sum insured to ten lakh — worth it if outpatient visits are frequent.";
+  }
+
+  return "";
+}
+
 /** Instant spoken reply for greetings — no FAQ clip, no Gemini wait. */
 export function novaCareConversationalReply(userText: string): string {
   const t = userText.trim();

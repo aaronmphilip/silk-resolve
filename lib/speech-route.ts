@@ -43,6 +43,13 @@ export function isGenericBrainFallback(text: string): boolean {
   return GENERIC_BRAIN_FALLBACK.test(clean);
 }
 
+/** Gemini refused, timed out, or returned a placeholder — use local brain fallback. */
+export function isUnusableBrainResponse(text: string): boolean {
+  const clean = text.trim();
+  if (!clean) return true;
+  return isGenericBrainFallback(clean) || isScriptMissingResponse(clean);
+}
+
 function isGenericSmallTalk(text: string): boolean {
   return /^(hi|hello|hey|thanks|thank you|bye|goodbye|good morning|good evening)[\s.!?]*$/i.test(
     text.trim()
