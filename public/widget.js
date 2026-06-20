@@ -213,8 +213,15 @@
       isOpen = false;
       overlay.style.display = 'none';
       btn.style.display = 'inline-flex';
-      // Reset iframe with a fresh cache-bust so stale 404/HTML never sticks around.
-      iframe.removeAttribute('src');
+      try {
+        if (iframe.contentWindow) {
+          iframe.contentWindow.postMessage({ type: 'silk-resolve-end-call' }, origin);
+        }
+      } catch (e) {}
+      // Tear down iframe after the talk page stops audio + mic.
+      window.setTimeout(function () {
+        iframe.removeAttribute('src');
+      }, 120);
     }
 
     // ── Event wiring ──────────────────────────────────────────────────────────

@@ -30,7 +30,12 @@ import {
   vapiLlmVoiceQuery,
   type WebVoiceMode,
 } from "@/lib/silk-voice";
-import { playBufferedPcm, playStreamingPcmResponse, resetAudioPlayhead } from "@/lib/silk-stream-player";
+import {
+  haltAudioPlayback,
+  playBufferedPcm,
+  playStreamingPcmResponse,
+  resetAudioPlayhead,
+} from "@/lib/silk-stream-player";
 import {
   prefetchSilkTts,
   prefetchSilkTtsLeadSentence,
@@ -554,15 +559,22 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
   const stopLocalAssist = useCallback(() => {
     localAssistRunRef.current += 1;
+    speculativeRunIdRef.current += 1;
+    localStreamAbortRef.current?.abort();
+    localStreamAbortRef.current = null;
     speculativeAbortRef.current?.abort();
     speculativeAbortRef.current = null;
     if (speculativeDebounceRef.current) clearTimeout(speculativeDebounceRef.current);
     speculativeDebounceRef.current = null;
+    speculativePartialRef.current = "";
+    speculativeAnswerRef.current = "";
     speculativeChunksReadyRef.current = 0;
     try {
       localSourceRef.current?.stop();
     } catch {}
     localSourceRef.current = null;
+    haltAudioPlayback(localAudioContextRef.current);
+    localAudioContextRef.current = null;
     localAudioQueueRef.current = Promise.resolve();
     localSpeechKeysRef.current.clear();
     assistantTranscriptSuppressUntilRef.current = 0;
@@ -602,6 +614,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const userSpeechStoppedRef = useRef(false);
   const respondAttemptRef = useRef(0);
   const micSilenceGateRef = useRef<MicSilenceGate | null>(null);
+  const localStreamAbortRef = useRef<AbortController | null>(null);
   const playLocalAssistFnRef = useRef<(userText: string, callRunId: number) => void>(() => {});
 
   const captureFirstAudioLatency = useCallback(() => {
@@ -652,7 +665,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const runSpeculativeLlm = useCallback((partial: string) => {
     if (!usesBrowserSilkPlayback(voiceMode) || !canUseNovaCareCache()) return;
 
-    const cached = speculativeNovaCareAnswer(partial) || novaCareFaqCacheAnswer(partial);
+    const cached = novaCareFaqCacheAnswer(partial);
     if (cached) {
       speculativePartialRef.current = partial;
       speculativeAnswerRef.current = cached;
@@ -878,11 +891,13 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       { role: "user", content: userText },
     ];
 
+    const streamAbort = localStreamAbortRef.current;
     const response = await fetch(
       `/api/voice/vapi-llm?${vapiLlmVoiceQuery(voiceMode)}&fast=1&local=1&lang=${encodeURIComponent(speechLanguage)}`,
       {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: streamAbort?.signal,
         body: JSON.stringify({ stream: true, messages }),
       }
     );
@@ -1009,7 +1024,13 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     const specAligned = Boolean(specPartial && transcriptsAlign(specPartial, userText));
     const specReady =
       speculativeChunksReadyRef.current > 0 || speculativeAnswerRef.current.trim().length > 0;
-    const useSpeculative = !cachedAnswer && !useBrain && !conversational && specAligned && specReady;
+    const useSpeculative =
+      !cachedAnswer &&
+      !conversational &&
+      useBrain &&
+      specAligned &&
+      specReady &&
+      speculativeAnswerRef.current.trim().length > 0;
 
     const localRunId = localAssistRunRef.current + 1;
     localAssistRunRef.current = localRunId;
@@ -1019,6 +1040,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     localSourceRef.current = null;
     localAudioQueueRef.current = Promise.resolve();
     localSpeechKeysRef.current = new Set();
+    localStreamAbortRef.current?.abort();
+    localStreamAbortRef.current = new AbortController();
     resetAudioPlayhead(localAudioContextRef.current);
 
     muteMicForLocalOutput();
@@ -1320,7 +1343,10 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           setTranscript(lines => appendTranscriptLine(lines, role, text, ts));
           if (role === "user") {
             if (!micConfirmsUserSpeech(micSilenceGateRef.current)) return;
-            if (usesBrowserSilkPlayback(voiceMode)) suppressAssistantAudio();
+            if (usesBrowserSilkPlayback(voiceMode)) {
+              stopLocalAssist();
+              suppressAssistantAudio();
+            }
             speculativePrefetchRef.current = "";
             lastUserFinalAtRef.current = ts;
             latencyCapturedRef.current = false;

@@ -259,11 +259,15 @@ function PublicTalkVapiClient({ agentId, agentName, voiceMode, autostart = false
     return () => window.clearTimeout(timer);
   }, [autostart]);
 
+  const endCallRef = useRef(endCall);
+  endCallRef.current = endCall;
+
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       const data = event.data as { type?: string } | null;
       if (data?.type === "silk-resolve-autostart") tryAutoStart();
+      if (data?.type === "silk-resolve-end-call") void endCallRef.current();
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);

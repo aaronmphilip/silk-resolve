@@ -19,6 +19,19 @@ export function resetAudioPlayhead(ctx: AudioContext | null | undefined) {
   playheadByContext.set(ctx, ctx.currentTime);
 }
 
+/** Stop all scheduled audio immediately (interrupt / close). */
+export function haltAudioPlayback(ctx: AudioContext | null | undefined) {
+  if (!ctx) return;
+  playheadByContext.delete(ctx);
+  try {
+    void ctx.close();
+  } catch {
+    try {
+      void ctx.suspend();
+    } catch {}
+  }
+}
+
 function scheduleOnPlayhead(
   ctx: AudioContext,
   buffer: AudioBuffer

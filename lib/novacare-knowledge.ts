@@ -601,7 +601,12 @@ function isRelocationIntent(text: string): boolean {
 }
 
 function isPlanListIntent(text: string): boolean {
-  return hasAny(text, ["plan", "plans", "price", "pricing", "cost", "premium", "monthly", "compare"]);
+  if (needsNovaCareBrain(text)) return false;
+  if (/\bwhat plans?\b/i.test(text) || /\bplans? do you (offer|have|sell)\b/i.test(text)) return true;
+  return (
+    hasAny(text, ["plan", "plans", "price", "pricing", "cost", "monthly"]) &&
+    hasAny(text, ["offer", "have", "available", "list", "tell", "explain", "what"])
+  );
 }
 
 function isCoverageIntent(text: string): boolean {
@@ -638,7 +643,11 @@ function isDependentIntent(text: string): boolean {
 }
 
 function isRenewalIntent(text: string): boolean {
-  return hasAny(text, ["renew", "renewal", "auto renew", "auto-renew", "expire", "expiry"]);
+  if (needsNovaCareBrain(text)) return false;
+  return (
+    hasAny(text, ["renew", "renewal", "auto renew", "auto-renew", "expire", "expiry"]) &&
+    !/\b(before|after|if|can i|should i|downgrade|upgrade|switch|versus|vs)\b/i.test(text)
+  );
 }
 
 function isWaitingIntent(text: string): boolean {
