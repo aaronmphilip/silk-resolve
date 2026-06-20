@@ -802,6 +802,103 @@ export function answerNovaCareQuestion(userText: string): string {
   return novaCareFaqCacheAnswer(userText);
 }
 
+export type NovaCareConversationTurn = {
+  role: "user" | "assistant";
+  text: string;
+};
+
+function conversationContext(history: NovaCareConversationTurn[]): string {
+  return history
+    .slice(-8)
+    .map((line) => line.text.toLowerCase())
+    .join(" ");
+}
+
+function mentionsPlanPricing(context: string): boolean {
+  return /\b(basic|standard|premium|four hundred ninety nine|eight hundred ninety nine|one thousand four hundred ninety nine|499|899|1,?499|plans?|price|pricing|cost|monthly|cheapest|cheaper)\b/.test(
+    context
+  );
+}
+
+/**
+ * Deterministic follow-up answers when chat history makes the intent obvious.
+ * Avoids Gemini for "which is the cheaper one?" after plan prices, abroad advice, etc.
+ */
+export function novaCareFollowUpAnswer(
+  userText: string,
+  history: NovaCareConversationTurn[] = []
+): string {
+  const t = userText.toLowerCase().trim();
+  if (!t) return "";
+
+  const context = `${t} ${conversationContext(history)}`;
+
+  if (
+    /\b(?:which|what)\s+(?:one|plan)\s+(?:is\s+)?(?:the\s+)?(?:cheaper|cheapest|more affordable|lower(?:\s+priced)?|least expensive)\b/.test(t) ||
+    /\b(?:the\s+)?cheaper\s+one\b/.test(t) ||
+    /\bwhich\s+is\s+(?:the\s+)?cheaper\b/.test(t) ||
+    /\bwhat(?:'s| is)\s+(?:the\s+)?cheapest\b/.test(t)
+  ) {
+    if (mentionsPlanPricing(context)) {
+      return cachedAudioText("plan-basic");
+    }
+  }
+
+  if (
+    /\b(?:which|what)\s+(?:one|plan)\s+(?:is\s+)?(?:the\s+)?(?:expensive|priciest|highest|costlier|most expensive)\b/.test(t) ||
+    /\b(?:the\s+)?expensive\s+one\b/.test(t)
+  ) {
+    if (mentionsPlanPricing(context)) {
+      return cachedAudioText("plan-premium");
+    }
+  }
+
+  if (
+    /\b(?:which|what)\s+(?:one|plan)\s+(?:is\s+)?(?:the\s+)?(?:middle|mid(?:dle)?|balanced|practical|sensible)\b/.test(t) ||
+    /\b(?:good|best)\s+(?:starting\s+)?point\b/.test(t)
+  ) {
+    if (mentionsPlanPricing(context)) {
+      return cachedAudioText("plan-standard");
+    }
+  }
+
+  if (
+    /\b(abroad|overseas|international|foreign country|travel(?:ing)?(?:\s+abroad)?)\b/.test(t) ||
+    (/\b(which|what)\s+plan\b/.test(t) &&
+      /\b(great|good|best|right|suitable|recommend|worth)\b/.test(t) &&
+      /\b(abroad|overseas|international|travel(?:ing)?)\b/.test(context))
+  ) {
+    if (/\b(abroad|overseas|international|foreign|travel(?:ing)?)\b/.test(context)) {
+      return "For travel abroad, NovaCare Premium is the best fit. It includes international emergency support, O P D cover up to twenty five thousand rupees per year, and ten lakh rupees sum insured for the full family at one thousand four hundred ninety nine rupees per month.";
+    }
+  }
+
+  if (
+    /\b(downgrade|upgrade|switch(?:ing)?)\b/.test(t) &&
+    /\b(before\s+renewal|renewal|renew)\b/.test(context)
+  ) {
+    if (/\bdowngrade\b/.test(t) && /\bpremium\b/.test(context) && /\bbasic\b/.test(t + " " + context)) {
+      return "Yes, you can downgrade from Premium to Basic before renewal in the NovaCare app. Basic is four hundred ninety nine rupees per month with three lakh rupees sum insured. Open renewal settings at least thirty days before your renewal date to confirm the premium and coverage change.";
+    }
+    if (/\bupgrade\b/.test(t) && /\bbasic\b/.test(context) && /\b(standard|premium)\b/.test(t + " " + context)) {
+      return cachedAudioText("plan-standard");
+    }
+  }
+
+  if (
+    /\b(surgery|operation|procedure|knee|hip|fracture|hospitalization)\b/.test(t) &&
+    /\b(father|mother|parent|child|children|family)\b/.test(t)
+  ) {
+    return "For a parent needing knee surgery, NovaCare Standard or Premium is usually the better fit. Standard gives five lakh rupees sum insured for the family with O P D cover, while Premium adds critical illness cover and a ten lakh limit if hospital costs run high.";
+  }
+
+  if (/\bwhat\s+(?:can|do)\s+you\s+(?:do|help(?:\s+with)?)\b/.test(t)) {
+    return "I can help with NovaCare plan prices, coverage limits, cashless and reimbursement claims, waiting periods, renewals, and network hospitals. What would you like to check first?";
+  }
+
+  return "";
+}
+
 /** Instant spoken reply for greetings — no FAQ clip, no Gemini wait. */
 export function novaCareConversationalReply(userText: string): string {
   const t = userText.trim();

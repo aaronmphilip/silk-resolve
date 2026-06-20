@@ -15,7 +15,8 @@ import {
   voiceModeLabel,
   type WebVoiceMode,
 } from "@/lib/silk-voice";
-import { isGenericBrainFallback } from "@/lib/speech-route";
+import { isGenericBrainFallback, resolveSpeechRoute, speechRouteLabel } from "@/lib/speech-route";
+import { NOVACARE_AGENT_ID, novaCareFollowUpAnswer } from "@/lib/novacare-knowledge";
 import { stripVoiceMarkers } from "@/lib/voice-emotion";
 
 interface NovaTextSpeakerProps {
@@ -289,6 +290,39 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
     pcmChunkTotalRef.current = 0;
     firstChunkLatencyRef.current = null;
     resetAudioPlayhead(audioContextRef.current);
+    const routeHistory = history.map((line) => ({ role: line.role, text: line.content }));
+    const route = resolveSpeechRoute(prompt, {
+      agentId: NOVACARE_AGENT_ID,
+      systemPrompt,
+      history: routeHistory,
+    });
+
+    if (
+      route.kind === "cached-faq" ||
+      route.kind === "out-of-scope" ||
+      route.kind === "conversational" ||
+      route.kind === "contextual"
+    ) {
+      setAnswer(route.answer);
+      setTransport(speechRouteLabel(route));
+      setState("speaking");
+      speechChunkCountRef.current = 1;
+      setSpeechChunks(1);
+      const voiceText =
+        silkModel === "muga" && !/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]/i.test(route.answer)
+          ? `[neutral] ${route.answer}`
+          : route.answer;
+      enqueueSpeech(voiceText, runId);
+      setHistory((prev) => [
+        ...prev,
+        { role: "user", content: prompt },
+        { role: "assistant", content: route.answer },
+      ]);
+      await audioQueueRef.current;
+      if (runId === runIdRef.current) setState("idle");
+      return;
+    }
+
     setState("thinking");
 
     try {
@@ -363,9 +397,27 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
           { role: "assistant", content: spoken },
         ]);
       } else if (spoken && isGenericBrainFallback(spoken)) {
-        setError("Could not get an answer. Check connection and try again.");
-        setState("error");
-        return;
+        const followUp = novaCareFollowUpAnswer(prompt, routeHistory);
+        if (followUp) {
+          setAnswer(followUp);
+          setTransport("gemini-live (context)");
+          speechChunkCountRef.current = 1;
+          setSpeechChunks(1);
+          const voiceText =
+            silkModel === "muga" && !/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]/i.test(followUp)
+              ? `[neutral] ${followUp}`
+              : followUp;
+          enqueueSpeech(voiceText, runId);
+          setHistory((prev) => [
+            ...prev,
+            { role: "user", content: prompt },
+            { role: "assistant", content: followUp },
+          ]);
+        } else {
+          setError("Could not get an answer. Check connection and try again.");
+          setState("error");
+          return;
+        }
       }
       await audioQueueRef.current;
       if (runId === runIdRef.current) setState("idle");

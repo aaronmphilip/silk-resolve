@@ -1,14 +1,23 @@
 import {
   cachedAudioText,
+  cachedMugaAudioForText,
   isClearlyOutOfScope,
   isNovaCareAgentId,
   needsNovaCareBrain,
   novaCareConversationalReply,
   novaCareFaqCacheAnswer,
+  novaCareFollowUpAnswer,
+  type NovaCareConversationTurn,
   shouldRouteNovaCareToGemini,
 } from "@/lib/novacare-knowledge";
 
-export type SpeechRouteKind = "cached-faq" | "conversational" | "brain" | "out-of-scope";
+export type SpeechRouteKind = "cached-faq" | "conversational" | "contextual" | "brain" | "out-of-scope";
+
+export type SpeechRouteContext = {
+  agentId: string;
+  systemPrompt: string;
+  history?: NovaCareConversationTurn[];
+};
 
 export type SpeechRoute = {
   kind: SpeechRouteKind;
@@ -57,10 +66,19 @@ function genericConversationalReply(userText: string): string {
  * NovaCare: exact FAQ clips only → else Gemini brain.
  * Custom agents: always Gemini brain (agent system prompt), except small-talk.
  */
-export function resolveSpeechRoute(
+function resolveNovaCareFollowUp(
   userText: string,
-  ctx: { agentId: string; systemPrompt: string }
-): SpeechRoute {
+  history: NovaCareConversationTurn[]
+): SpeechRoute | null {
+  const answer = novaCareFollowUpAnswer(userText, history);
+  if (!answer) return null;
+  if (cachedMugaAudioForText(answer)) {
+    return { kind: "cached-faq", answer, transport: "cached-mulberry-faq" };
+  }
+  return { kind: "contextual", answer, transport: "gemini-live" };
+}
+
+export function resolveSpeechRoute(userText: string, ctx: SpeechRouteContext): SpeechRoute {
   const text = userText.trim();
   if (!text) {
     return { kind: "brain", answer: "", transport: "gemini-live" };
@@ -85,6 +103,9 @@ export function resolveSpeechRoute(
         transport: "cached-mulberry-faq",
       };
     }
+
+    const followUp = resolveNovaCareFollowUp(text, ctx.history ?? []);
+    if (followUp) return followUp;
 
     if (needsNovaCareBrain(text.toLowerCase())) {
       return { kind: "brain", answer: "", transport: "gemini-live" };
@@ -115,6 +136,8 @@ export function speechRouteLabel(route: SpeechRoute): string {
       return "cached-mulberry-faq (out-of-scope)";
     case "conversational":
       return "gemini-live (greeting)";
+    case "contextual":
+      return "gemini-live (context)";
     case "brain":
       return "gemini-live";
     default:
