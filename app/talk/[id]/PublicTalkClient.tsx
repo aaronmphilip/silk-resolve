@@ -2,7 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { Loader2, Mic, MicOff, Phone, PhoneOff, Volume2 } from "lucide-react";
-import { voiceModeLabel } from "@/lib/silk-voice";
+import { usesDirectVoicePipeline, voiceModeLabel } from "@/lib/silk-voice";
+import { useDirectVoiceCall, type DirectVoiceCallState } from "@/lib/use-direct-voice-call";
 import { useWebVoiceCall, type WebVoiceCallState, type WebVoiceMode } from "@/lib/use-web-voice-call";
 
 interface PublicTalkClientProps {
@@ -12,7 +13,28 @@ interface PublicTalkClientProps {
   autostart?: boolean;
 }
 
-const stateLabel: Record<WebVoiceCallState, string> = {
+interface TalkUiProps {
+  agentName: string;
+  voiceMode: WebVoiceMode;
+  autostart: boolean;
+  state: string;
+  busy: boolean;
+  active: boolean;
+  canStart: boolean;
+  error: string;
+  muted: boolean;
+  duration: number;
+  tension: number;
+  latencyMs: number | null;
+  transcript: Array<{ role: "user" | "assistant"; text: string; ts: number }>;
+  interim: { role: "user" | "assistant"; text: string } | null;
+  onStart: () => void;
+  onEnd: () => void;
+  onToggleMute: () => void;
+  onResetAndStart: () => void;
+}
+
+const vapiStateLabel: Record<WebVoiceCallState, string> = {
   idle: "ready",
   connecting: "creating call",
   joining: "joining",
@@ -22,65 +44,44 @@ const stateLabel: Record<WebVoiceCallState, string> = {
   error: "error",
 };
 
+const directStateLabel: Record<DirectVoiceCallState, string> = {
+  idle: "ready",
+  listening: "live",
+  thinking: "thinking",
+  speaking: "speaking",
+  error: "error",
+};
+
 function formatDuration(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export default function PublicTalkClient({ agentId, agentName, voiceMode, autostart = false }: PublicTalkClientProps) {
+function TalkUi({
+  agentName,
+  voiceMode,
+  autostart,
+  state,
+  busy,
+  active,
+  canStart,
+  error,
+  muted,
+  duration,
+  tension,
+  latencyMs,
+  transcript,
+  interim,
+  onStart,
+  onEnd,
+  onToggleMute,
+  onResetAndStart,
+}: TalkUiProps) {
   const transcriptRef = useRef<HTMLDivElement>(null);
-  const autoStartAttemptedRef = useRef(false);
-  const startCallRef = useRef<() => Promise<void>>(async () => {});
-  const {
-    state,
-    error,
-    muted,
-    duration,
-    tension,
-    transcript,
-    interim,
-    startCall,
-    endCall,
-    toggleMute,
-    reset,
-  } = useWebVoiceCall(agentId, voiceMode);
-
-  startCallRef.current = startCall;
+  const tensionColor = tension > 7 ? "bg-red-400" : tension > 5 ? "bg-amber-400" : "bg-emerald-400";
 
   useEffect(() => {
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: "smooth" });
   }, [transcript, interim]);
-
-  const tryAutoStart = () => {
-    if (autoStartAttemptedRef.current) return;
-    autoStartAttemptedRef.current = true;
-    void startCallRef.current();
-  };
-
-  useEffect(() => {
-    if (!autostart) return;
-    const timer = window.setTimeout(tryAutoStart, 0);
-    return () => window.clearTimeout(timer);
-  }, [autostart]);
-
-  useEffect(() => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      const data = event.data as { type?: string } | null;
-      if (data?.type === "silk-resolve-autostart") tryAutoStart();
-    };
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, []);
-
-  const busy = state === "connecting" || state === "joining" || state === "ending";
-  const active = state === "active";
-  const canStart = !autostart && (state === "idle" || state === "ended" || state === "error");
-  const tensionColor = tension > 7 ? "bg-red-400" : tension > 5 ? "bg-amber-400" : "bg-emerald-400";
-
-  async function start() {
-    if (state === "ended" || state === "error") await reset();
-    await startCall();
-  }
 
   return (
     <main className="min-h-screen bg-[#0a0a0a] text-[#f0ebe0] flex flex-col">
@@ -90,11 +91,12 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode, autost
           <h1 className="text-base font-bold truncate">{agentName}</h1>
           <p className="text-[10px] font-mono text-[#f0ebe0]/35 uppercase tracking-widest mt-0.5">
             {voiceModeLabel(voiceMode)}
+            {latencyMs !== null ? ` · ${latencyMs}ms` : ""}
           </p>
         </div>
         <div className="flex items-center gap-2 border border-[#f0ebe0]/15 px-3 py-1.5">
           <span className={`w-2 h-2 rounded-full ${active ? "bg-emerald-400" : busy ? "bg-amber-400 animate-pulse" : "bg-[#f0ebe0]/25"}`} />
-          <span className="text-[10px] font-mono text-[#f0ebe0]/60">{active ? formatDuration(duration) : stateLabel[state]}</span>
+          <span className="text-[10px] font-mono text-[#f0ebe0]/60">{active ? formatDuration(duration) : state}</span>
         </div>
       </header>
 
@@ -114,7 +116,7 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode, autost
             <div>
               <Volume2 size={22} className="mx-auto mb-3 text-[#f0ebe0]/15" />
               <p className="text-xs font-mono text-[#f0ebe0]/30">
-                {busy ? "connecting..." : active ? "listening..." : autostart ? "starting..." : "start a web call"}
+                {busy ? "starting..." : active ? "listening..." : autostart ? "starting..." : "start a web call"}
               </p>
             </div>
           </div>
@@ -164,14 +166,14 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode, autost
         {busy && (
           <div className="mr-auto flex items-center gap-2 text-xs font-mono text-[#f0ebe0]/35">
             <Loader2 size={12} className="animate-spin" />
-            {stateLabel[state]}
+            {state}
           </div>
         )}
 
         {canStart && (
           <button
             type="button"
-            onClick={() => void start()}
+            onClick={() => void onResetAndStart()}
             className="min-h-12 flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-[#f0ebe0] text-[#0a0a0a] px-5 py-3 text-sm font-bold"
           >
             <Phone size={15} /> Start call
@@ -182,7 +184,7 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode, autost
           <>
             <button
               type="button"
-              onClick={toggleMute}
+              onClick={onToggleMute}
               className={`min-h-12 inline-flex items-center justify-center gap-2 border px-4 py-3 text-sm font-mono ${
                 muted ? "border-amber-400/50 text-amber-300" : "border-[#f0ebe0]/20 text-[#f0ebe0]/70"
               }`}
@@ -192,7 +194,7 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode, autost
             </button>
             <button
               type="button"
-              onClick={() => void endCall()}
+              onClick={() => void onEnd()}
               className="min-h-12 inline-flex items-center justify-center gap-2 border border-red-400/40 text-red-300 px-4 py-3 text-sm font-mono"
             >
               <PhoneOff size={14} />
@@ -203,4 +205,160 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode, autost
       </footer>
     </main>
   );
+}
+
+function PublicTalkVapiClient({ agentId, agentName, voiceMode, autostart = false }: PublicTalkClientProps) {
+  const autoStartAttemptedRef = useRef(false);
+  const startCallRef = useRef<() => Promise<void>>(async () => {});
+  const {
+    state,
+    error,
+    muted,
+    duration,
+    tension,
+    transcript,
+    interim,
+    startCall,
+    endCall,
+    toggleMute,
+    reset,
+  } = useWebVoiceCall(agentId, voiceMode);
+
+  startCallRef.current = startCall;
+
+  const tryAutoStart = () => {
+    if (autoStartAttemptedRef.current) return;
+    autoStartAttemptedRef.current = true;
+    void startCallRef.current();
+  };
+
+  useEffect(() => {
+    if (!autostart) return;
+    const timer = window.setTimeout(tryAutoStart, 0);
+    return () => window.clearTimeout(timer);
+  }, [autostart]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as { type?: string } | null;
+      if (data?.type === "silk-resolve-autostart") tryAutoStart();
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  const busy = state === "connecting" || state === "joining" || state === "ending";
+  const active = state === "active";
+  const canStart = !autostart && (state === "idle" || state === "ended" || state === "error");
+
+  async function resetAndStart() {
+    if (state === "ended" || state === "error") await reset();
+    await startCall();
+  }
+
+  return (
+    <TalkUi
+      agentName={agentName}
+      voiceMode={voiceMode}
+      autostart={autostart}
+      state={vapiStateLabel[state]}
+      busy={busy}
+      active={active}
+      canStart={canStart}
+      error={error}
+      muted={muted}
+      duration={duration}
+      tension={tension}
+      latencyMs={null}
+      transcript={transcript}
+      interim={interim}
+      onStart={startCall}
+      onEnd={endCall}
+      onToggleMute={toggleMute}
+      onResetAndStart={resetAndStart}
+    />
+  );
+}
+
+function PublicTalkDirectClient({ agentId, agentName, voiceMode, autostart = false }: PublicTalkClientProps) {
+  const autoStartAttemptedRef = useRef(false);
+  const startCallRef = useRef<() => Promise<void>>(async () => {});
+  const {
+    state,
+    error,
+    muted,
+    duration,
+    tension,
+    transcript,
+    interim,
+    latencyMs,
+    startCall,
+    endCall,
+    reset,
+    toggleMute,
+  } = useDirectVoiceCall(agentId, voiceMode, { autostart: false, playGreeting: true });
+
+  startCallRef.current = startCall;
+
+  const tryAutoStart = () => {
+    if (autoStartAttemptedRef.current) return;
+    autoStartAttemptedRef.current = true;
+    void startCallRef.current();
+  };
+
+  useEffect(() => {
+    if (!autostart) return;
+    const timer = window.setTimeout(tryAutoStart, 0);
+    return () => window.clearTimeout(timer);
+  }, [autostart]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as { type?: string } | null;
+      if (data?.type === "silk-resolve-autostart") tryAutoStart();
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
+  const busy = state === "thinking" || state === "speaking";
+  const active = state === "listening" || state === "thinking" || state === "speaking";
+  const canStart = !autostart && (state === "idle" || state === "error");
+
+  async function resetAndStart() {
+    if (state === "error") await reset();
+    await startCall();
+  }
+
+  return (
+    <TalkUi
+      agentName={agentName}
+      voiceMode={voiceMode}
+      autostart={autostart}
+      state={directStateLabel[state]}
+      busy={busy}
+      active={active}
+      canStart={canStart}
+      error={error}
+      muted={muted}
+      duration={duration}
+      tension={tension}
+      latencyMs={latencyMs}
+      transcript={transcript}
+      interim={interim}
+      onStart={startCall}
+      onEnd={endCall}
+      onToggleMute={toggleMute}
+      onResetAndStart={resetAndStart}
+    />
+  );
+}
+
+export default function PublicTalkClient(props: PublicTalkClientProps) {
+  if (usesDirectVoicePipeline(props.voiceMode)) {
+    return <PublicTalkDirectClient {...props} />;
+  }
+  return <PublicTalkVapiClient {...props} />;
 }

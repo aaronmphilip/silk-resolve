@@ -3,6 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Loader2, Mic, Square, Volume2 } from "lucide-react";
 import { answerNovaCareQuestion, NOVACARE_PROMPT } from "@/lib/novacare-knowledge";
+import {
+  prefetchSilkTts,
+  shouldStartSpeculativeLlm,
+  speculativeNovaCareAnswer,
+  transcriptsAlign,
+} from "@/lib/realtime-voice";
 import { playBufferedPcm, playStreamingPcmResponse } from "@/lib/silk-stream-player";
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
 import {
@@ -177,6 +183,12 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
   const runIdRef = useRef(0);
   const firstChunkLatencyRef = useRef<number | null>(null);
   const prefetchedAudioRef = useRef(new Map<string, { audio: ArrayBuffer; sampleRate: number }>());
+  const speculativeAbortRef = useRef<AbortController | null>(null);
+  const speculativePartialRef = useRef("");
+  const speculativeAnswerRef = useRef("");
+  const speculativeChunksRef = useRef(0);
+  const speculativeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMulberry = voiceMode === "silk-mulberry";
 
   useEffect(() => {
     setSupported(Boolean(getSpeechRecognitionCtor()));
@@ -321,8 +333,78 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
     audioQueueRef.current = audioQueueRef.current.then(() => job);
   }
 
+  function scheduleSpeculative(partial: string) {
+    if (!isMulberry || !shouldStartSpeculativeLlm(partial)) return;
+
+    const cached = speculativeNovaCareAnswer(partial) || answerNovaCareQuestion(partial);
+    if (cached) {
+      const query = silkTtsQueryForMode(voiceMode).slice(1);
+      prefetchSilkTts(window.location.origin, query, buildSilkTtsBody(voiceMode, cached));
+      return;
+    }
+
+    if (speculativeDebounceRef.current) clearTimeout(speculativeDebounceRef.current);
+    speculativeDebounceRef.current = setTimeout(() => {
+      speculativeAbortRef.current?.abort();
+      const abort = new AbortController();
+      speculativeAbortRef.current = abort;
+      speculativePartialRef.current = partial;
+      speculativeAnswerRef.current = "";
+      speculativeChunksRef.current = 0;
+
+      void fetch(`/api/voice/vapi-llm?${vapiLlmVoiceQuery(voiceMode)}&fast=1`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: abort.signal,
+        body: JSON.stringify({
+          stream: true,
+          messages: [
+            { role: "system", content: NOVACARE_PROMPT },
+            { role: "user", content: partial },
+          ],
+        }),
+      }).then(async (res) => {
+        if (!res.ok || !res.body) return;
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        const chunker = new StreamSpeechChunker((chunk) => {
+          if (speculativeChunksRef.current === 0) speculativeChunksRef.current += 1;
+          enqueueSpeech(chunk, runIdRef.current);
+          setState("speaking");
+        }, { minChars: 12, maxChars: 72 });
+
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done || abort.signal.aborted) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parsed = readSsePayloads(buffer);
+          buffer = parsed.rest;
+          for (const event of parsed.events) {
+            for (const rawLine of event.split(/\r?\n/)) {
+              const line = rawLine.trim();
+              if (!line.startsWith("data:")) continue;
+              const payload = line.slice(5).trim();
+              if (!payload || payload === "[DONE]") continue;
+              try {
+                const data = JSON.parse(payload) as { choices?: Array<{ delta?: { content?: string } }> };
+                const content = data.choices?.[0]?.delta?.content ?? "";
+                if (content) {
+                  speculativeAnswerRef.current = appendText(speculativeAnswerRef.current, content);
+                  chunker.push(content);
+                }
+              } catch {}
+            }
+          }
+        }
+        chunker.finish();
+      }).catch(() => {});
+    }, 90);
+  }
+
   async function streamServerAnswer(prompt: string, immediateBridge: string, runId: number) {
-    const res = await fetch(`/api/voice/vapi-llm?${vapiLlmVoiceQuery(voiceMode)}`, {
+    const fastQuery = isMulberry ? "&fast=1" : "";
+    const res = await fetch(`/api/voice/vapi-llm?${vapiLlmVoiceQuery(voiceMode)}${fastQuery}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -406,6 +488,22 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
     setLatencyMs(null);
     firstChunkLatencyRef.current = null;
 
+    const specPartial = speculativePartialRef.current;
+    const specAligned = isMulberry && specPartial && transcriptsAlign(specPartial, cleanPrompt);
+    const specPlaying = speculativeChunksRef.current > 0;
+
+    if (specAligned && specPlaying) {
+      setState("speaking");
+      const answerText = speculativeAnswerRef.current.trim();
+      if (answerText) setAnswer(answerText);
+      await audioQueueRef.current;
+      if (runId === runIdRef.current) setState("idle");
+      return;
+    }
+
+    speculativeAbortRef.current?.abort();
+    speculativeAbortRef.current = null;
+
     const cachedAnswer = answerNovaCareQuestion(cleanPrompt);
     if (cachedAnswer) {
       setState("speaking");
@@ -469,7 +567,9 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
         else interimText += transcript;
       }
 
-      setInterim(interimText.trim());
+      const interimTrimmed = interimText.trim();
+      setInterim(interimTrimmed);
+      if (interimTrimmed) scheduleSpeculative(interimTrimmed);
       if (finalText.trim()) {
         recognitionRef.current = null;
         recognition.stop();

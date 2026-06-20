@@ -68,3 +68,35 @@ export function prefetchSilkTts(
     });
   } catch {}
 }
+
+export function normalizeTranscriptKey(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** True when a speculative partial is close enough to the final transcript. */
+export function transcriptsAlign(partial: string, final: string): boolean {
+  const p = normalizeTranscriptKey(partial);
+  const f = normalizeTranscriptKey(final);
+  if (!p || !f) return false;
+  if (f.startsWith(p) || p.startsWith(f)) return true;
+
+  const partialWords = p.split(" ").filter(Boolean);
+  const finalWords = f.split(" ").filter(Boolean);
+  if (finalWords.length === 0) return false;
+
+  const partialSet = new Set(partialWords);
+  const overlap = finalWords.filter((word) => partialSet.has(word)).length;
+  return overlap / finalWords.length >= 0.65;
+}
+
+/** GPT Realtime-style: start LLM while the caller is still talking. */
+export function shouldStartSpeculativeLlm(partialText: string): boolean {
+  const text = partialText.trim();
+  if (text.length < 14) return false;
+  const words = text.split(/\s+/).filter(Boolean);
+  return words.length >= 3;
+}

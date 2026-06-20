@@ -35,12 +35,16 @@ const GEMINI_TIMEOUT_MS = 5_500;
 // so first-token latency stays low for voice. Override via GEMINI_MODEL if needed.
 const DEFAULT_MODEL = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite";
 const MAX_OUTPUT_TOKENS = 90;
+const FAST_OUTPUT_TOKENS = 48;
 
 // Gemini 2.5/3 models "think" before answering by default, adding 2–4s of dead
 // air before the first token — fatal for a voice call. thinkingBudget:0 disables
 // it so replies stream immediately. 2.0-flash has no thinking stage, so we skip it.
-function geminiGenerationConfig(model: string): Record<string, unknown> {
-  const config: Record<string, unknown> = { maxOutputTokens: MAX_OUTPUT_TOKENS, temperature: 0.2 };
+function geminiGenerationConfig(model: string, fast = false): Record<string, unknown> {
+  const config: Record<string, unknown> = {
+    maxOutputTokens: fast ? FAST_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS,
+    temperature: fast ? 0.15 : 0.2,
+  };
   if (/gemini-(?:2\.5|3)/i.test(model)) {
     config.thinkingConfig = { thinkingBudget: 0 };
   }
@@ -59,12 +63,14 @@ function getConfig(req: NextRequest) {
   const clientLeadEnabled = req.nextUrl.searchParams.get("clientLead") === "1";
   const localClientEnabled = req.nextUrl.searchParams.get("local") === "1";
   const mulberryVoice = voiceParam === "silk-mulberry";
+  const fastMode = req.nextUrl.searchParams.get("fast") === "1";
   return {
     apiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
     silkEnabled: requestedVoice === "silk" && Boolean(process.env.SILK_API_KEY?.trim()) && !silkDisabled,
     clientLeadEnabled,
     localClientEnabled,
     mulberryVoice,
+    fastMode,
   };
 }
 
@@ -561,8 +567,9 @@ async function callGemini(args: {
   model: string;
   systemContent: string;
   contents: GeminiTurn[];
+  fastMode?: boolean;
 }): Promise<string> {
-  const { apiKey, model, systemContent, contents } = args;
+  const { apiKey, model, systemContent, contents, fastMode = false } = args;
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${apiKey}`,
     {
@@ -574,7 +581,7 @@ async function callGemini(args: {
           parts: [{ text: geminiSystemInstruction(systemContent) }],
         },
         contents,
-        generationConfig: geminiGenerationConfig(model),
+        generationConfig: geminiGenerationConfig(model, fastMode),
       }),
     }
   );
@@ -603,8 +610,9 @@ function streamGemini(args: {
   userText: string;
   clientLeadEnabled: boolean;
   mulberryVoice: boolean;
+  fastMode?: boolean;
 }): Response {
-  const { apiKey, model, systemContent, contents, fallback, silkEnabled, userText, clientLeadEnabled, mulberryVoice } = args;
+  const { apiKey, model, systemContent, contents, fallback, silkEnabled, userText, clientLeadEnabled, mulberryVoice, fastMode = false } = args;
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const id = `chatcmpl-${Date.now()}`;
@@ -654,10 +662,12 @@ function streamGemini(args: {
         // whichever comes first. Later chunks stay sentence-buffered for smoother
         // prosody and to keep multi-word number normalization intact.
         if (!emittedAnswerText) {
+          const clauseMin = fastMode ? 10 : 15;
+          const charMin = fastMode ? 28 : 40;
           const early =
             pending.match(/^[\s\S]*?[.!?]+\s/) ||
-            pending.match(/^[\s\S]{15,}?[,;:—–]\s/) ||
-            pending.match(/^[\s\S]{40,}?\s/);
+            pending.match(new RegExp(`^[\\s\\S]{${clauseMin},}?[,;:—–]\\s`)) ||
+            pending.match(new RegExp(`^[\\s\\S]{${charMin},}?\\s`));
           if (early) {
             emitSegment(early[0]);
             pending = pending.slice(early[0].length);
@@ -689,7 +699,7 @@ function streamGemini(args: {
                 parts: [{ text: geminiSystemInstruction(systemContent) }],
               },
               contents,
-              generationConfig: geminiGenerationConfig(model),
+              generationConfig: geminiGenerationConfig(model, fastMode),
             }),
           }
         );
@@ -759,7 +769,7 @@ export async function POST(req: NextRequest) {
   // this guarantees the thinking-disable config matches the model we actually call.
   const model = DEFAULT_MODEL.startsWith("gemini-") ? DEFAULT_MODEL : "gemini-2.5-flash-lite";
   const wantsStream = body.stream !== false;
-  const { apiKey, silkEnabled, clientLeadEnabled, localClientEnabled, mulberryVoice } = getConfig(req);
+  const { apiKey, silkEnabled, clientLeadEnabled, localClientEnabled, mulberryVoice, fastMode } = getConfig(req);
 
   const systemContent = messages.find((message) => message.role === "system")?.content ?? "";
   const lastUser = lastUserText(messages);
@@ -818,11 +828,12 @@ export async function POST(req: NextRequest) {
       userText: lastUser,
       clientLeadEnabled,
       mulberryVoice,
+      fastMode,
     });
   }
 
   try {
-    const text = await callGemini({ apiKey, model, systemContent, contents });
+    const text = await callGemini({ apiKey, model, systemContent, contents, fastMode });
     return reply(text || SCRIPT_MISSING_RESPONSE, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
   } catch (err) {
     console.error("[vapi-llm] upstream failed:", err);
