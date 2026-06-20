@@ -63,6 +63,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
         origin,
         voiceMode: requestedVoice,
         useSilkVoice,
+        browserSilkPlayback: usesBrowserSilkPlayback(requestedVoice),
         aiProvider: aiConfig.provider,
         geminiModel: process.env.GEMINI_MODEL,
         speechLanguage: req.nextUrl.searchParams.get("lang")?.trim() || DEFAULT_SPEECH_LANGUAGE,

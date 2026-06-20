@@ -80,9 +80,17 @@ interface CallResponse {
   id?: string;
 }
 
+interface VapiSessionSnapshot {
+  live: boolean;
+  callId?: string;
+  failure?: string;
+}
+
 const SDK_LOAD_TIMEOUT_MS = 15_000;
 const CONFIG_TIMEOUT_MS = 60_000;
 const START_TIMEOUT_MS = 75_000;
+/** Vapi may emit call-start slightly after start() resolves null — brief settle avoids false failures. */
+const VAPI_SESSION_SETTLE_MS = 250;
 const ASSISTANT_MERGE_WINDOW_MS = 12_000;
 const VISITOR_ID_KEY = "silk_resolve_voice_visitor_id";
 const LOCAL_MUGA_SAMPLE_RATE = 24_000;
@@ -198,6 +206,9 @@ export function normalizeVoiceCallError(err: unknown): string {
   }
   if (lower.includes("meeting has ended") || lower.includes("room has ended")) {
     return "The Vapi room ended before the browser fully joined. Retry after allowing mic access.";
+  }
+  if (lower.includes("no call session") || lower.includes("already-started")) {
+    return "Voice call could not start. Allow microphone access for this site and try again.";
   }
   if (lower.includes("network") || lower.includes("fetch failed")) {
     return "Network error while starting the voice call. Check connection and retry.";
@@ -1375,6 +1386,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           ? (assistant as { firstMessage: string }).firstMessage
           : "";
 
+      const session: VapiSessionSnapshot = { live: false };
+
       const vapi = new Vapi(
         token.apiKey,
         undefined,
@@ -1385,6 +1398,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
       vapi.on("call-start", () => {
         if (!mountedRef.current || runId !== runIdRef.current) return;
+        session.live = true;
         startMicSilenceGate();
         if (usesBrowserSilkPlayback(voiceMode)) {
           prefetchVoiceFaqClips();
@@ -1404,14 +1418,14 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
       vapi.on("call-start-success", event => {
         if (!mountedRef.current || runId !== runIdRef.current) return;
-        if (event.callId) void registerCall(event.callId);
+        session.live = true;
+        if (event.callId) session.callId = event.callId;
       });
 
       vapi.on("call-start-failed", event => {
         if (!mountedRef.current || runId !== runIdRef.current) return;
         const failed = event as { error?: unknown; message?: unknown };
-        setError(normalizeVoiceCallError(failed.error ?? failed.message ?? event));
-        void finishCall("error");
+        session.failure = normalizeVoiceCallError(failed.error ?? failed.message ?? event);
       });
 
       vapi.on("call-end", () => {
@@ -1510,21 +1524,33 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
       vapi.on("error", event => {
         if (!mountedRef.current || runId !== runIdRef.current) return;
-        setError(normalizeVoiceCallError(event));
-        void finishCall("error");
+        const message = normalizeVoiceCallError(event);
+        session.failure = session.failure || message;
+        if (session.live) {
+          setError(message);
+          void finishCall("error");
+        }
       });
 
       setState("joining");
-      const call = await withTimeout(
+      let call = await withTimeout(
         vapi.start(assistant),
         START_TIMEOUT_MS,
         "Vapi did not finish starting the web call. Check mic permission and retry."
       ) as CallResponse | null;
 
-      if (!call) {
-        throw new Error("Vapi returned no call session. Refresh and try again.");
+      if (!session.live && !call?.id) {
+        await new Promise((resolve) => setTimeout(resolve, VAPI_SESSION_SETTLE_MS));
       }
-      if (call.id) void registerCall(call.id);
+
+      const callId = call?.id || session.callId;
+      if (!session.live && !callId) {
+        throw new Error(
+          session.failure ||
+          "Voice call could not start. Allow microphone access for this site and try again."
+        );
+      }
+      if (callId) void registerCall(callId);
     } catch (err) {
       if (!mountedRef.current || runId !== runIdRef.current) return;
       await cleanupCall();

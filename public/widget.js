@@ -186,23 +186,28 @@
       btn.style.display = 'none';
       panel.focus && panel.focus();
 
-      var afterMic = function () {
-        if (iframe.dataset.agentId !== agentId || !iframe.src) {
-          iframe.dataset.agentId = agentId;
-          iframe.dataset.ready = '0';
-          iframe.src = talkUrl(agentId, { autostart: true, cacheBust: Date.now() });
-          return;
-        }
-
+      function scheduleAutoStartWhenReady() {
         if (iframe.dataset.ready === '1') {
           postAutoStart(iframe.contentWindow);
           return;
         }
-
         iframe.addEventListener('load', function onReady() {
           iframe.removeEventListener('load', onReady);
+          iframe.dataset.ready = '1';
           postAutoStart(iframe.contentWindow);
         });
+      }
+
+      var afterMic = function () {
+        if (iframe.dataset.agentId !== agentId || !iframe.src) {
+          iframe.dataset.agentId = agentId;
+          iframe.dataset.ready = '0';
+          scheduleAutoStartWhenReady();
+          iframe.src = talkUrl(agentId, { cacheBust: Date.now() });
+          return;
+        }
+
+        scheduleAutoStartWhenReady();
       };
 
       primeMicrophone().then(afterMic);
@@ -246,7 +251,12 @@
         agentId = id;
         iframe.dataset.agentId = id;
         iframe.dataset.ready = '0';
-        iframe.src = talkUrl(id, { autostart: true, cacheBust: Date.now() });
+        iframe.addEventListener('load', function onAgentSwap() {
+          iframe.removeEventListener('load', onAgentSwap);
+          iframe.dataset.ready = '1';
+          postAutoStart(iframe.contentWindow);
+        });
+        iframe.src = talkUrl(id, { cacheBust: Date.now() });
       }
       open();
     };

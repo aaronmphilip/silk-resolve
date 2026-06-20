@@ -275,6 +275,12 @@ function PublicTalkVapiClient({ agentId, agentName, voiceMode, autostart = false
     return () => window.clearTimeout(timer);
   }, [autostart]);
 
+  useEffect(() => {
+    if (state === "ended" || state === "error") {
+      autoStartAttemptedRef.current = false;
+    }
+  }, [state]);
+
   const endCallRef = useRef(endCall);
   endCallRef.current = endCall;
 
