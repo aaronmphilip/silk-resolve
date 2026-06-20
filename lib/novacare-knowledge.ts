@@ -389,7 +389,11 @@ export function needsNovaCareBrain(text: string): boolean {
   if (!t) return false;
 
   if (
-    /\b(which|what)\s+(plan|option|one)\s+(is\s+)?(better|best|right|suitable|recommended|worth)\b/.test(t) ||
+    /\b(which|what)\s+(plan|option|one)\s+(is\s+)?(better|best|right|suitable|recommended|worth|great|good)\b/.test(t) ||
+    /\bwhich\s+plan\s+will\s+(?:be\s+)?(?:great|good|best|suitable|right)\b/.test(t) ||
+    /\b(?:going|travel(?:ing)?|live|work)\s+abroad\b/.test(t) ||
+    /\b(?:which|what)\s+(?:one|plan)\s+(?:is\s+)?(?:the\s+)?(?:cheaper|cheapest|expensive|more affordable|affordable|lower|higher)\b/.test(t) ||
+    /\b(?:the\s+)?cheaper\s+one\b|\b(?:the\s+)?expensive\s+one\b/.test(t) ||
     /\b(better|best|recommend|suggest|advise|should i|ought to|help me (?:choose|pick|decide|select))\b/.test(t) ||
     /\b(compare|comparison|versus|vs\.?)\b/.test(t) ||
     /\b(difference|differ|different)\s+between\b/.test(t) ||

@@ -410,6 +410,10 @@ LANGUAGE:
 - ${replyLanguagePrompt(speechLanguage)}
 - If the caller switches language, follow their latest utterance.
 
+CONVERSATION MEMORY:
+- Use the full chat history in this call. Follow-ups like "which is cheaper" or "which plan for abroad" refer to the prior turn — answer from that context.
+- Never reply with only "I'm here to help" or a generic greeting when the caller asked a specific question.
+
 STRICT ANSWER SELECTION:
 - Answer the caller's exact question first.
 - Do not paste unrelated facts from the script just because they share generic words like health or insurance.

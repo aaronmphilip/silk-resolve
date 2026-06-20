@@ -2,6 +2,7 @@ import {
   cachedAudioText,
   isClearlyOutOfScope,
   isNovaCareAgentId,
+  needsNovaCareBrain,
   novaCareConversationalReply,
   novaCareFaqCacheAnswer,
   shouldRouteNovaCareToGemini,
@@ -17,9 +18,18 @@ export type SpeechRoute = {
 };
 
 const SCRIPT_MISSING_SNIPPET = /don't have the answer to this question from my support script/i;
+const GENERIC_BRAIN_FALLBACK =
+  /^i'?m here to help[.!?\s]*what would you like to know[.!?]*$/i;
 
 export function isScriptMissingResponse(text: string): boolean {
   return SCRIPT_MISSING_SNIPPET.test(text.toLowerCase());
+}
+
+/** Empty Gemini / API failure placeholder — never speak this to the caller. */
+export function isGenericBrainFallback(text: string): boolean {
+  const clean = text.trim();
+  if (!clean) return true;
+  return GENERIC_BRAIN_FALLBACK.test(clean);
 }
 
 function isGenericSmallTalk(text: string): boolean {
@@ -74,6 +84,10 @@ export function resolveSpeechRoute(
         answer: cachedAudioText("out-of-scope"),
         transport: "cached-mulberry-faq",
       };
+    }
+
+    if (needsNovaCareBrain(text.toLowerCase())) {
+      return { kind: "brain", answer: "", transport: "gemini-live" };
     }
 
     const faq = novaCareFaqCacheAnswer(text);

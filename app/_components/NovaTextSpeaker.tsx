@@ -15,6 +15,7 @@ import {
   voiceModeLabel,
   type WebVoiceMode,
 } from "@/lib/silk-voice";
+import { isGenericBrainFallback } from "@/lib/speech-route";
 import { stripVoiceMarkers } from "@/lib/voice-emotion";
 
 interface NovaTextSpeakerProps {
@@ -113,6 +114,7 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
   const [input, setInput] = useState("");
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
+  const [history, setHistory] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const [state, setState] = useState<SpeakerState>("idle");
   const [error, setError] = useState("");
   const [transport, setTransport] = useState("");
@@ -297,6 +299,7 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
           stream: true,
           messages: [
             { role: "system", content: systemPrompt },
+            ...history.slice(-8),
             { role: "user", content: prompt },
           ],
         }),
@@ -346,7 +349,7 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
       }
 
       const spoken = stripVoiceMarkers(fullAnswer).trim();
-      if (spoken) {
+      if (spoken && !isGenericBrainFallback(spoken)) {
         speechChunkCountRef.current = 1;
         setSpeechChunks(1);
         const voiceText =
@@ -354,6 +357,15 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
             ? `[neutral] ${spoken}`
             : spoken;
         enqueueSpeech(voiceText, runId);
+        setHistory((prev) => [
+          ...prev,
+          { role: "user", content: prompt },
+          { role: "assistant", content: spoken },
+        ]);
+      } else if (spoken && isGenericBrainFallback(spoken)) {
+        setError("Could not get an answer. Check connection and try again.");
+        setState("error");
+        return;
       }
       await audioQueueRef.current;
       if (runId === runIdRef.current) setState("idle");
