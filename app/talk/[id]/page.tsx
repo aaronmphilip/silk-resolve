@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createServiceClient } from "@/lib/supabase/server";
 import PublicTalkClient from "./PublicTalkClient";
+import { getNovaCareFallbackAgent, isNovaCareAgentId } from "@/lib/novacare-knowledge";
 import { normalizeWebVoiceMode } from "@/lib/silk-voice";
 
 export const dynamic = "force-dynamic";
@@ -14,11 +15,17 @@ export default async function PublicTalkPage({ params, searchParams }: PageProps
   const { id } = await params;
   const query = searchParams ? await searchParams : {};
   const voiceMode = normalizeWebVoiceMode(query.voice);
-  const { data: agent } = await createServiceClient()
-    .from("agents")
-    .select("id, name, status")
-    .eq("id", id)
-    .single();
+  let agent = (
+    await createServiceClient()
+      .from("agents")
+      .select("id, name, status")
+      .eq("id", id)
+      .single()
+  ).data;
+
+  if (!agent && isNovaCareAgentId(id)) {
+    agent = getNovaCareFallbackAgent();
+  }
 
   if (!agent) notFound();
 

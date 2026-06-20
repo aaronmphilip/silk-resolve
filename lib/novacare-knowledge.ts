@@ -1,5 +1,12 @@
 export const NOVACARE_AGENT_ID = "agt-856e6f5e-1851-4041-a4f5-9f5ee62c0793";
 
+export const NOVACARE_FIRST_MESSAGE =
+  "Hi! I'm Priya, your NovaCare support agent. I can help with plan prices, coverage, claims, reimbursement, and network hospitals. What would you like to check?";
+
+export function isNovaCareAgentId(id: string): boolean {
+  return id === NOVACARE_AGENT_ID;
+}
+
 export const NOVACARE_PLANS = [
   {
     name: "NovaCare Basic",
@@ -288,6 +295,21 @@ VOICE STYLE:
 - If the caller sounds frustrated, acknowledge it first and then solve.
 - Never invent account-specific claim amounts or approvals.
 - Never end the call unless the caller clearly says goodbye.`;
+
+/** Built-in NovaCare agent used when the public demo DB row is missing. */
+export function getNovaCareFallbackAgent() {
+  return {
+    id: NOVACARE_AGENT_ID,
+    name: "Priya — NovaCare Support",
+    status: "live",
+    client: "NovaCare",
+    description:
+      "Handles NovaCare health insurance plan pricing, coverage, cashless claims, reimbursement, waiting periods, renewals, and network hospital support.",
+    system_prompt: NOVACARE_PROMPT,
+    first_message: NOVACARE_FIRST_MESSAGE,
+    llm_model: "gemini-2.5-flash-lite",
+  };
+}
 
 function hasAny(text: string, terms: string[]): boolean {
   return terms.some((term) => text.includes(term));

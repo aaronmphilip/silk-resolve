@@ -13,6 +13,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
+import { getNovaCareFallbackAgent, isNovaCareAgentId } from "@/lib/novacare-knowledge";
 import { MULBERRY_DEFAULTS, normalizeWebVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
 import { withSilkTone, stripAll } from "@/lib/voice-emotion";
 
@@ -67,6 +68,10 @@ export async function GET(req: NextRequest, { params }: Ctx) {
         .single();
       agent = anonResult.data ?? null;
     }
+  }
+
+  if (!agent && isNovaCareAgentId(id)) {
+    agent = getNovaCareFallbackAgent();
   }
 
   if (!agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
