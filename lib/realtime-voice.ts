@@ -70,7 +70,7 @@ export function transcriptsAlign(partial: string, final: string): boolean {
 /** GPT Realtime-style: start LLM while the caller is still talking. */
 export function shouldStartSpeculativeLlm(partialText: string): boolean {
   const text = partialText.trim();
-  if (text.length < 14) return false;
+  if (text.length < 8) return false;
   const words = text.split(/\s+/).filter(Boolean);
-  return words.length >= 3;
+  return words.length >= 2;
 }

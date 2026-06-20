@@ -195,8 +195,8 @@ export const SILK_DEFAULT_EOT = SILK_NOISE_AWARE_EOT;
 export const SILK_MIC_SILENCE = {
   /** Background hum stays below this; only your voice crosses it (~−35 dBFS). */
   speechRmsThreshold: 0.018,
-  /** Mic must stay quiet this long before the agent replies. Vapi EOT already waits. */
-  silenceMs: 280,
+  /** Near-zero tail — Vapi/Deepgram EOT already detected end of speech. */
+  silenceMs: 0,
   /** Voice must stay above threshold this long before we count it as you speaking. */
   speechConfirmMs: 100,
 } as const;

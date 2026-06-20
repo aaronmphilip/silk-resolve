@@ -698,8 +698,8 @@ function streamGemini(args: {
         // whichever comes first. Later chunks stay sentence-buffered for smoother
         // prosody and to keep multi-word number normalization intact.
         if (!emittedAnswerText) {
-          const clauseMin = fastMode ? 10 : 15;
-          const charMin = fastMode ? 28 : 40;
+          const clauseMin = localClientEnabled ? 6 : fastMode ? 10 : 15;
+          const charMin = localClientEnabled ? 12 : fastMode ? 28 : 40;
           const early =
             pending.match(/^[\s\S]*?[.!?]+\s/) ||
             pending.match(new RegExp(`^[\\s\\S]{${clauseMin},}?[,;:—–]\\s`)) ||

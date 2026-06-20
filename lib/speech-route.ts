@@ -102,7 +102,7 @@ export function speechRouteLabel(route: SpeechRoute): string {
     case "conversational":
       return "gemini-live (greeting)";
     case "brain":
-      return "gemini-live (brain)";
+      return "gemini-live";
     default:
       return route.transport;
   }

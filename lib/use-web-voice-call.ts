@@ -83,7 +83,8 @@ const LOCAL_MUGA_SAMPLE_RATE = 24_000;
 /** Demo FAQs — prefetched once per call so speech-to-speech stays under 1s. */
 const VOICE_DEMO_FAQ_IDS = ["plans", "opd", "claims"] as const;
 const FAST_CHUNKER = { minChars: 8, maxChars: 64 } as const;
-const SPECULATIVE_DEBOUNCE_MS = 60;
+const SPECULATIVE_DEBOUNCE_MS = 0;
+const UTTERANCE_COALESCE_MS = 32;
 const VAPI_PLACEHOLDER_TRANSCRIPT_RE =
   /^(?:got it|i understand)[.!?\s]*$|don't have the answer to this question from my support script/i;
 interface LocalMugaClip {
@@ -580,6 +581,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     localAudioContextRef.current = null;
     localAudioQueueRef.current = Promise.resolve();
     localSpeechKeysRef.current.clear();
+    lastDispatchedUtteranceRef.current = "";
   }, []);
 
   const stopLocalAssist = useCallback(() => {
@@ -625,6 +627,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const localTtsAbortRef = useRef<AbortController | null>(null);
   const playbackGenerationRef = useRef(0);
   const playLocalAssistFnRef = useRef<(userText: string, callRunId: number) => void>(() => {});
+  const lastDispatchedUtteranceRef = useRef("");
 
   const captureFirstAudioLatency = useCallback(() => {
     const startedAt = lastUserSpeechEndAtRef.current ?? lastUserFinalAtRef.current;
@@ -947,6 +950,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       if (!spoken || isScriptMissingResponse(spoken)) return;
       if (!mountedRef.current || callRunId !== runIdRef.current || localRunId !== localAssistRunRef.current) return;
       speechStarted = true;
+      setSpeechTransport("gemini-live");
       enqueueLocalSpeech(spoken, callRunId, localRunId, { forceLive: true });
     }, FAST_CHUNKER);
 
@@ -1021,30 +1025,33 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     });
   }, [stopMicSilenceGate]);
 
+  const dispatchUserUtterance = useCallback((userText: string, callRunId: number) => {
+    if (!usesTalkWidgetLocalAssist(voiceMode) || voiceMode === "vapi") return;
+
+    const key = `${callRunId}::${normalizeMugaCacheText(userText)}`;
+    if (lastDispatchedUtteranceRef.current === key) return;
+    lastDispatchedUtteranceRef.current = key;
+
+    pendingUserUtteranceRef.current = null;
+    userSpeechStoppedRef.current = true;
+    lastUserSpeechEndAtRef.current = Date.now();
+    respondAttemptRef.current += 1;
+    playLocalAssistFnRef.current(userText, callRunId);
+  }, [voiceMode]);
+
   const tryPlayAfterSilence = useCallback(async () => {
     const pending = pendingUserUtteranceRef.current;
     if (!pending || !userSpeechStoppedRef.current) return;
     if (!usesTalkWidgetLocalAssist(voiceMode) || voiceMode === "vapi") return;
 
-    const attempt = respondAttemptRef.current + 1;
-    respondAttemptRef.current = attempt;
+    await new Promise((resolve) => setTimeout(resolve, UTTERANCE_COALESCE_MS));
 
-    try {
-      const gate = micSilenceGateRef.current;
-      if (gate) await gate.waitForSilence(SILK_MIC_SILENCE.silenceMs);
-      else await new Promise((resolve) => setTimeout(resolve, SILK_MIC_SILENCE.silenceMs));
-    } catch {
-      return;
-    }
-
-    if (attempt !== respondAttemptRef.current) return;
     const stillPending = pendingUserUtteranceRef.current;
     if (!stillPending || stillPending.text !== pending.text || stillPending.runId !== pending.runId) return;
     if (!userSpeechStoppedRef.current || pending.runId !== runIdRef.current) return;
 
-    pendingUserUtteranceRef.current = null;
-    playLocalAssistFnRef.current(pending.text, pending.runId);
-  }, [voiceMode]);
+    dispatchUserUtterance(pending.text, pending.runId);
+  }, [dispatchUserUtterance, voiceMode]);
 
   const playLocalAssistForUserText = useCallback((userText: string, callRunId: number) => {
     if (!usesTalkWidgetLocalAssist(voiceMode) || voiceMode === "vapi") return;
@@ -1087,9 +1094,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     muteMicForLocalOutput();
     suppressAssistantAudio();
 
-    setSpeechTransport(
-      route.kind === "brain" ? "thinking…" : speechRouteLabel(route)
-    );
+    setSpeechTransport(speechRouteLabel(route));
 
     void (async () => {
       try {
@@ -1123,11 +1128,11 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         }
 
         if (useSpeculative) {
-          await speculativePromiseRef.current?.catch(() => {});
           speculativeAbortRef.current?.abort();
           speculativeAbortRef.current = null;
           if (playbackGen !== playbackGenerationRef.current) return;
           setTranscript(lines => appendTranscriptLine(lines, "assistant", specAnswer, Date.now()));
+          setSpeechTransport("gemini-live (brain)");
           enqueueLocalSpeech(specAnswer, callRunId, localRunId, { forceLive: true });
         } else {
           await streamLocalAnswer(userText, "", callRunId, localRunId);
@@ -1398,8 +1403,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
             setSpeechTransport("listening…");
             setTension(value => Math.min(10, value + 0.4));
             prefetchLocalAssistForText(text);
-            pendingUserUtteranceRef.current = { text, runId };
-            void tryPlayAfterSilence();
+            dispatchUserUtterance(text, runId);
             speculativeChunksReadyRef.current = 0;
           }
         }
@@ -1437,6 +1441,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   }, [
     agentId,
     cleanupCall,
+    dispatchUserUtterance,
     enqueueLocalSpeech,
     finishCall,
     playLocalAssistForUserText,
