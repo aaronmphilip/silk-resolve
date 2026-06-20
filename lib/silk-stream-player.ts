@@ -12,6 +12,21 @@ export interface StreamPlaybackResult {
 }
 
 const playheadByContext = new WeakMap<AudioContext, number>();
+const activeSources = new Set<AudioBufferSourceNode>();
+
+function trackSource(source: AudioBufferSourceNode) {
+  activeSources.add(source);
+  source.onended = () => activeSources.delete(source);
+}
+
+export function stopAllScheduledSources() {
+  for (const source of [...activeSources]) {
+    try {
+      source.stop(0);
+    } catch {}
+    activeSources.delete(source);
+  }
+}
 
 /** Reset the shared timeline when a new reply starts — prevents overlapping voices. */
 export function resetAudioPlayhead(ctx: AudioContext | null | undefined) {
@@ -21,6 +36,7 @@ export function resetAudioPlayhead(ctx: AudioContext | null | undefined) {
 
 /** Stop all scheduled audio immediately (interrupt / close). */
 export function haltAudioPlayback(ctx: AudioContext | null | undefined) {
+  stopAllScheduledSources();
   if (!ctx) return;
   playheadByContext.delete(ctx);
   try {
@@ -43,6 +59,7 @@ function scheduleOnPlayhead(
   source.start(startAt);
   const endAt = startAt + buffer.duration;
   playheadByContext.set(ctx, endAt);
+  trackSource(source);
   return { source, endAt };
 }
 

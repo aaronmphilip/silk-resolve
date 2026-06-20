@@ -352,10 +352,32 @@ function hasAny(text: string, terms: string[]): boolean {
 }
 
 function planByText(text: string) {
-  if (text.includes("basic")) return NOVACARE_PLANS[0];
-  if (text.includes("standard")) return NOVACARE_PLANS[1];
-  if (text.includes("premium")) return NOVACARE_PLANS[2];
+  const t = text.toLowerCase();
+  if (/\b(better|best|versus|vs\.?|compare|recommend|suggest|downgrade|upgrade|switch|or\s+(?:basic|standard|premium))\b/.test(t)) {
+    return null;
+  }
+  if (/\b(basic|standard|premium)\s+(?:plan|tier|package)\b/.test(t) || /\bnovacare\s+(basic|standard|premium)\b/.test(t)) {
+    if (t.includes("basic")) return NOVACARE_PLANS[0];
+    if (t.includes("standard")) return NOVACARE_PLANS[1];
+    if (t.includes("premium")) return NOVACARE_PLANS[2];
+  }
+  if (/\b(?:about|explain|describe|details?\s+on|tell\s+me\s+about)\s+(?:the\s+)?(basic|standard|premium)\b/.test(t)) {
+    if (t.includes("basic")) return NOVACARE_PLANS[0];
+    if (t.includes("standard")) return NOVACARE_PLANS[1];
+    if (t.includes("premium")) return NOVACARE_PLANS[2];
+  }
   return null;
+}
+
+/** Compound or advisory phrasing — never serve a single FAQ clip. */
+function isCompoundOrAdvisoryQuestion(text: string): boolean {
+  const t = text.toLowerCase();
+  if (needsNovaCareBrain(t)) return true;
+  return (
+    /\b(and also|also\s|as well as|plus\s|before\s+renewal|after\s+renewal|downgrade|upgrade|switch(?:ing)?|versus|vs\.?)\b/.test(t) ||
+    /\b(which|what)\s+(?:plan|one)\s+(?:is\s+)?(?:better|best)\b/.test(t) ||
+    (/\b(father|mother|parent|child|family)\b/.test(t) && /\b(surgery|operation|procedure|treatment|hospital)\b/.test(t))
+  );
 }
 
 /**
@@ -397,6 +419,22 @@ export function needsNovaCareBrain(text: string): boolean {
 
   if (/\bwhy\s+(?:should|would|is|are|not|can't|cant)\b/.test(t)) return true;
   if (/\bhow\s+(?:do i decide|should i choose|would i know|can i tell)\b/.test(t)) return true;
+  if (/\bwhat\s+(?:can|do)\s+you\s+(?:do|help(?:\s+with)?)\b/.test(t)) return true;
+  if (/\bwhat\s+are\s+you\s+(?:able|capable)\s+to\b/.test(t)) return true;
+
+  if (
+    /\b(surgery|operation|procedure|knee|hip|fracture|hospitalization|treatment)\b/.test(t) &&
+    /\b(father|mother|parent|child|children|family|needs?|requires?|which|better|standard|premium|basic)\b/.test(t)
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(abroad|overseas|international|foreign country|travel(?:ing)?)\b/.test(t) &&
+    /\b(plan|cover|coverage|work|valid|better|which|need|often|frequently)\b/.test(t)
+  ) {
+    return true;
+  }
 
   return false;
 }
@@ -602,10 +640,12 @@ function isRelocationIntent(text: string): boolean {
 
 function isPlanListIntent(text: string): boolean {
   if (needsNovaCareBrain(text)) return false;
+  if (isCompoundOrAdvisoryQuestion(text)) return false;
   if (/\bwhat plans?\b/i.test(text) || /\bplans? do you (offer|have|sell)\b/i.test(text)) return true;
   return (
     hasAny(text, ["plan", "plans", "price", "pricing", "cost", "monthly"]) &&
-    hasAny(text, ["offer", "have", "available", "list", "tell", "explain", "what"])
+    hasAny(text, ["offer", "have", "available", "list", "tell", "explain", "what"]) &&
+    !/\b(better|best|which|versus|vs|compare|recommend|suggest|downgrade|upgrade|abroad|travel)\b/i.test(text)
   );
 }
 
@@ -681,15 +721,18 @@ export function mulberryFaqAudioFile(id: string): string {
 
 function cachedIntentIdForQuestion(text: string): MugaCachedAudioId | null {
   if (needsNovaCareBrain(text)) return null;
+  if (isCompoundOrAdvisoryQuestion(text)) return null;
 
   const selectedPlan = planByText(text);
-  if (selectedPlan && hasAny(text, ["price", "cost", "premium", "coverage", "cover", "insured", "benefit", "include", "plan"])) {
+  if (selectedPlan && hasAny(text, ["price", "cost", "coverage", "cover", "insured", "benefit", "include", "plan", "about", "explain", "describe"])) {
     if (selectedPlan.name.endsWith("Basic")) return "plan-basic";
     if (selectedPlan.name.endsWith("Standard")) return "plan-standard";
     if (selectedPlan.name.endsWith("Premium")) return "plan-premium";
   }
 
-  if (/\b(opd|outpatient)\b/.test(text)) return "opd";
+  if (/\b(opd|outpatient)\b/.test(text) && !/\b(and|also|abroad|travel|versus|vs|better|which|surgery|downgrade|upgrade)\b/.test(text)) {
+    return "opd";
+  }
   if (/\bcritical illness|critical rider|illness rider|rider\b/.test(text)) return "critical-illness";
   if (/\b(room eligibility|private room|room eligible|room rent|private-room)\b/.test(text)) return "private-room";
   if (/\b(android|ios|iphone|app)\b/.test(text) && /\b(use|available|download|phone|mobile|install|login|access)\b/.test(text)) {

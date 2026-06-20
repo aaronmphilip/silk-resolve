@@ -11,7 +11,13 @@ import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
 import { isNovaCareAgentId } from "@/lib/novacare-knowledge";
 import { DEFAULT_SPEECH_LANGUAGE } from "@/lib/speech-languages";
 import { buildNovaCareVapiAssistant } from "@/lib/novacare-vapi-config";
-import { MULBERRY_DEFAULTS, SILK_DEFAULT_EOT, normalizeWebVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
+import {
+  MULBERRY_DEFAULTS,
+  SILK_DEFAULT_EOT,
+  normalizeWebVoiceMode,
+  usesBrowserSilkPlayback,
+  type WebVoiceMode,
+} from "@/lib/silk-voice";
 import { withSilkTone, stripAll } from "@/lib/voice-emotion";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -91,14 +97,20 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   ]);
 
   const useSilkVoice = requestedVoice !== "vapi" && Boolean(silk.apiKey && silk.vapiEnabled);
+  const browserSilkPlayback = usesBrowserSilkPlayback(requestedVoice);
   const silkModel = requestedVoice === "silk-mulberry" ? "mulberry" : "muga";
   const isMulberry = silkModel === "mulberry";
   const silkQuery = useSilkVoice ? `?transport=ws&model=${silkModel}` : "";
   const voice = useSilkVoice
-    ? {
-        provider: "custom-voice",
-        server: { url: `${origin}/api/voice/silk-tts${silkQuery}`, timeoutSeconds: 45 },
-      }
+    ? browserSilkPlayback
+      ? {
+          provider: "custom-voice",
+          server: { url: `${origin}/api/voice/silence-tts`, timeoutSeconds: 10 },
+        }
+      : {
+          provider: "custom-voice",
+          server: { url: `${origin}/api/voice/silk-tts${silkQuery}`, timeoutSeconds: 45 },
+        }
     : { provider: "vapi", voiceId: "Neha" };
 
   const basePrompt = agent.system_prompt ||
@@ -129,7 +141,7 @@ VOICE CALL RULES:
     name: agent.name,
     model: {
       provider: "custom-llm",
-      url: `${origin}/api/voice/vapi-llm?voice=${requestedVoice}${useSilkVoice ? "&fast=1" : ""}`,
+      url: `${origin}/api/voice/vapi-llm?voice=${requestedVoice}${useSilkVoice ? "&fast=1" : ""}${browserSilkPlayback ? "&clientLead=1" : ""}&lang=${encodeURIComponent(req.nextUrl.searchParams.get("lang")?.trim() || DEFAULT_SPEECH_LANGUAGE)}`,
       timeoutSeconds: 5,
       model: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
       messages: [{ role: "system", content: voicePrompt }],

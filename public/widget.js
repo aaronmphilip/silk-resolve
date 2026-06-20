@@ -221,7 +221,8 @@
       // Tear down iframe after the talk page stops audio + mic.
       window.setTimeout(function () {
         iframe.removeAttribute('src');
-      }, 120);
+        iframe.dataset.ready = '0';
+      }, 800);
     }
 
     // ── Event wiring ──────────────────────────────────────────────────────────

@@ -2,16 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  answerNovaCareQuestion,
   cachedAudioText,
-  isClearlyOutOfScope,
   isNovaCareAgentId,
-  novaCareConversationalReply,
-  novaCareFaqCacheAnswer,
-  shouldRouteNovaCareToGemini,
   normalizeMugaCacheText,
   NOVACARE_AGENT_ID,
 } from "@/lib/novacare-knowledge";
+import { isScriptMissingResponse, resolveSpeechRoute, speechRouteLabel } from "@/lib/speech-route";
 import { buildNovaCareVapiAssistant } from "@/lib/novacare-vapi-config";
 import { DEFAULT_SPEECH_LANGUAGE } from "@/lib/speech-languages";
 import { MicSilenceGate, micConfirmsUserSpeech } from "@/lib/mic-silence-gate";
@@ -35,12 +31,12 @@ import {
   playBufferedPcm,
   playStreamingPcmResponse,
   resetAudioPlayhead,
+  stopAllScheduledSources,
 } from "@/lib/silk-stream-player";
 import {
   prefetchSilkTts,
   prefetchSilkTtsLeadSentence,
   shouldStartSpeculativeLlm,
-  speculativeNovaCareAnswer,
   transcriptsAlign,
 } from "@/lib/realtime-voice";
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
@@ -557,11 +553,15 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     } catch {}
   }, []);
 
-  const stopLocalAssist = useCallback(() => {
+  const interruptPlayback = useCallback(() => {
+    playbackGenerationRef.current += 1;
     localAssistRunRef.current += 1;
+    respondAttemptRef.current += 1;
     speculativeRunIdRef.current += 1;
     localStreamAbortRef.current?.abort();
     localStreamAbortRef.current = null;
+    localTtsAbortRef.current?.abort();
+    localTtsAbortRef.current = null;
     speculativeAbortRef.current?.abort();
     speculativeAbortRef.current = null;
     if (speculativeDebounceRef.current) clearTimeout(speculativeDebounceRef.current);
@@ -569,18 +569,25 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     speculativePartialRef.current = "";
     speculativeAnswerRef.current = "";
     speculativeChunksReadyRef.current = 0;
+    pendingUserUtteranceRef.current = null;
+    userSpeechStoppedRef.current = false;
     try {
       localSourceRef.current?.stop();
     } catch {}
     localSourceRef.current = null;
+    stopAllScheduledSources();
     haltAudioPlayback(localAudioContextRef.current);
     localAudioContextRef.current = null;
     localAudioQueueRef.current = Promise.resolve();
     localSpeechKeysRef.current.clear();
+  }, []);
+
+  const stopLocalAssist = useCallback(() => {
+    interruptPlayback();
     assistantTranscriptSuppressUntilRef.current = 0;
     releaseAssistantAudio();
     restoreMicAfterLocalOutput();
-  }, [releaseAssistantAudio, restoreMicAfterLocalOutput]);
+  }, [interruptPlayback, releaseAssistantAudio, restoreMicAfterLocalOutput]);
 
   const getOrFetchLocalMugaClip = useCallback((text: string): Promise<LocalMugaClip> => {
     const key = normalizeMugaCacheText(text);
@@ -615,6 +622,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const respondAttemptRef = useRef(0);
   const micSilenceGateRef = useRef<MicSilenceGate | null>(null);
   const localStreamAbortRef = useRef<AbortController | null>(null);
+  const localTtsAbortRef = useRef<AbortController | null>(null);
+  const playbackGenerationRef = useRef(0);
   const playLocalAssistFnRef = useRef<(userText: string, callRunId: number) => void>(() => {});
 
   const captureFirstAudioLatency = useCallback(() => {
@@ -635,7 +644,12 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
   const speculativePrefetchSilk = useCallback((partialText: string) => {
     if (!isSilkVoiceMode(voiceMode) || !canUseNovaCareCache()) return;
-    const answer = speculativeNovaCareAnswer(partialText);
+    const route = resolveSpeechRoute(partialText, {
+      agentId,
+      systemPrompt: assistantSystemPromptRef.current,
+    });
+    if (route.kind !== "cached-faq" && route.kind !== "out-of-scope") return;
+    const answer = route.answer;
     if (!answer) return;
 
     const key = normalizeMugaCacheText(answer);
@@ -648,7 +662,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     const ttsBody = buildSilkTtsBody(voiceMode, answer);
     prefetchSilkTtsLeadSentence(window.location.origin, voiceQuery, ttsBody);
     prefetchSilkTts(window.location.origin, voiceQuery, ttsBody);
-  }, [canUseNovaCareCache, getOrFetchLocalMugaClip, voiceMode]);
+  }, [agentId, canUseNovaCareCache, getOrFetchLocalMugaClip, voiceMode]);
 
   const prefetchFirstSpeechChunk = useCallback((chunk: string) => {
     const speakable = silkSpeechText(voiceMode, chunk).trim();
@@ -663,13 +677,23 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   }, [getOrFetchLocalMugaClip, voiceMode]);
 
   const runSpeculativeLlm = useCallback((partial: string) => {
-    if (!usesBrowserSilkPlayback(voiceMode) || !canUseNovaCareCache()) return;
+    if (!usesBrowserSilkPlayback(voiceMode)) return;
 
-    const cached = novaCareFaqCacheAnswer(partial);
-    if (cached) {
+    const route = resolveSpeechRoute(partial, {
+      agentId,
+      systemPrompt: assistantSystemPromptRef.current,
+    });
+
+    if (route.kind === "cached-faq" || route.kind === "out-of-scope") {
       speculativePartialRef.current = partial;
-      speculativeAnswerRef.current = cached;
-      void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, cached)).catch(() => {});
+      speculativeAnswerRef.current = route.answer;
+      void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, route.answer)).catch(() => {});
+      return;
+    }
+
+    if (route.kind === "conversational") {
+      speculativePartialRef.current = partial;
+      speculativeAnswerRef.current = route.answer;
       return;
     }
 
@@ -744,7 +768,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     void job.finally(() => {
       if (speculativePromiseRef.current === job) speculativePromiseRef.current = null;
     });
-  }, [canUseNovaCareCache, prefetchFirstSpeechChunk, speechLanguage, voiceMode]);
+  }, [agentId, prefetchFirstSpeechChunk, speechLanguage, voiceMode]);
 
   const scheduleSpeculativeLlm = useCallback((partial: string) => {
     if (!usesBrowserSilkPlayback(voiceMode) || !shouldStartSpeculativeLlm(partial)) return;
@@ -755,20 +779,24 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   }, [runSpeculativeLlm, voiceMode]);
 
   const prefetchLocalAssistForText = useCallback((text: string) => {
-    if (isSilkVoiceMode(voiceMode)) {
+    if (!usesBrowserSilkPlayback(voiceMode)) return;
+    if (isSilkVoiceMode(voiceMode) && canUseNovaCareCache()) {
       speculativePrefetchSilk(text);
-      return;
     }
-    if (!usesTalkWidgetLocalAssist(voiceMode) || voiceMode === "vapi" || text.trim().length < 10) return;
-    const answer = canUseNovaCareCache() ? answerNovaCareQuestion(text) : "";
-    if (answer) {
-      void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, answer)).catch(() => {});
+    if (text.trim().length < 10) return;
+
+    const route = resolveSpeechRoute(text, {
+      agentId,
+      systemPrompt: assistantSystemPromptRef.current,
+    });
+    if (route.kind === "cached-faq" || route.kind === "out-of-scope") {
+      void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, route.answer)).catch(() => {});
       return;
     }
 
     const bridge = bridgeForVoicePrompt(text);
     if (bridge) void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, bridge)).catch(() => {});
-  }, [canUseNovaCareCache, getOrFetchLocalMugaClip, speculativePrefetchSilk, voiceMode]);
+  }, [agentId, canUseNovaCareCache, getOrFetchLocalMugaClip, speculativePrefetchSilk, voiceMode]);
 
   const playLocalPcm = useCallback(async (
     clip: LocalMugaClip,
@@ -830,6 +858,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       : fetch(`/api/voice/silk-tts${query}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: localTtsAbortRef.current?.signal,
           body: JSON.stringify(buildSilkTtsBody(voiceMode, speakable)),
         }).then(async (response) => {
           if (!isLocalSpeechActive(callRunId, localRunId)) return;
@@ -946,7 +975,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
             }
 
             const transcriptText = stripVoiceMarkers(content);
-            if (transcriptText) {
+            if (transcriptText && !isScriptMissingResponse(transcriptText)) {
               answerText = `${answerText} ${transcriptText}`.replace(/\s+/g, " ").trim();
               setTranscript(lines => appendTranscriptLine(lines, "assistant", transcriptText, Date.now()));
             }
@@ -956,7 +985,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     }
 
     const spoken = stripVoiceMarkers(answerText).trim();
-    if (spoken) {
+    if (spoken && !isScriptMissingResponse(spoken)) {
       enqueueLocalSpeech(spoken, callRunId, localRunId, { forceLive: true });
     }
     return answerText;
@@ -1008,30 +1037,27 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const playLocalAssistForUserText = useCallback((userText: string, callRunId: number) => {
     if (!usesTalkWidgetLocalAssist(voiceMode) || voiceMode === "vapi") return;
 
-    const conversational =
-      canUseNovaCareCache() ? novaCareConversationalReply(userText) : "";
-    const useBrain =
-      canUseNovaCareCache() &&
-      shouldRouteNovaCareToGemini(userText) &&
-      !conversational;
-    const cachedAnswer =
-      canUseNovaCareCache() && !useBrain && !conversational
-        ? isClearlyOutOfScope(userText.toLowerCase())
-          ? cachedAudioText("out-of-scope")
-          : novaCareFaqCacheAnswer(userText)
-        : "";
+    const route = resolveSpeechRoute(userText, {
+      agentId,
+      systemPrompt: assistantSystemPromptRef.current,
+    });
     const specPartial = speculativePartialRef.current;
     const specAligned = Boolean(specPartial && transcriptsAlign(specPartial, userText));
-    const specReady =
-      speculativeChunksReadyRef.current > 0 || speculativeAnswerRef.current.trim().length > 0;
+    const specAnswer = stripVoiceMarkers(speculativeAnswerRef.current).trim();
+    const partialRoute = specPartial
+      ? resolveSpeechRoute(specPartial, {
+          agentId,
+          systemPrompt: assistantSystemPromptRef.current,
+        })
+      : null;
     const useSpeculative =
-      !cachedAnswer &&
-      !conversational &&
-      useBrain &&
+      route.kind === "brain" &&
+      partialRoute?.kind === "brain" &&
       specAligned &&
-      specReady &&
-      speculativeAnswerRef.current.trim().length > 0;
+      specAnswer.length > 0 &&
+      !isScriptMissingResponse(specAnswer);
 
+    const playbackGen = playbackGenerationRef.current;
     const localRunId = localAssistRunRef.current + 1;
     localAssistRunRef.current = localRunId;
     try {
@@ -1042,6 +1068,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     localSpeechKeysRef.current = new Set();
     localStreamAbortRef.current?.abort();
     localStreamAbortRef.current = new AbortController();
+    localTtsAbortRef.current?.abort();
+    localTtsAbortRef.current = new AbortController();
     resetAudioPlayhead(localAudioContextRef.current);
 
     muteMicForLocalOutput();
@@ -1049,12 +1077,14 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
     void (async () => {
       try {
-        if (cachedAnswer) {
-          setTranscript(lines => appendTranscriptLine(lines, "assistant", cachedAnswer, Date.now()));
-          const speakable = silkSpeechText(voiceMode, cachedAnswer);
+        if (playbackGen !== playbackGenerationRef.current) return;
+
+        if (route.kind === "cached-faq" || route.kind === "out-of-scope") {
+          setTranscript(lines => appendTranscriptLine(lines, "assistant", route.answer, Date.now()));
+          const speakable = silkSpeechText(voiceMode, route.answer);
           const clip = await getOrFetchLocalMugaClip(speakable);
-          if (!isLocalSpeechActive(callRunId, localRunId)) return;
-          setSpeechTransport("cached-mulberry-faq");
+          if (!isLocalSpeechActive(callRunId, localRunId) || playbackGen !== playbackGenerationRef.current) return;
+          setSpeechTransport(speechRouteLabel(route));
           await playLocalPcm(clip, localRunId, () => captureFirstAudioLatency());
           if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
             restoreMicAfterLocalOutput();
@@ -1062,34 +1092,33 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           return;
         }
 
-        if (conversational) {
+        if (route.kind === "conversational") {
           setTranscript(lines =>
-            appendTranscriptLine(lines, "assistant", conversational, Date.now())
+            appendTranscriptLine(lines, "assistant", route.answer, Date.now())
           );
-          setSpeechTransport("gemini-live");
-          enqueueLocalSpeech(conversational, callRunId, localRunId, { forceLive: true });
+          setSpeechTransport(speechRouteLabel(route));
+          enqueueLocalSpeech(route.answer, callRunId, localRunId, { forceLive: true });
           await localAudioQueueRef.current;
+          if (!isLocalSpeechActive(callRunId, localRunId) || playbackGen !== playbackGenerationRef.current) return;
           if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
             restoreMicAfterLocalOutput();
           }
           return;
         }
 
+        setSpeechTransport(speechRouteLabel(route));
         if (useSpeculative) {
-          setSpeechTransport("gemini-live");
           await speculativePromiseRef.current?.catch(() => {});
           speculativeAbortRef.current?.abort();
           speculativeAbortRef.current = null;
-          const answerText = stripVoiceMarkers(speculativeAnswerRef.current).trim();
-          if (answerText) {
-            setTranscript(lines => appendTranscriptLine(lines, "assistant", answerText, Date.now()));
-            enqueueLocalSpeech(answerText, callRunId, localRunId, { forceLive: true });
-          }
+          if (playbackGen !== playbackGenerationRef.current) return;
+          setTranscript(lines => appendTranscriptLine(lines, "assistant", specAnswer, Date.now()));
+          enqueueLocalSpeech(specAnswer, callRunId, localRunId, { forceLive: true });
         } else {
-          setSpeechTransport("gemini-live");
           await streamLocalAnswer(userText, "", callRunId, localRunId);
         }
         await localAudioQueueRef.current;
+        if (!isLocalSpeechActive(callRunId, localRunId) || playbackGen !== playbackGenerationRef.current) return;
         if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
           restoreMicAfterLocalOutput();
         }
@@ -1101,7 +1130,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       }
     })();
   }, [
-    canUseNovaCareCache,
+    agentId,
     captureFirstAudioLatency,
     enqueueLocalSpeech,
     getOrFetchLocalMugaClip,
@@ -1305,7 +1334,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
             userSpeechStoppedRef.current = false;
             pendingUserUtteranceRef.current = null;
             respondAttemptRef.current += 1;
-            if (usesBrowserSilkPlayback(voiceMode)) stopLocalAssist();
+            if (usesBrowserSilkPlayback(voiceMode)) interruptPlayback();
           }
           if (role === "user" && status === "stopped") {
             if (!micConfirmsUserSpeech(micSilenceGateRef.current)) return;
@@ -1344,7 +1373,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           if (role === "user") {
             if (!micConfirmsUserSpeech(micSilenceGateRef.current)) return;
             if (usesBrowserSilkPlayback(voiceMode)) {
-              stopLocalAssist();
+              interruptPlayback();
               suppressAssistantAudio();
             }
             speculativePrefetchRef.current = "";
@@ -1398,6 +1427,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     playLocalAssistForUserText,
     prefetchLocalAssistForText,
     startMicSilenceGate,
+    interruptPlayback,
     stopLocalAssist,
     tryPlayAfterSilence,
     prefetchVoiceFaqClips,
@@ -1412,25 +1442,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
   const endCall = useCallback(async () => {
     runIdRef.current += 1;
-    const vapi = vapiRef.current;
-    setState("ending");
-    stopTimer();
-    stopLocalAssist();
-    if (vapi) {
-      try {
-        vapi.end();
-      } catch {
-        try {
-          await vapi.stop();
-        } catch {}
-      }
-      try {
-        vapi.removeAllListeners();
-      } catch {}
-      vapiRef.current = null;
-    }
-    if (mountedRef.current) setState("ended");
-  }, [stopLocalAssist, stopTimer]);
+    await finishCall("ended");
+  }, [finishCall]);
 
   const reset = useCallback(async () => {
     runIdRef.current += 1;

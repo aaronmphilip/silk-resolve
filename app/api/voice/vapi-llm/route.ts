@@ -819,14 +819,51 @@ export async function POST(req: NextRequest) {
     return reply(browserHandledPlaceholder(lastUser), wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
   }
 
+  // Speech-to-speech (local=1): browser picks cached FAQ vs Gemini brain — never
+  // short-circuit through promptAnswer or script-missing on the server.
+  if (conversational && localClientEnabled) {
+    return reply(conversational, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
+  }
+
+  if (localClientEnabled && systemContent.trim() && apiKey) {
+    const contents = buildContents(messages);
+    if (contents.length > 0) {
+      if (wantsStream) {
+        return streamGemini({
+          apiKey,
+          model,
+          systemContent,
+          contents,
+          fallback: conversational || "I'm here to help. What would you like to know?",
+          silkEnabled,
+          userText: lastUser,
+          clientLeadEnabled,
+          mulberryVoice,
+          fastMode,
+          speechLanguage,
+        });
+      }
+      try {
+        const text = await callGemini({ apiKey, model, systemContent, contents, fastMode, speechLanguage });
+        return reply(
+          text || conversational || "I'm here to help. What would you like to know?",
+          wantsStream,
+          model,
+          silkEnabled,
+          lastUser,
+          clientLeadEnabled,
+          mulberryVoice
+        );
+      } catch (err) {
+        console.error("[vapi-llm] local brain failed:", err);
+      }
+    }
+  }
+
   // Company/site knowledge should not wait on Gemini. This is the path that
   // fixes the fake website agent answering from the saved agent prompt.
   if (promptAnswer) {
     return reply(promptAnswer, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
-  }
-
-  if (conversational && localClientEnabled) {
-    return reply(conversational, wantsStream, model, silkEnabled, lastUser, clientLeadEnabled, mulberryVoice);
   }
 
   if (!canTryGeminiFromScript(systemContent, lastUser)) {
