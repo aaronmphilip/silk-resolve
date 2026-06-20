@@ -1043,9 +1043,13 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           commitTranscript("assistant", followUp);
           setSpeechTransport("gemini-live (context)");
           enqueueLocalSpeech(followUp, callRunId, localRunId, { forceLive: true });
-        } else if (isGenericBrainFallback(spoken)) {
-          console.warn("[voice] brain returned generic fallback — check Gemini API key / history");
-          setError("Could not get an answer. Check connection and try again.");
+        } else if (isScriptMissingResponse(spoken) || isGenericBrainFallback(spoken)) {
+          console.warn("[voice] brain declined or returned empty", { spoken: spoken.slice(0, 120) });
+          setError(
+            isScriptMissingResponse(spoken)
+              ? "Gemini declined this question (script guard). Try a Gemini advisory chip or a cached FAQ."
+              : "Gemini returned no answer. Check GEMINI_API_KEY on Vercel and retry."
+          );
         }
       }
     }

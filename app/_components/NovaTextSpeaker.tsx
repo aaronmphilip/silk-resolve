@@ -17,7 +17,7 @@ import {
   voiceModeLabel,
   type WebVoiceMode,
 } from "@/lib/silk-voice";
-import { isGenericBrainFallback, resolveSpeechRoute, speechRouteLabel } from "@/lib/speech-route";
+import { isGenericBrainFallback, isScriptMissingResponse, resolveSpeechRoute, speechRouteLabel } from "@/lib/speech-route";
 import { NOVACARE_AGENT_ID, novaCareFollowUpAnswer } from "@/lib/novacare-knowledge";
 import { stripVoiceMarkers } from "@/lib/voice-emotion";
 
@@ -415,7 +415,11 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
             { role: "assistant", content: followUp },
           ]);
         } else {
-          setError("Could not get an answer. Check connection and try again.");
+          setError(
+            isScriptMissingResponse(spoken)
+              ? "Gemini declined this question (script guard). Try a Gemini advisory chip or a cached FAQ."
+              : "Gemini returned no answer. Check GEMINI_API_KEY on Vercel and retry."
+          );
           setState("error");
           return;
         }
