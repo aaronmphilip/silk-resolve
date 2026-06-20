@@ -43,7 +43,6 @@ import {
   prefetchSilkTts,
   prefetchSilkTtsLeadSentence,
   shouldStartSpeculativeLlm,
-  transcriptsAlign,
 } from "@/lib/realtime-voice";
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
 import {
@@ -1027,15 +1026,6 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     let strippedBridge = false;
     let answerText = "";
     let rawBrainText = "";
-    let speechStarted = false;
-    const chunker = new StreamSpeechChunker((chunk) => {
-      const spoken = stripVoiceMarkers(chunk).trim();
-      if (!spoken || isScriptMissingResponse(spoken) || isGenericBrainFallback(spoken)) return;
-      if (!mountedRef.current || callRunId !== runIdRef.current || localRunId !== localAssistRunRef.current) return;
-      speechStarted = true;
-      setSpeechTransport("gemini-live");
-      enqueueLocalSpeech(spoken, callRunId, localRunId, { forceLive: true });
-    }, FAST_CHUNKER);
 
     for (;;) {
       const { done, value } = await reader.read();
@@ -1078,28 +1068,24 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
             ) {
               answerText = `${answerText} ${transcriptText}`.replace(/\s+/g, " ").trim();
               commitTranscript("assistant", transcriptText);
-              chunker.push(transcriptText);
             }
           } catch {}
         }
       }
     }
 
-    chunker.finish();
-    if (!speechStarted) {
-      const spoken = stripVoiceMarkers(answerText).trim();
-      if (spoken && !isScriptMissingResponse(spoken) && !isGenericBrainFallback(spoken)) {
-        setSpeechTransport("gemini-live");
-        enqueueLocalSpeech(spoken, callRunId, localRunId, { forceLive: true });
-      } else {
-        if (isScriptMissingResponse(rawBrainText) || isGenericBrainFallback(rawBrainText || spoken)) {
-          console.warn("[voice] brain declined — using local fallback", { raw: rawBrainText.slice(0, 120) });
-        }
-        const safety = resolveNovaCareAssistFallback(userText, transcriptRef.current);
-        commitTranscript("assistant", safety);
-        setSpeechTransport("gemini-live (fallback)");
-        enqueueLocalSpeech(safety, callRunId, localRunId);
+    const spoken = stripVoiceMarkers(answerText).trim();
+    if (spoken && !isScriptMissingResponse(spoken) && !isGenericBrainFallback(spoken)) {
+      setSpeechTransport("gemini-live");
+      enqueueLocalSpeech(spoken, callRunId, localRunId, { forceLive: true });
+    } else {
+      if (isScriptMissingResponse(rawBrainText) || isGenericBrainFallback(rawBrainText || spoken)) {
+        console.warn("[voice] brain declined — using local fallback", { raw: rawBrainText.slice(0, 120) });
       }
+      const safety = resolveNovaCareAssistFallback(userText, transcriptRef.current);
+      commitTranscript("assistant", safety);
+      setSpeechTransport("gemini-live (fallback)");
+      enqueueLocalSpeech(safety, callRunId, localRunId);
     }
     return answerText;
   }, [buildBrainMessages, commitTranscript, enqueueLocalSpeech, resolveNovaCareAssistFallback, speechLanguage, voiceMode]);
@@ -1179,18 +1165,9 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     if (!usesTalkWidgetLocalAssist(voiceMode) || voiceMode === "vapi") return;
 
     const route = resolveSpeechRoute(userText, speechRouteCtx());
-    const specPartial = speculativePartialRef.current;
-    const specAligned = Boolean(specPartial && transcriptsAlign(specPartial, userText));
-    const specAnswer = stripVoiceMarkers(speculativeAnswerRef.current).trim();
-    const partialRoute = specPartial ? resolveSpeechRoute(specPartial, speechRouteCtx()) : null;
-    const useSpeculative =
-      !demoAssistNextRef.current &&
-      route.kind === "brain" &&
-      partialRoute?.kind === "brain" &&
-      specAligned &&
-      specAnswer.length > 0 &&
-      !isScriptMissingResponse(specAnswer) &&
-      !isGenericBrainFallback(specAnswer);
+
+    speculativeAbortRef.current?.abort();
+    speculativeAbortRef.current = null;
 
     const playbackGen = playbackGenerationRef.current;
     const localRunId = localAssistRunRef.current + 1;
@@ -1206,9 +1183,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     localTtsAbortRef.current?.abort();
     localTtsAbortRef.current = new AbortController();
     stopAllScheduledSources();
-    if (localAudioContextRef.current) {
-      resetAudioPlayhead(localAudioContextRef.current);
-    }
+    haltAudioPlayback(localAudioContextRef.current);
+    localAudioContextRef.current = null;
 
     muteMicForLocalOutput();
     suppressAssistantAudio();
@@ -1245,24 +1221,15 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           return;
         }
 
-        if (useSpeculative) {
-          speculativeAbortRef.current?.abort();
-          speculativeAbortRef.current = null;
-          if (playbackGen !== playbackGenerationRef.current) return;
-          commitTranscript("assistant", specAnswer);
-          setSpeechTransport("gemini-live (brain)");
-          enqueueLocalSpeech(specAnswer, callRunId, localRunId);
-        } else {
-          try {
-            await streamLocalAnswer(userText, "", callRunId, localRunId);
-          } catch (brainErr) {
-            if (!isLocalSpeechActive(callRunId, localRunId) || playbackGen !== playbackGenerationRef.current) return;
-            console.warn("[voice] brain stream failed — using local fallback", brainErr);
-            const safety = resolveNovaCareAssistFallback(userText, transcriptRef.current);
-            commitTranscript("assistant", safety);
-            setSpeechTransport("gemini-live (fallback)");
-            enqueueLocalSpeech(safety, callRunId, localRunId);
-          }
+        try {
+          await streamLocalAnswer(userText, "", callRunId, localRunId);
+        } catch (brainErr) {
+          if (!isLocalSpeechActive(callRunId, localRunId) || playbackGen !== playbackGenerationRef.current) return;
+          console.warn("[voice] brain stream failed — using local fallback", brainErr);
+          const safety = resolveNovaCareAssistFallback(userText, transcriptRef.current);
+          commitTranscript("assistant", safety);
+          setSpeechTransport("gemini-live (fallback)");
+          enqueueLocalSpeech(safety, callRunId, localRunId);
         }
         await localAudioQueueRef.current;
         if (!isLocalSpeechActive(callRunId, localRunId) || playbackGen !== playbackGenerationRef.current) return;
@@ -1432,8 +1399,13 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
             const localRunId = localAssistRunRef.current + 1;
             localAssistRunRef.current = localRunId;
             localSpeechKeysRef.current.clear();
+            muteMicForLocalOutput();
             commitTranscript("assistant", cleanTranscriptText(greeting));
             enqueueLocalSpeech(greeting, runId, localRunId);
+            void localAudioQueueRef.current.then(() => {
+              if (runId !== runIdRef.current || localRunId !== localAssistRunRef.current) return;
+              restoreMicAfterLocalOutput();
+            });
           }
         }
         setState("active");
@@ -1602,6 +1574,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     speechLanguage,
     startTimer,
     stopTimer,
+    muteMicForLocalOutput,
+    restoreMicAfterLocalOutput,
     suppressAssistantAudio,
     voiceMode,
   ]);
