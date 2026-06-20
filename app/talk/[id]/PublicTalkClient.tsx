@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { Loader2, Mic, MicOff, Phone, PhoneOff, Volume2 } from "lucide-react";
+import { SPEECH_LANGUAGES } from "@/lib/speech-languages";
 import { usesDirectVoicePipeline, voiceModeLabel } from "@/lib/silk-voice";
 import { useDirectVoiceCall, type DirectVoiceCallState } from "@/lib/use-direct-voice-call";
 import { useWebVoiceCall, type WebVoiceCallState, type WebVoiceMode } from "@/lib/use-web-voice-call";
@@ -32,6 +33,9 @@ interface TalkUiProps {
   onEnd: () => void;
   onToggleMute: () => void;
   onResetAndStart: () => void;
+  showLanguagePicker?: boolean;
+  speechLanguage?: string;
+  onSpeechLanguageChange?: (code: string) => void;
 }
 
 const vapiStateLabel: Record<WebVoiceCallState, string> = {
@@ -75,6 +79,9 @@ function TalkUi({
   onEnd,
   onToggleMute,
   onResetAndStart,
+  showLanguagePicker = false,
+  speechLanguage = "en-IN",
+  onSpeechLanguageChange,
 }: TalkUiProps) {
   const transcriptRef = useRef<HTMLDivElement>(null);
   const tensionColor = tension > 7 ? "bg-red-400" : tension > 5 ? "bg-amber-400" : "bg-emerald-400";
@@ -100,7 +107,24 @@ function TalkUi({
         </div>
       </header>
 
-      <section className="px-4 py-4 border-b border-[#f0ebe0]/10">
+      <section className="px-4 py-4 border-b border-[#f0ebe0]/10 space-y-3">
+        {showLanguagePicker && onSpeechLanguageChange && (
+          <div className="flex items-center gap-3">
+            <span className="text-[9px] font-mono text-[#f0ebe0]/35 uppercase tracking-widest w-20">language</span>
+            <select
+              value={speechLanguage}
+              onChange={(event) => onSpeechLanguageChange(event.target.value)}
+              disabled={active}
+              className="flex-1 bg-[#f0ebe0]/5 border border-[#f0ebe0]/15 px-3 py-2 text-xs font-mono text-[#f0ebe0]/80 disabled:opacity-50"
+            >
+              {SPEECH_LANGUAGES.map((option) => (
+                <option key={option.code} value={option.code} className="bg-[#0a0a0a]">
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <div className="flex items-center gap-3">
           <span className="text-[9px] font-mono text-[#f0ebe0]/35 uppercase tracking-widest w-20">tension</span>
           <div className="flex-1 h-1 bg-[#f0ebe0]/10 overflow-hidden">
@@ -297,6 +321,8 @@ function PublicTalkDirectClient({ agentId, agentName, voiceMode, autostart = fal
     endCall,
     reset,
     toggleMute,
+    speechLanguage,
+    changeSpeechLanguage,
   } = useDirectVoiceCall(agentId, voiceMode, { autostart: false, playGreeting: true });
 
   startCallRef.current = startCall;
@@ -325,7 +351,7 @@ function PublicTalkDirectClient({ agentId, agentName, voiceMode, autostart = fal
 
   const busy = state === "thinking" || state === "speaking";
   const active = state === "listening" || state === "thinking" || state === "speaking";
-  const canStart = !autostart && (state === "idle" || state === "error");
+  const canStart = state === "idle" || state === "error";
 
   async function resetAndStart() {
     if (state === "error") await reset();
@@ -352,6 +378,9 @@ function PublicTalkDirectClient({ agentId, agentName, voiceMode, autostart = fal
       onEnd={endCall}
       onToggleMute={toggleMute}
       onResetAndStart={resetAndStart}
+      showLanguagePicker
+      speechLanguage={speechLanguage}
+      onSpeechLanguageChange={changeSpeechLanguage}
     />
   );
 }

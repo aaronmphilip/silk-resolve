@@ -4,6 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { Loader2, Mic, Square, Volume2 } from "lucide-react";
 import { answerNovaCareQuestion, NOVACARE_PROMPT } from "@/lib/novacare-knowledge";
 import {
+  ensureMicrophoneAccess,
+  loadSpeechLanguage,
+  saveSpeechLanguage,
+  SPEECH_LANGUAGES,
+  speechRecognitionErrorMessage,
+} from "@/lib/speech-languages";
+import {
   prefetchSilkTts,
   shouldStartSpeculativeLlm,
   speculativeNovaCareAnswer,
@@ -175,6 +182,7 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
   const [error, setError] = useState("");
   const [transport, setTransport] = useState("");
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const [speechLanguage, setSpeechLanguage] = useState(loadSpeechLanguage);
   const silkModel = silkModelForVoiceMode(voiceMode) ?? "muga";
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -541,7 +549,7 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
     const runId = runIdRef.current + 1;
     runIdRef.current = runId;
     const recognition = new Recognition();
-    recognition.lang = "en-US";
+    recognition.lang = speechLanguage;
     recognition.interimResults = true;
     recognition.continuous = false;
     recognition.maxAlternatives = 1;
@@ -579,7 +587,8 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
 
     recognition.onerror = (event) => {
       if (runId !== runIdRef.current) return;
-      const message = event.message || event.error || "Speech recognition failed.";
+      const message = speechRecognitionErrorMessage(event.error ?? "") || event.message || "Speech recognition failed.";
+      if (!message) return;
       setError(message);
       setState("error");
     };
@@ -590,12 +599,19 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
       setState((current) => current === "listening" ? "idle" : current);
     };
 
-    try {
-      recognition.start();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Speech recognition failed.");
-      setState("error");
-    }
+    void ensureMicrophoneAccess()
+      .then(() => {
+        try {
+          recognition.start();
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Speech recognition failed.");
+          setState("error");
+        }
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Microphone permission was denied.");
+        setState("error");
+      });
   }
 
   const busy = state === "listening" || state === "thinking" || state === "speaking";
@@ -607,6 +623,20 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
           <p className="text-[11px] font-bold uppercase tracking-widest" style={{ color: accentColor }}>Talk a problem</p>
           <p className="text-xs text-gray-500 mt-0.5">Direct NovaCare · {voiceModeLabel(voiceMode)}</p>
         </div>
+        <select
+          value={speechLanguage}
+          onChange={(event) => {
+            setSpeechLanguage(event.target.value);
+            saveSpeechLanguage(event.target.value);
+          }}
+          disabled={busy}
+          className="max-w-36 rounded border border-gray-200 px-2 py-1 text-[11px] text-gray-600 disabled:opacity-50"
+          aria-label="Speech language"
+        >
+          {SPEECH_LANGUAGES.map((option) => (
+            <option key={option.code} value={option.code}>{option.label}</option>
+          ))}
+        </select>
         <div className="flex items-center gap-2 text-[11px] font-medium text-gray-500">
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Volume2 className="h-3.5 w-3.5" />}
           {state === "listening" ? "listening" : state === "thinking" ? "thinking" : state === "speaking" ? "speaking" : latencyMs !== null ? `${transport} · ${latencyMs}ms` : transport || "ready"}

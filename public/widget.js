@@ -167,28 +167,45 @@
     // ── State ─────────────────────────────────────────────────────────────────
     var isOpen = false;
 
+    function primeMicrophone() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        return Promise.resolve();
+      }
+      return navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(function (stream) {
+          for (var i = 0; i < stream.getTracks().length; i++) {
+            stream.getTracks()[i].stop();
+          }
+        })
+        .catch(function () {});
+    }
+
     function open() {
       isOpen = true;
       overlay.style.display = 'flex';
       btn.style.display = 'none';
       panel.focus && panel.focus();
 
-      if (iframe.dataset.agentId !== agentId || !iframe.src) {
-        iframe.dataset.agentId = agentId;
-        iframe.dataset.ready = '0';
-        iframe.src = talkUrl(agentId, { autostart: true, cacheBust: Date.now() });
-        return;
-      }
+      var afterMic = function () {
+        if (iframe.dataset.agentId !== agentId || !iframe.src) {
+          iframe.dataset.agentId = agentId;
+          iframe.dataset.ready = '0';
+          iframe.src = talkUrl(agentId, { autostart: true, cacheBust: Date.now() });
+          return;
+        }
 
-      if (iframe.dataset.ready === '1') {
-        postAutoStart(iframe.contentWindow);
-        return;
-      }
+        if (iframe.dataset.ready === '1') {
+          postAutoStart(iframe.contentWindow);
+          return;
+        }
 
-      iframe.addEventListener('load', function onReady() {
-        iframe.removeEventListener('load', onReady);
-        postAutoStart(iframe.contentWindow);
-      });
+        iframe.addEventListener('load', function onReady() {
+          iframe.removeEventListener('load', onReady);
+          postAutoStart(iframe.contentWindow);
+        });
+      };
+
+      primeMicrophone().then(afterMic);
     }
 
     function close() {

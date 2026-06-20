@@ -15,6 +15,12 @@ import {
 import { playBufferedPcm, playStreamingPcmResponse } from "@/lib/silk-stream-player";
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
 import {
+  ensureMicrophoneAccess,
+  loadSpeechLanguage,
+  saveSpeechLanguage,
+  speechRecognitionErrorMessage,
+} from "@/lib/speech-languages";
+import {
   buildSilkTtsBody,
   isSilkVoiceMode,
   SILK_WARM_INTERVAL_MS,
@@ -79,7 +85,11 @@ function appendText(current: string, delta: string): string {
 interface UseDirectVoiceCallOptions {
   autostart?: boolean;
   playGreeting?: boolean;
+  speechLanguage?: string;
 }
+
+const LISTEN_RETRY_LIMIT = 3;
+const LISTEN_RETRY_DELAY_MS = 600;
 
 export function useDirectVoiceCall(
   _agentId: string,
@@ -93,6 +103,9 @@ export function useDirectVoiceCall(
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [duration, setDuration] = useState(0);
   const [tension, setTension] = useState(0);
+  const [speechLanguage, setSpeechLanguage] = useState(
+    () => options.speechLanguage ?? loadSpeechLanguage()
+  );
 
   const sessionActiveRef = useRef(false);
   const runIdRef = useRef(0);
@@ -110,7 +123,10 @@ export function useDirectVoiceCall(
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef = useRef(true);
   const autostartedRef = useRef(false);
-  const startListeningRef = useRef<() => void>(() => {});
+  const listenRetryRef = useRef(0);
+  const pauseListeningRef = useRef(false);
+  const listenRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startListeningRef = useRef<() => Promise<void>>(async () => {});
 
   const stopTimer = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -414,19 +430,46 @@ export function useDirectVoiceCall(
     await audioQueueRef.current;
   }, [bumpRun, enqueueSpeech]);
 
-  const startListening = useCallback(() => {
+  const clearListenRestart = useCallback(() => {
+    if (listenRestartTimerRef.current) clearTimeout(listenRestartTimerRef.current);
+    listenRestartTimerRef.current = null;
+  }, []);
+
+  const scheduleListenRestart = useCallback((delayMs = 250) => {
+    if (!sessionActiveRef.current || pauseListeningRef.current) return;
+    clearListenRestart();
+    listenRestartTimerRef.current = setTimeout(() => {
+      listenRestartTimerRef.current = null;
+      void startListeningRef.current();
+    }, delayMs);
+  }, [clearListenRestart]);
+
+  const startListening = useCallback(async () => {
     const Recognition = getSpeechRecognitionCtor();
     if (!Recognition) {
-      setError("Speech recognition is not supported in this browser.");
+      setError("Speech recognition is not supported in this browser. Use Chrome or Edge on desktop.");
       setState("error");
+      sessionActiveRef.current = false;
       return;
     }
 
+    try {
+      await ensureMicrophoneAccess();
+      listenRetryRef.current = 0;
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Microphone permission was denied.");
+      setState("error");
+      sessionActiveRef.current = false;
+      return;
+    }
+
+    pauseListeningRef.current = false;
     recognitionRef.current?.abort();
     const recognition = new Recognition();
-    recognition.lang = "en-US";
+    recognition.lang = speechLanguage;
     recognition.interimResults = true;
-    recognition.continuous = true;
+    recognition.continuous = false;
     recognition.maxAlternatives = 1;
     recognitionRef.current = recognition;
     setState("listening");
@@ -452,6 +495,7 @@ export function useDirectVoiceCall(
 
       if (finalText.trim()) {
         setInterim(null);
+        pauseListeningRef.current = true;
         recognition.stop();
         void answerPrompt(finalText.trim());
       }
@@ -459,26 +503,46 @@ export function useDirectVoiceCall(
 
     recognition.onerror = (event) => {
       if (!sessionActiveRef.current) return;
-      const recoverable = event.error === "no-speech" || event.error === "aborted";
-      if (recoverable) {
-        setState("listening");
+      const code = event.error ?? "";
+      if (code === "aborted") return;
+
+      if (code === "no-speech") {
+        scheduleListenRestart(300);
         return;
       }
-      setError(event.message || event.error || "Speech recognition failed.");
-      setState("error");
+
+      if (code === "network" && listenRetryRef.current < LISTEN_RETRY_LIMIT) {
+        listenRetryRef.current += 1;
+        scheduleListenRestart(LISTEN_RETRY_DELAY_MS * listenRetryRef.current);
+        return;
+      }
+
+      const message = speechRecognitionErrorMessage(code);
+      if (message) {
+        setError(message);
+        setState("error");
+        sessionActiveRef.current = false;
+      }
     };
 
     recognition.onend = () => {
       recognitionRef.current = null;
+      if (!pauseListeningRef.current) scheduleListenRestart(200);
     };
 
     try {
       recognition.start();
     } catch (err) {
+      if (listenRetryRef.current < LISTEN_RETRY_LIMIT) {
+        listenRetryRef.current += 1;
+        scheduleListenRestart(LISTEN_RETRY_DELAY_MS * listenRetryRef.current);
+        return;
+      }
       setError(err instanceof Error ? err.message : "Speech recognition failed.");
       setState("error");
+      sessionActiveRef.current = false;
     }
-  }, [answerPrompt, scheduleSpeculative]);
+  }, [answerPrompt, clearListenRestart, scheduleListenRestart, scheduleSpeculative, speechLanguage]);
 
   useEffect(() => {
     startListeningRef.current = startListening;
@@ -486,8 +550,18 @@ export function useDirectVoiceCall(
 
   const startSession = useCallback(async () => {
     if (sessionActiveRef.current) return;
-    sessionActiveRef.current = true;
+
     setError("");
+    try {
+      await ensureMicrophoneAccess();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Microphone permission was denied.");
+      setState("error");
+      return;
+    }
+
+    sessionActiveRef.current = true;
+    listenRetryRef.current = 0;
     setTranscript([]);
     setInterim(null);
     setTension(0);
@@ -497,12 +571,14 @@ export function useDirectVoiceCall(
       await playGreeting();
     }
     if (!sessionActiveRef.current) return;
-    startListening();
+    await startListening();
   }, [options.playGreeting, playGreeting, startListening, startTimer]);
 
   const endSession = useCallback(() => {
     sessionActiveRef.current = false;
+    pauseListeningRef.current = true;
     bumpRun();
+    clearListenRestart();
     if (speculativeDebounceRef.current) clearTimeout(speculativeDebounceRef.current);
     recognitionRef.current?.abort();
     recognitionRef.current = null;
@@ -510,7 +586,12 @@ export function useDirectVoiceCall(
     stopTimer();
     setState("idle");
     setInterim(null);
-  }, [bumpRun, stopTimer]);
+  }, [bumpRun, clearListenRestart, stopTimer]);
+
+  const changeSpeechLanguage = useCallback((code: string) => {
+    setSpeechLanguage(code);
+    saveSpeechLanguage(code);
+  }, []);
 
   const reset = useCallback(async () => {
     endSession();
@@ -570,5 +651,7 @@ export function useDirectVoiceCall(
     reset,
     toggleMute: () => {},
     startListening,
+    speechLanguage,
+    changeSpeechLanguage,
   };
 }
