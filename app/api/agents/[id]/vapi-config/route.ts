@@ -4,16 +4,12 @@
  * Returns a Vapi-compatible inline assistant config for browser / inbound calls.
  * Uses custom-llm so all LLM calls route through /api/voice/vapi-llm.
  * No API keys ever reach the browser.
- *
- * SILK MUGA prosody:
- *  - First message: [happy] tone always
- *  - Runtime responses: [tone] + <prosody> injected by vapi-llm → composeSilkUtterance
- *  - Falls back to PlayHT if SILK not configured
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
-import { getNovaCareFallbackAgent, isNovaCareAgentId } from "@/lib/novacare-knowledge";
+import { isNovaCareAgentId } from "@/lib/novacare-knowledge";
+import { buildNovaCareVapiAssistant } from "@/lib/novacare-vapi-config";
 import { MULBERRY_DEFAULTS, MULBERRY_REALTIME_EOT, normalizeWebVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
 import { withSilkTone, stripAll } from "@/lib/voice-emotion";
 
@@ -47,28 +43,42 @@ function voiceMode(req: NextRequest): WebVoiceMode {
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const requestedVoice = voiceMode(req);
+  const origin = deriveOrigin(req);
 
-  // NovaCare demo agent is bundled in code — never depend on Supabase for public talk.
-  let agent = isNovaCareAgentId(id) ? getNovaCareFallbackAgent() : null;
+  if (isNovaCareAgentId(id)) {
+    const [{ silk }, aiConfig] = await Promise.all([
+      getPlatformVoiceConfig(),
+      getPlatformAIConfig(),
+    ]);
+    const useSilkVoice = requestedVoice !== "vapi" && Boolean(silk.apiKey && silk.vapiEnabled);
+    return NextResponse.json(
+      buildNovaCareVapiAssistant({
+        origin,
+        voiceMode: requestedVoice,
+        useSilkVoice,
+        aiProvider: aiConfig.provider,
+        geminiModel: process.env.GEMINI_MODEL,
+      }),
+      { headers: { "Cache-Control": "private, max-age=300" } }
+    );
+  }
 
-  if (!agent) {
-    // Try service client first (bypasses RLS). If SUPABASE_SERVICE_ROLE_KEY isn't
-    // set in env, fall back to the anon client — migration 015 grants anon read.
-    const svcResult = await createServiceClient()
+  let agent = null;
+
+  const svcResult = await createServiceClient()
+    .from("agents")
+    .select("id, name, client, description, status, system_prompt, first_message, llm_model")
+    .eq("id", id)
+    .single();
+  if (svcResult.data) {
+    agent = svcResult.data;
+  } else {
+    const anonResult = await createClient()
       .from("agents")
       .select("id, name, client, description, status, system_prompt, first_message, llm_model")
       .eq("id", id)
       .single();
-    if (svcResult.data) {
-      agent = svcResult.data;
-    } else {
-      const anonResult = await createClient()
-        .from("agents")
-        .select("id, name, client, description, status, system_prompt, first_message, llm_model")
-        .eq("id", id)
-        .single();
-      agent = anonResult.data ?? null;
-    }
+    agent = anonResult.data ?? null;
   }
 
   if (!agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
@@ -78,9 +88,6 @@ export async function GET(req: NextRequest, { params }: Ctx) {
     getPlatformAIConfig(),
   ]);
 
-  const origin = deriveOrigin(req);
-
-  // ── Voice provider ─────────────────────────────────────────────────────────
   const useSilkVoice = requestedVoice !== "vapi" && Boolean(silk.apiKey && silk.vapiEnabled);
   const silkModel = requestedVoice === "silk-mulberry" ? "mulberry" : "muga";
   const isMulberry = silkModel === "mulberry";
@@ -92,7 +99,6 @@ export async function GET(req: NextRequest, { params }: Ctx) {
       }
     : { provider: "vapi", voiceId: "Neha" };
 
-  // ── System prompt ──────────────────────────────────────────────────────────
   const basePrompt = agent.system_prompt ||
     `You are ${agent.name}, a helpful voice assistant for ${agent.client || "this company"}. ${agent.description ? `The agent handles: ${agent.description}.` : ""} Be concise, accurate, and friendly.`;
 
@@ -108,7 +114,6 @@ VOICE CALL RULES:
 - If the caller asks outside the company/support script, say "I don't have that information in this support script" and redirect to what you can help with.
 - If you cannot answer something account-specific, say "I'll connect you with a specialist who can look that up — they'll reach out within 2 hours" and keep the conversation going.`;
 
-  // ── First message ──────────────────────────────────────────────────────────
   const rawFirst = cleanSpokenText(
     agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`
   );
@@ -140,7 +145,7 @@ VOICE CALL RULES:
       provider: "deepgram",
       model: "flux-general-en",
       language: "en",
-      smartFormat: false,  // disabling saves ~40ms per transcription
+      smartFormat: false,
       numerals: true,
       eotThreshold: isMulberry ? MULBERRY_REALTIME_EOT.eotThreshold : 0.55,
       eotTimeoutMs: isMulberry ? MULBERRY_REALTIME_EOT.eotTimeoutMs : 1200,
@@ -148,8 +153,6 @@ VOICE CALL RULES:
     silenceTimeoutSeconds: 60,
     maxDurationSeconds: 1800,
     backchannelingEnabled: false,
-    // Vapi's default extra wait is 0.4s. MUGA already has enough synth latency,
-    // so do not add another delay after the caller stops.
     startSpeakingPlan: {
       waitSeconds: 0,
       transcriptionEndpointingPlan: {

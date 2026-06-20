@@ -251,14 +251,18 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
   );
 }
 
-function WarmSilkSocketScript({ voiceMode: _voiceMode }: { voiceMode: WebVoiceMode }) {
+function WarmSilkSocketScript({ voiceMode }: { voiceMode: WebVoiceMode }) {
   const snippet = `
 (function() {
+  var voice = '${voiceMode}';
+  var llmVoice = voice === 'silk-mulberry' ? 'silk-mulberry' : voice === 'silk-stream' ? 'silk-stream' : 'silk';
+  var model = voice === 'silk-mulberry' ? 'mulberry' : 'muga';
   var paths = [
-    '/api/voice/vapi-llm?voice=silk',
-    '/api/voice/silk-tts?all=1',
-    '/api/voice/silk-tts?model=muga',
-    '/api/voice/silk-tts?model=mulberry'
+    '/api/voice/vapi-token',
+    '/api/voice/vapi-llm?voice=' + llmVoice,
+    '/api/voice/silk-tts?model=' + model,
+    '/api/voice/silk-tts?model=' + model + '&warmFaq=1&faqId=greeting',
+    '/api/voice/silk-tts?all=1'
   ];
   var ping = function(path) {
     try {
@@ -288,7 +292,7 @@ function WidgetScript({ agentId, voiceMode, label, color }: { agentId: string; v
   const snippet = `
 (function() {
   var s = document.createElement('script');
-  s.src = window.location.origin + '/widget.js?v=2';
+  s.src = window.location.origin + '/widget.js?v=3';
   s.setAttribute('data-agent-id', '${agentId}');
   s.setAttribute('data-position', 'bottom-right');
   s.setAttribute('data-greeting', '${label}');

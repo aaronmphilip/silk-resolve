@@ -9,6 +9,7 @@ interface PublicTalkClientProps {
   agentId: string;
   agentName: string;
   voiceMode: WebVoiceMode;
+  autostart?: boolean;
 }
 
 const stateLabel: Record<WebVoiceCallState, string> = {
@@ -25,8 +26,10 @@ function formatDuration(seconds: number): string {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-export default function PublicTalkClient({ agentId, agentName, voiceMode }: PublicTalkClientProps) {
+export default function PublicTalkClient({ agentId, agentName, voiceMode, autostart = false }: PublicTalkClientProps) {
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const autoStartAttemptedRef = useRef(false);
+  const startCallRef = useRef<() => Promise<void>>(async () => {});
   const {
     state,
     error,
@@ -41,13 +44,37 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode }: Publ
     reset,
   } = useWebVoiceCall(agentId, voiceMode);
 
+  startCallRef.current = startCall;
+
   useEffect(() => {
     transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: "smooth" });
   }, [transcript, interim]);
 
+  const tryAutoStart = () => {
+    if (autoStartAttemptedRef.current) return;
+    autoStartAttemptedRef.current = true;
+    void startCallRef.current();
+  };
+
+  useEffect(() => {
+    if (!autostart) return;
+    const timer = window.setTimeout(tryAutoStart, 0);
+    return () => window.clearTimeout(timer);
+  }, [autostart]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const data = event.data as { type?: string } | null;
+      if (data?.type === "silk-resolve-autostart") tryAutoStart();
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
+
   const busy = state === "connecting" || state === "joining" || state === "ending";
   const active = state === "active";
-  const canStart = state === "idle" || state === "ended" || state === "error";
+  const canStart = !autostart && (state === "idle" || state === "ended" || state === "error");
   const tensionColor = tension > 7 ? "bg-red-400" : tension > 5 ? "bg-amber-400" : "bg-emerald-400";
 
   async function start() {
@@ -87,7 +114,7 @@ export default function PublicTalkClient({ agentId, agentName, voiceMode }: Publ
             <div>
               <Volume2 size={22} className="mx-auto mb-3 text-[#f0ebe0]/15" />
               <p className="text-xs font-mono text-[#f0ebe0]/30">
-                {busy ? "setting up voice..." : active ? "listening..." : "start a web call"}
+                {busy ? "connecting..." : active ? "listening..." : autostart ? "starting..." : "start a web call"}
               </p>
             </div>
           </div>

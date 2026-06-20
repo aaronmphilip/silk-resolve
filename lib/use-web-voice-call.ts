@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { answerNovaCareQuestion, normalizeMugaCacheText, NOVACARE_AGENT_ID } from "@/lib/novacare-knowledge";
+import { answerNovaCareQuestion, isNovaCareAgentId, normalizeMugaCacheText, NOVACARE_AGENT_ID } from "@/lib/novacare-knowledge";
+import { buildNovaCareVapiAssistant } from "@/lib/novacare-vapi-config";
 import {
   buildSilkTtsBody,
   isSilkVoiceMode,
+  silkCriticalWarmPaths,
   silkModelForVoiceMode,
   SILK_WARM_INTERVAL_MS,
   silkSpeechText,
@@ -328,11 +330,46 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
-async function warmSilkVoiceInfra(voiceMode: WebVoiceMode): Promise<void> {
+let cachedVapiTokenPromise: Promise<TokenResponse> | null = null;
+
+function fetchVapiToken(): Promise<TokenResponse> {
+  if (!cachedVapiTokenPromise) {
+    cachedVapiTokenPromise = fetchJson<TokenResponse>("/api/voice/vapi-token").catch((err) => {
+      cachedVapiTokenPromise = null;
+      throw err;
+    });
+  }
+  return cachedVapiTokenPromise;
+}
+
+function resolveAssistantConfig(agentId: string, voiceMode: WebVoiceMode): Promise<AssistantConfig> {
+  if (isNovaCareAgentId(agentId) && typeof window !== "undefined") {
+    return Promise.resolve(
+      buildNovaCareVapiAssistant({
+        origin: window.location.origin,
+        voiceMode,
+        useSilkVoice: voiceMode !== "vapi",
+      }) as AssistantConfig
+    );
+  }
+  return fetchJson<AssistantConfig>(
+    `/api/agents/${agentId}/vapi-config?voice=${encodeURIComponent(voiceMode)}`
+  );
+}
+
+/** Fire-and-forget — never block call join on infra warm. */
+function warmSilkVoiceInfra(voiceMode: WebVoiceMode): void {
   if (!isSilkVoiceMode(voiceMode)) return;
 
-  await Promise.allSettled(
-    silkWarmPaths().map((path) => fetch(path, { method: "GET", cache: "no-store" }))
+  void Promise.allSettled(
+    silkCriticalWarmPaths(window.location.origin, voiceMode).map((path) =>
+      fetch(path, { method: "GET", cache: "no-store", keepalive: true })
+    )
+  );
+  void Promise.allSettled(
+    silkWarmPaths(window.location.origin).map((path) =>
+      fetch(path, { method: "GET", cache: "no-store", keepalive: true })
+    )
   );
 }
 
@@ -355,7 +392,7 @@ interface PrewarmCache {
   vapi: Promise<VapiCtor>;
   token: Promise<TokenResponse>;
   assistant: Promise<AssistantConfig>;
-  voiceInfra: Promise<void>;
+  mic: Promise<void>;
 }
 
 export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk") {
@@ -792,18 +829,17 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     prewarmRef.current = {
       key,
       vapi: loadVapiCtor(),
-      token: fetchJson<TokenResponse>("/api/voice/vapi-token"),
-      assistant: fetchJson<AssistantConfig>(
-        `/api/agents/${agentId}/vapi-config?voice=${encodeURIComponent(voiceMode)}`
-      ),
-      voiceInfra: warmSilkVoiceInfra(voiceMode),
+      token: fetchVapiToken(),
+      assistant: resolveAssistantConfig(agentId, voiceMode),
+      mic: preflightMicrophone(),
     };
+    warmSilkVoiceInfra(voiceMode);
     // Swallow rejections now so React/browser don't flag unhandled rejections;
     // startCall still awaits these and falls back to a fresh fetch on failure.
     prewarmRef.current.vapi.catch(() => {});
     prewarmRef.current.token.catch(() => {});
     prewarmRef.current.assistant.catch(() => {});
-    prewarmRef.current.voiceInfra.catch(() => {});
+    prewarmRef.current.mic.catch(() => {});
 
     if (usesTalkWidgetLocalAssist(voiceMode)) {
       for (const phrase of PREFETCHED_LOCAL_MUGA_PHRASES) {
@@ -836,15 +872,14 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     const warm = prewarmRef.current?.key === key ? prewarmRef.current : null;
 
     try {
+      warmSilkVoiceInfra(voiceMode);
+
       const [Vapi, token, assistant] = await withTimeout(
         Promise.all([
           cachedOrFetch(warm?.vapi, loadVapiCtor),
-          cachedOrFetch(warm?.token, () => fetchJson<TokenResponse>("/api/voice/vapi-token")),
-          cachedOrFetch(warm?.assistant, () =>
-            fetchJson<AssistantConfig>(`/api/agents/${agentId}/vapi-config?voice=${encodeURIComponent(voiceMode)}`)
-          ),
-          cachedOrFetch(warm?.voiceInfra, () => warmSilkVoiceInfra(voiceMode)),
-          preflightMicrophone(),
+          cachedOrFetch(warm?.token, fetchVapiToken),
+          cachedOrFetch(warm?.assistant, () => resolveAssistantConfig(agentId, voiceMode)),
+          cachedOrFetch(warm?.mic, preflightMicrophone),
         ]),
         CONFIG_TIMEOUT_MS,
         "Voice configuration took too long to load. Retry in a moment."

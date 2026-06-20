@@ -110,13 +110,26 @@ export const MULBERRY_WARM_FAQ_IDS = [
   "about",
 ] as const;
 
+/** Minimal warm set for call join — must finish in <100ms client-side (fire-and-forget). */
+export function silkCriticalWarmPaths(origin = "", voiceMode: WebVoiceMode = "silk-mulberry"): string[] {
+  const base = origin.replace(/\/$/, "");
+  const llmVoice =
+    voiceMode === "silk-mulberry" ? "silk-mulberry" :
+    voiceMode === "silk-stream" ? "silk-stream" : "silk";
+  const model = voiceMode === "silk-mulberry" ? "mulberry" : "muga";
+  return [
+    `${base}/api/voice/vapi-llm?voice=${llmVoice}`,
+    `${base}/api/voice/silk-tts?model=${model}`,
+    `${base}/api/voice/silk-tts?model=${model}&warmFaq=1&faqId=greeting`,
+  ];
+}
+
 export function silkWarmPaths(origin = ""): string[] {
   const base = origin.replace(/\/$/, "");
   return [
-    `${base}/api/voice/vapi-llm?voice=silk-mulberry`,
+    ...silkCriticalWarmPaths(base, "silk-mulberry"),
     `${base}/api/voice/vapi-llm?voice=silk`,
     `${base}/api/voice/silk-tts?all=1`,
-    `${base}/api/voice/silk-tts?model=mulberry`,
     ...MULBERRY_WARM_FAQ_IDS.map(
       (id) => `${base}/api/voice/silk-tts?model=mulberry&warmFaq=1&faqId=${id}`
     ),

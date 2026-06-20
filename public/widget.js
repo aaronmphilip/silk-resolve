@@ -46,10 +46,19 @@
     return value === 'vapi' ? 'vapi' : 'silk';
   }
 
-  function talkUrl(id, cacheBust) {
+  function talkUrl(id, options) {
+    var opts = options || {};
     var url = origin + '/talk/' + encodeURIComponent(id) + '?voice=' + encodeURIComponent(cfg.voice);
-    if (cacheBust) url += '&_sr=' + encodeURIComponent(String(cacheBust));
+    if (opts.autostart) url += '&autostart=1';
+    if (opts.cacheBust) url += '&_sr=' + encodeURIComponent(String(opts.cacheBust));
     return url;
+  }
+
+  function postAutoStart(targetWindow) {
+    if (!targetWindow) return;
+    try {
+      targetWindow.postMessage({ type: 'silk-resolve-autostart' }, origin);
+    } catch (e) {}
   }
 
   // Global API — populated once the DOM is ready
@@ -139,8 +148,13 @@
 
     // ── Iframe (the full PublicTalkClient lives here) ─────────────────────────
     var iframe = document.createElement('iframe');
-    iframe.src = talkUrl(agentId, Date.now());
+    iframe.dataset.agentId = agentId;
+    iframe.dataset.ready = '0';
+    iframe.src = talkUrl(agentId, { cacheBust: Date.now() });
     iframe.style.cssText = 'flex:1;width:100%;border:none;display:block;';
+    iframe.addEventListener('load', function () {
+      iframe.dataset.ready = '1';
+    });
     iframe.allow = 'microphone; autoplay; clipboard-write';
     iframe.setAttribute('allowfullscreen', '');
     // Needed in some browsers so mic permission flows through the iframe
@@ -155,10 +169,26 @@
 
     function open() {
       isOpen = true;
-      iframe.src = talkUrl(agentId, Date.now());
       overlay.style.display = 'flex';
       btn.style.display = 'none';
       panel.focus && panel.focus();
+
+      if (iframe.dataset.agentId !== agentId || !iframe.src) {
+        iframe.dataset.agentId = agentId;
+        iframe.dataset.ready = '0';
+        iframe.src = talkUrl(agentId, { autostart: true, cacheBust: Date.now() });
+        return;
+      }
+
+      if (iframe.dataset.ready === '1') {
+        postAutoStart(iframe.contentWindow);
+        return;
+      }
+
+      iframe.addEventListener('load', function onReady() {
+        iframe.removeEventListener('load', onReady);
+        postAutoStart(iframe.contentWindow);
+      });
     }
 
     function close() {
@@ -188,8 +218,10 @@
     // ── Public API ────────────────────────────────────────────────────────────
     window.SilkResolve.start = function (id) {
       if (id && id !== agentId) {
-        // Different agent — update iframe src before opening
-        iframe.src = talkUrl(id, Date.now());
+        agentId = id;
+        iframe.dataset.agentId = id;
+        iframe.dataset.ready = '0';
+        iframe.src = talkUrl(id, { autostart: true, cacheBust: Date.now() });
       }
       open();
     };
@@ -208,16 +240,21 @@
   }
 
   function warmVoiceInfra() {
-    var faqIds = ['plans', 'claims', 'coverage', 'network-hospitals', 'support', 'reimbursement', 'waiting', 'about'];
+    var voice = cfg.voice;
+    var llmVoice = voice === 'silk-mulberry' ? 'silk-mulberry' : voice === 'silk-stream' ? 'silk-stream' : 'silk';
+    var model = voice === 'silk-mulberry' ? 'mulberry' : 'muga';
+    var faqIds = ['greeting', 'plans', 'claims', 'coverage', 'network-hospitals', 'support', 'reimbursement', 'waiting', 'about'];
     var paths = [
-      origin + '/api/voice/vapi-llm?voice=silk',
-      origin + '/api/voice/silk-tts?all=1',
-      origin + '/api/voice/silk-tts?model=muga',
-      origin + '/api/voice/silk-tts?model=mulberry',
-      origin + '/api/voice/vapi-llm?voice=silk-mulberry'
+      origin + '/api/voice/vapi-token',
+      origin + '/api/voice/vapi-llm?voice=' + encodeURIComponent(llmVoice),
+      origin + '/api/voice/silk-tts?model=' + encodeURIComponent(model),
+      origin + '/api/voice/silk-tts?all=1'
     ];
     for (var j = 0; j < faqIds.length; j++) {
-      paths.push(origin + '/api/voice/silk-tts?model=mulberry&warmFaq=1&faqId=' + encodeURIComponent(faqIds[j]));
+      paths.push(
+        origin + '/api/voice/silk-tts?model=' + encodeURIComponent(model) +
+        '&warmFaq=1&faqId=' + encodeURIComponent(faqIds[j])
+      );
     }
     for (var i = 0; i < paths.length; i++) {
       try {
