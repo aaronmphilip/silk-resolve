@@ -16,7 +16,7 @@ import {
   vapiLlmVoiceQuery,
   type WebVoiceMode,
 } from "@/lib/silk-voice";
-import { prefetchSilkTts, speculativeNovaCareAnswer } from "@/lib/realtime-voice";
+import { prefetchSilkTts, prefetchSilkTtsLeadSentence, speculativeNovaCareAnswer } from "@/lib/realtime-voice";
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
 import { stripVoiceMarkers } from "@/lib/voice-emotion";
 
@@ -565,11 +565,10 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     if (speculativePrefetchRef.current === key) return;
     speculativePrefetchRef.current = key;
 
-    prefetchSilkTts(
-      window.location.origin,
-      silkTtsQueryForMode(voiceMode).slice(1),
-      buildSilkTtsBody(voiceMode, answer)
-    );
+    const voiceQuery = silkTtsQueryForMode(voiceMode).slice(1);
+    const ttsBody = buildSilkTtsBody(voiceMode, answer);
+    prefetchSilkTtsLeadSentence(window.location.origin, voiceQuery, ttsBody);
+    prefetchSilkTts(window.location.origin, voiceQuery, ttsBody);
   }, [canUseNovaCareCache, voiceMode]);
 
   const prefetchLocalAssistForText = useCallback((text: string) => {

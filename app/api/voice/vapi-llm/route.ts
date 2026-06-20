@@ -8,6 +8,7 @@
 import { NextRequest } from "next/server";
 import { stripAll, tensionToTone, withSilkTone, type SilkTone } from "@/lib/voice-emotion";
 import { answerNovaCareQuestion, cachedAudioText, cachedMugaAudioForText } from "@/lib/novacare-knowledge";
+import { splitSpeakableSentences } from "@/lib/speakable-sentences";
 import { isSilkVoiceMode, normalizeWebVoiceMode } from "@/lib/silk-voice";
 
 export const runtime = "nodejs";
@@ -488,18 +489,21 @@ function toSSE(text: string, fastLead = ""): Response {
   const id = `chatcmpl-${Date.now()}`;
   const { prefix, rest } = splitTonePrefix(text);
   const dedupedRest = fastLead ? stripLeadingFastLead(rest, fastLead) : rest;
+  const sentences = splitSpeakableSentences(dedupedRest);
+
+  const contentParts: string[] = [];
+  if (fastLead) contentParts.push(`${prefix}${fastLead}`.trim());
+  for (const sentence of sentences) contentParts.push(sentence);
+  if (contentParts.length === 0 && text.trim()) contentParts.push(text.trim());
+
   const lines = [
-    `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { role: "assistant" }, index: 0, finish_reason: null }] })}`,
-    ...(fastLead ? [
-      `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { content: `${prefix}${fastLead}` }, index: 0, finish_reason: null }] })}`,
-      ...(dedupedRest ? [`data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { content: ` ${dedupedRest}` }, index: 0, finish_reason: null }] })}`] : []),
-    ] : [
-      `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: { content: text }, index: 0, finish_reason: null }] })}`,
-    ]),
-    `data: ${JSON.stringify({ id, object: "chat.completion.chunk", choices: [{ delta: {}, index: 0, finish_reason: "stop" }] })}`,
-    "data: [DONE]",
-    "",
-  ].join("\n\n");
+    sseChunk(id, { role: "assistant" }, null),
+    ...contentParts.map((part, index) =>
+      sseChunk(id, { content: index === 0 ? part : ` ${part}` }, null)
+    ),
+    sseChunk(id, {}, "stop"),
+    "data: [DONE]\n\n",
+  ].join("");
 
   return new Response(lines, {
     headers: {

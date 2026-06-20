@@ -20,6 +20,7 @@ import path from "path";
 import { MUGA_CACHED_AUDIO, NOVACARE_FAQ_AUDIO, cachedMugaAudioForText } from "@/lib/novacare-knowledge";
 import { MULBERRY_DEFAULTS, type SilkModel } from "@/lib/silk-voice";
 import { getPlatformVoiceConfig } from "@/lib/platform";
+import { splitSpeakableSentences } from "@/lib/speakable-sentences";
 import { extractSilkTone, stripAll, stripVoiceMarkers, withSilkTone } from "@/lib/voice-emotion";
 
 export const runtime = "nodejs";
@@ -574,6 +575,109 @@ async function callRumik(apiKey: string, body: VoiceRequestBody, text: string) {
   }
 }
 
+async function pipeReadableStreamToController(
+  body: ReadableStream<Uint8Array> | null,
+  controller: ReadableStreamDefaultController<Uint8Array>
+): Promise<void> {
+  if (!body) return;
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value?.length) controller.enqueue(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function synthesizeSentenceResponse(
+  apiKey: string,
+  body: VoiceRequestBody,
+  sentence: string,
+  sampleRate: number,
+  model: SilkModel,
+  tone: ReturnType<typeof extractSilkTone>["tone"] = "neutral"
+): Promise<NextResponse | { error: string; status: 502 }> {
+  const speakable =
+    model === "muga"
+      ? withSilkTone(tone, stripAll(sentence))
+      : stripVoiceMarkers(sentence);
+
+  const cached =
+    model === "muga"
+      ? getCachedMugaAudio(speakable, sampleRate)
+      : getCachedMulberryFaqAudio(stripVoiceMarkers(sentence), sampleRate);
+
+  if (cached) {
+    return new NextResponse(new Uint8Array(cached.pcm), {
+      headers: {
+        "Content-Type": "application/octet-stream",
+        "Cache-Control": "no-store",
+        "X-Audio-Format": "pcm_s16le",
+        "X-Audio-Sample-Rate": String(sampleRate),
+        "X-Audio-Channels": "1",
+        "X-Silk-Transport": model === "mulberry" ? "cached-mulberry-faq" : "cached-muga-audio",
+        "X-Silk-Cache-Key": cached.id,
+        "Content-Length": String(cached.pcm.byteLength),
+      },
+    });
+  }
+
+  const reusable = await streamRumikReusable(apiKey, body, speakable, sampleRate, model);
+  if (!("skipped" in reusable) && !("error" in reusable)) return reusable;
+
+  const streamed = await streamRumik(apiKey, body, speakable, sampleRate, model);
+  if (!("error" in streamed)) return streamed;
+  return streamed;
+}
+
+async function streamChainedSentences(
+  apiKey: string,
+  body: VoiceRequestBody,
+  sentences: string[],
+  sampleRate: number,
+  model: SilkModel,
+  tone: ReturnType<typeof extractSilkTone>["tone"] = "neutral"
+): Promise<NextResponse | { error: string; status: 502 }> {
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      try {
+        for (const sentence of sentences) {
+          const response = await synthesizeSentenceResponse(
+            apiKey,
+            body,
+            sentence,
+            sampleRate,
+            model,
+            tone
+          );
+          if ("error" in response) {
+            controller.error(new Error(response.error));
+            return;
+          }
+          await pipeReadableStreamToController(response.body, controller);
+        }
+        controller.close();
+      } catch (err) {
+        controller.error(err instanceof Error ? err : new Error("SILK chained stream failed"));
+      }
+    },
+  });
+
+  return new NextResponse(stream, {
+    headers: {
+      "Content-Type": "application/octet-stream",
+      "Cache-Control": "no-store",
+      "X-Audio-Format": "pcm_s16le",
+      "X-Audio-Sample-Rate": String(sampleRate),
+      "X-Audio-Channels": "1",
+      "X-Silk-Transport": "websocket-chained",
+    },
+  });
+}
+
 async function streamRumik(
   apiKey: string,
   body: VoiceRequestBody,
@@ -906,6 +1010,21 @@ export async function POST(req: NextRequest) {
           },
         });
       }
+    }
+
+    const { tone, text: plainText } = extractSilkTone(text, "neutral");
+    const sentences = splitSpeakableSentences(stripVoiceMarkers(plainText));
+    if (sentences.length > 1) {
+      const chained = await streamChainedSentences(
+        silk.apiKey,
+        body,
+        sentences,
+        sampleRate,
+        model,
+        tone
+      );
+      if (!("error" in chained)) return chained;
+      console.warn(`[silk-tts] chained stream failed (${model}), falling back to single stream`);
     }
 
     const reusable = await streamRumikReusable(silk.apiKey, body, text, sampleRate, model);

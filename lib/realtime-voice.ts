@@ -1,4 +1,5 @@
 import { answerNovaCareQuestion, cachedAudioText } from "@/lib/novacare-knowledge";
+import { splitSpeakableSentences } from "@/lib/speakable-sentences";
 
 /**
  * GPT Realtime-style speculative intent: guess the FAQ answer from partial
@@ -70,6 +71,19 @@ export function prefetchSilkTts(
       keepalive: true,
     });
   } catch {}
+}
+
+/** Warm the first sentence so voice TTS can start while the caller is still talking. */
+export function prefetchSilkTtsLeadSentence(
+  origin: string,
+  voiceQuery: string,
+  body: object
+): void {
+  const record = body as { text?: string };
+  const text = typeof record.text === "string" ? record.text : "";
+  const first = splitSpeakableSentences(text)[0];
+  if (!first || first === text) return;
+  prefetchSilkTts(origin, voiceQuery, { ...body, text: first });
 }
 
 export function normalizeTranscriptKey(text: string): string {
