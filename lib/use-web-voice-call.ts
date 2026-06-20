@@ -25,7 +25,13 @@ import {
   type WebVoiceMode,
 } from "@/lib/silk-voice";
 import { playBufferedPcm, playStreamingPcmResponse } from "@/lib/silk-stream-player";
-import { prefetchSilkTts, prefetchSilkTtsLeadSentence, speculativeNovaCareAnswer } from "@/lib/realtime-voice";
+import {
+  prefetchSilkTts,
+  prefetchSilkTtsLeadSentence,
+  shouldStartSpeculativeLlm,
+  speculativeNovaCareAnswer,
+  transcriptsAlign,
+} from "@/lib/realtime-voice";
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
 import { extractVoiceMeta, stripVoiceMarkers } from "@/lib/voice-emotion";
 
@@ -69,6 +75,8 @@ const VISITOR_ID_KEY = "silk_resolve_voice_visitor_id";
 const LOCAL_MUGA_SAMPLE_RATE = 24_000;
 /** Demo FAQs — prefetched once per call so speech-to-speech stays under 1s. */
 const VOICE_DEMO_FAQ_IDS = ["plans", "opd", "claims"] as const;
+const FAST_CHUNKER = { minChars: 8, maxChars: 64 } as const;
+const SPECULATIVE_DEBOUNCE_MS = 60;
 const VAPI_PLACEHOLDER_TRANSCRIPT_RE = /^(?:got it|i understand)[.!?\s]*$/i;
 interface LocalMugaClip {
   audio: ArrayBuffer;
@@ -230,6 +238,10 @@ function extractAssistantSystemPrompt(config: AssistantConfig): string {
 
 function isSmallTalkPrompt(text: string): boolean {
   return /^(hi|hello|hey|thanks|thank you|bye|goodbye)[\s.!?]*$/i.test(text.trim());
+}
+
+function appendText(current: string, delta: string): string {
+  return `${current} ${delta}`.replace(/\s+/g, " ").trim();
 }
 
 function bridgeForVoicePrompt(text: string): string {
@@ -535,6 +547,11 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
   const stopLocalAssist = useCallback(() => {
     localAssistRunRef.current += 1;
+    speculativeAbortRef.current?.abort();
+    speculativeAbortRef.current = null;
+    if (speculativeDebounceRef.current) clearTimeout(speculativeDebounceRef.current);
+    speculativeDebounceRef.current = null;
+    speculativeChunksReadyRef.current = 0;
     try {
       localSourceRef.current?.stop();
     } catch {}
@@ -564,6 +581,13 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   }, [agentId]);
 
   const speculativePrefetchRef = useRef("");
+  const speculativeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speculativeAbortRef = useRef<AbortController | null>(null);
+  const speculativePartialRef = useRef("");
+  const speculativeAnswerRef = useRef("");
+  const speculativeChunksReadyRef = useRef(0);
+  const speculativePromiseRef = useRef<Promise<void> | null>(null);
+  const speculativeRunIdRef = useRef(0);
   const lastUserFinalAtRef = useRef<number | null>(null);
   const latencyCapturedRef = useRef(false);
 
@@ -599,6 +623,110 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     prefetchSilkTtsLeadSentence(window.location.origin, voiceQuery, ttsBody);
     prefetchSilkTts(window.location.origin, voiceQuery, ttsBody);
   }, [canUseNovaCareCache, getOrFetchLocalMugaClip, voiceMode]);
+
+  const prefetchFirstSpeechChunk = useCallback((chunk: string) => {
+    const speakable = silkSpeechText(voiceMode, chunk).trim();
+    if (!speakable) return;
+    void getOrFetchLocalMugaClip(speakable).catch(() => {});
+    const voiceQuery = silkTtsQueryForMode(voiceMode).slice(1);
+    prefetchSilkTtsLeadSentence(
+      window.location.origin,
+      voiceQuery,
+      buildSilkTtsBody(voiceMode, speakable)
+    );
+  }, [getOrFetchLocalMugaClip, voiceMode]);
+
+  const runSpeculativeLlm = useCallback((partial: string) => {
+    if (!usesBrowserSilkPlayback(voiceMode) || !canUseNovaCareCache()) return;
+
+    const cached = speculativeNovaCareAnswer(partial) || answerNovaCareQuestion(partial);
+    if (cached) {
+      speculativePartialRef.current = partial;
+      speculativeAnswerRef.current = cached;
+      void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, cached)).catch(() => {});
+      return;
+    }
+
+    speculativeAbortRef.current?.abort();
+    const abort = new AbortController();
+    speculativeAbortRef.current = abort;
+    speculativePartialRef.current = partial;
+    speculativeAnswerRef.current = "";
+    speculativeChunksReadyRef.current = 0;
+    const specRunId = ++speculativeRunIdRef.current;
+    const systemPrompt = assistantSystemPromptRef.current;
+
+    const job = (async () => {
+      try {
+        const res = await fetch(
+          `/api/voice/vapi-llm?${vapiLlmVoiceQuery(voiceMode)}&fast=1&local=1&lang=${encodeURIComponent(speechLanguage)}`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            signal: abort.signal,
+            body: JSON.stringify({
+              stream: true,
+              messages: [
+                ...(systemPrompt ? [{ role: "system", content: systemPrompt }] : []),
+                { role: "user", content: partial },
+              ],
+            }),
+          }
+        );
+        if (!res.ok || !res.body || specRunId !== speculativeRunIdRef.current) return;
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        const chunker = new StreamSpeechChunker((chunk) => {
+          if (specRunId !== speculativeRunIdRef.current) return;
+          speculativeChunksReadyRef.current += 1;
+          if (speculativeChunksReadyRef.current === 1) prefetchFirstSpeechChunk(chunk);
+        }, FAST_CHUNKER);
+
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done || abort.signal.aborted || specRunId !== speculativeRunIdRef.current) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parsed = readSsePayloads(buffer);
+          buffer = parsed.rest;
+          for (const event of parsed.events) {
+            for (const rawLine of event.split(/\r?\n/)) {
+              const line = rawLine.trim();
+              if (!line.startsWith("data:")) continue;
+              const payload = line.slice(5).trim();
+              if (!payload || payload === "[DONE]") continue;
+              try {
+                const data = JSON.parse(payload) as {
+                  choices?: Array<{ delta?: { content?: string } }>;
+                };
+                const content = data.choices?.[0]?.delta?.content ?? "";
+                if (!content) continue;
+                speculativeAnswerRef.current = appendText(speculativeAnswerRef.current, content);
+                chunker.push(content);
+              } catch {}
+            }
+          }
+        }
+        chunker.finish();
+      } catch {
+        /* cancelled or failed */
+      }
+    })();
+
+    speculativePromiseRef.current = job;
+    void job.finally(() => {
+      if (speculativePromiseRef.current === job) speculativePromiseRef.current = null;
+    });
+  }, [canUseNovaCareCache, prefetchFirstSpeechChunk, speechLanguage, voiceMode]);
+
+  const scheduleSpeculativeLlm = useCallback((partial: string) => {
+    if (!usesBrowserSilkPlayback(voiceMode) || !shouldStartSpeculativeLlm(partial)) return;
+    if (speculativeDebounceRef.current) clearTimeout(speculativeDebounceRef.current);
+    speculativeDebounceRef.current = setTimeout(() => {
+      runSpeculativeLlm(partial);
+    }, SPECULATIVE_DEBOUNCE_MS);
+  }, [runSpeculativeLlm, voiceMode]);
 
   const prefetchLocalAssistForText = useCallback((text: string) => {
     if (isSilkVoiceMode(voiceMode)) {
@@ -758,7 +886,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     let answerText = "";
     const chunker = new StreamSpeechChunker((chunk) => {
       enqueueLocalSpeech(chunk, callRunId, localRunId);
-    });
+    }, FAST_CHUNKER);
 
     for (;;) {
       const { done, value } = await reader.read();
@@ -811,7 +939,12 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     if (!usesTalkWidgetLocalAssist(voiceMode) || voiceMode === "vapi") return;
 
     const cachedAnswer = canUseNovaCareCache() ? answerNovaCareQuestion(userText) : "";
-    const bridge = cachedAnswer ? "" : bridgeForVoicePrompt(userText);
+    const specPartial = speculativePartialRef.current;
+    const specAligned = Boolean(specPartial && transcriptsAlign(specPartial, userText));
+    const specReady =
+      speculativeChunksReadyRef.current > 0 || speculativeAnswerRef.current.trim().length > 0;
+    const useSpeculative = !cachedAnswer && specAligned && specReady;
+    const bridge = cachedAnswer || useSpeculative ? "" : bridgeForVoicePrompt(userText);
 
     const localRunId = localAssistRunRef.current + 1;
     localAssistRunRef.current = localRunId;
@@ -840,12 +973,26 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           return;
         }
 
-        if (bridge) {
-          setTranscript(lines => appendTranscriptLine(lines, "assistant", bridge, Date.now()));
-          enqueueLocalSpeech(bridge, callRunId, localRunId);
+        if (useSpeculative) {
+          await speculativePromiseRef.current?.catch(() => {});
+          speculativeAbortRef.current?.abort();
+          speculativeAbortRef.current = null;
+          const answerText = speculativeAnswerRef.current.trim();
+          if (answerText) {
+            setTranscript(lines => appendTranscriptLine(lines, "assistant", answerText, Date.now()));
+            const chunker = new StreamSpeechChunker((chunk) => {
+              enqueueLocalSpeech(chunk, callRunId, localRunId);
+            }, FAST_CHUNKER);
+            chunker.push(answerText);
+            chunker.finish();
+          }
+        } else {
+          if (bridge) {
+            setTranscript(lines => appendTranscriptLine(lines, "assistant", bridge, Date.now()));
+            enqueueLocalSpeech(bridge, callRunId, localRunId);
+          }
+          await streamLocalAnswer(userText, bridge, callRunId, localRunId);
         }
-
-        await streamLocalAnswer(userText, bridge, callRunId, localRunId);
         await localAudioQueueRef.current;
         if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
           restoreMicAfterLocalOutput();
@@ -1050,6 +1197,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           if (msg.transcriptType !== "final") {
             if (role === "user") {
               prefetchLocalAssistForText(text);
+              scheduleSpeculativeLlm(text);
             }
             if (role === "assistant" && Date.now() < assistantTranscriptSuppressUntilRef.current) return;
             setInterim({ role, text });
@@ -1071,6 +1219,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
             setTension(value => Math.min(10, value + 0.4));
             prefetchLocalAssistForText(text);
             playLocalAssistForUserText(text, runId);
+            speculativeChunksReadyRef.current = 0;
           }
         }
 
@@ -1112,6 +1261,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     playLocalAssistForUserText,
     prefetchLocalAssistForText,
     prefetchVoiceFaqClips,
+    scheduleSpeculativeLlm,
     registerCall,
     speechLanguage,
     startTimer,

@@ -158,7 +158,7 @@ function TalkUi({
               </p>
               {active && isSilkVoiceMode(voiceMode) && (
                 <p className="text-[10px] font-mono text-[#f0ebe0]/25 mt-3 max-w-xs mx-auto leading-relaxed">
-                  Demo: say &quot;What plans do you offer?&quot; — latency measures your last word → first MUGA audio.
+                  Cached: &quot;What plans do you offer?&quot; · Uncached: &quot;Can I downgrade from Premium to Basic before renewal?&quot;
                 </p>
               )}
             </div>
