@@ -4,8 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   answerNovaCareQuestion,
   cachedAudioText,
+  isClearlyOutOfScope,
   isNovaCareAgentId,
   novaCareConversationalReply,
+  novaCareFaqCacheAnswer,
   shouldRouteNovaCareToGemini,
   normalizeMugaCacheText,
   NOVACARE_AGENT_ID,
@@ -649,7 +651,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const runSpeculativeLlm = useCallback((partial: string) => {
     if (!usesBrowserSilkPlayback(voiceMode) || !canUseNovaCareCache()) return;
 
-    const cached = speculativeNovaCareAnswer(partial) || answerNovaCareQuestion(partial);
+    const cached = speculativeNovaCareAnswer(partial) || novaCareFaqCacheAnswer(partial);
     if (cached) {
       speculativePartialRef.current = partial;
       speculativeAnswerRef.current = cached;
@@ -1011,7 +1013,9 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       !conversational;
     const cachedAnswer =
       canUseNovaCareCache() && !useBrain && !conversational
-        ? answerNovaCareQuestion(userText)
+        ? isClearlyOutOfScope(userText.toLowerCase())
+          ? cachedAudioText("out-of-scope")
+          : novaCareFaqCacheAnswer(userText)
         : "";
     const specPartial = speculativePartialRef.current;
     const specAligned = Boolean(specPartial && transcriptsAlign(specPartial, userText));
@@ -1247,7 +1251,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
             setTranscript(lines =>
               appendTranscriptLine(lines, "assistant", cleanTranscriptText(greeting), Date.now())
             );
-            enqueueLocalSpeech(greeting, runId, localRunId);
+            enqueueLocalSpeech(greeting, runId, localRunId, { forceLive: true });
           }
         }
         setState("active");
@@ -1339,6 +1343,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           setTranscript(lines => appendTranscriptLine(lines, role, text, ts));
           if (role === "user") {
             if (!micConfirmsUserSpeech(micSilenceGateRef.current)) return;
+            if (usesBrowserSilkPlayback(voiceMode)) suppressAssistantAudio();
             speculativePrefetchRef.current = "";
             lastUserFinalAtRef.current = ts;
             latencyCapturedRef.current = false;

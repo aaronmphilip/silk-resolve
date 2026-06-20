@@ -405,7 +405,7 @@ function planLine(plan: typeof NOVACARE_PLANS[number]): string {
   return `${plan.name} is ${plan.spokenPrice}, with ${plan.sumInsured} sum insured for ${plan.audience}.`;
 }
 
-function isClearlyOutOfScope(text: string): boolean {
+export function isClearlyOutOfScope(text: string): boolean {
   return hasAny(text, [
     "moon",
     "mars",
@@ -729,15 +729,21 @@ export function cachedMugaAudioForText(text: string): typeof MUGA_CACHED_AUDIO[n
   return MUGA_CACHED_AUDIO.find((item) => normalizeMugaCacheText(item.text) === key) ?? null;
 }
 
+/** Exact canned FAQ clip only — never the generic out-of-scope fallback. */
+export function novaCareFaqCacheAnswer(userText: string): string {
+  const text = userText.toLowerCase();
+  if (!text.trim()) return "";
+  if (needsNovaCareBrain(text)) return "";
+  const intentId = cachedIntentIdForQuestion(text);
+  return intentId ? cachedAudioText(intentId) : "";
+}
+
 export function answerNovaCareQuestion(userText: string): string {
   const text = userText.toLowerCase();
   if (!text.trim()) return "";
   if (isClearlyOutOfScope(text)) return cachedAudioText("out-of-scope");
   if (needsNovaCareBrain(text)) return "";
-  if (!isSmallTalk(text) && !isLikelyNovaCareSupportIntent(text)) return cachedAudioText("out-of-scope");
-
-  const intentId = cachedIntentIdForQuestion(text);
-  return intentId ? cachedAudioText(intentId) : "";
+  return novaCareFaqCacheAnswer(userText);
 }
 
 /** Instant spoken reply for greetings — no FAQ clip, no Gemini wait. */
@@ -760,9 +766,8 @@ export function shouldRouteNovaCareToGemini(userText: string): boolean {
   const text = userText.toLowerCase().trim();
   if (!text) return false;
   if (isClearlyOutOfScope(text)) return false;
-  if (isSmallTalk(text)) return true;
-  if (novaCareConversationalReply(userText)) return true;
+  if (novaCareConversationalReply(userText)) return false;
   if (needsNovaCareBrain(text)) return true;
-  if (answerNovaCareQuestion(userText)) return false;
-  return isLikelyNovaCareSupportIntent(text);
+  if (novaCareFaqCacheAnswer(userText)) return false;
+  return true;
 }

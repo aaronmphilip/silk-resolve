@@ -1,4 +1,4 @@
-import { answerNovaCareQuestion, cachedAudioText, needsNovaCareBrain } from "@/lib/novacare-knowledge";
+import { cachedAudioText, needsNovaCareBrain, novaCareFaqCacheAnswer } from "@/lib/novacare-knowledge";
 import { splitSpeakableSentences } from "@/lib/speakable-sentences";
 
 /**
@@ -10,7 +10,7 @@ export function speculativeNovaCareAnswer(partialText: string): string {
   if (text.length < 8) return "";
   if (needsNovaCareBrain(text)) return "";
 
-  const direct = answerNovaCareQuestion(text);
+  const direct = novaCareFaqCacheAnswer(text);
   if (direct) return direct;
 
   const lower = text.toLowerCase();
