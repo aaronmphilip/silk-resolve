@@ -17,6 +17,7 @@ import {
   transcriptsAlign,
 } from "@/lib/realtime-voice";
 import { playBufferedPcm, playStreamingPcmResponse, resetAudioPlayhead } from "@/lib/silk-stream-player";
+import { stripVoiceMarkers } from "@/lib/voice-emotion";
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
 import {
   buildSilkTtsBody,
@@ -120,14 +121,6 @@ function getSpeechRecognitionCtor(): SpeechRecognitionCtor | null {
   return browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition ?? null;
 }
 
-function stripVoiceMarkers(text: string): string {
-  return text
-    .replace(/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]\s*/i, "")
-    .replace(/<(laugh|sigh|hmm|pause|breathe)>/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function normalizeSpeechKey(text: string): string {
   return stripVoiceMarkers(text)
     .toLowerCase()
@@ -137,9 +130,9 @@ function normalizeSpeechKey(text: string): string {
 }
 
 function appendText(current: string, next: string): string {
-  const clean = stripVoiceMarkers(next);
-  if (!clean) return current;
-  return `${current}${current && !current.endsWith(" ") ? " " : ""}${clean}`.replace(/\s+/g, " ").trim();
+  if (!next.trim()) return current;
+  const merged = `${current}${current && !current.endsWith(" ") ? " " : ""}${next}`.replace(/\s+/g, " ").trim();
+  return stripVoiceMarkers(merged);
 }
 
 function isSmallTalkPrompt(text: string): boolean {
@@ -654,7 +647,7 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
               <div className="flex justify-start">
                 <div className="max-w-[86%] rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-gray-800">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1">agent</p>
-                  <p className="text-sm leading-relaxed">{answer}</p>
+                  <p className="text-sm leading-relaxed">{stripVoiceMarkers(answer)}</p>
                 </div>
               </div>
             )}

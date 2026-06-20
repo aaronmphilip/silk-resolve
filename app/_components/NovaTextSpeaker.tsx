@@ -15,6 +15,7 @@ import {
   voiceModeLabel,
   type WebVoiceMode,
 } from "@/lib/silk-voice";
+import { stripVoiceMarkers } from "@/lib/voice-emotion";
 
 interface NovaTextSpeakerProps {
   systemPrompt: string;
@@ -70,14 +71,6 @@ function isSmallTalkPrompt(text: string): boolean {
   return /^(hi|hello|hey|thanks|thank you|bye|goodbye)[\s.!?]*$/i.test(text.trim());
 }
 
-function stripVoiceMarkers(text: string): string {
-  return text
-    .replace(/^\s*\[(neutral|happy|sad|excited|angry|whisper)\]\s*/i, "")
-    .replace(/<(laugh|sigh|hmm|pause|breathe)>/gi, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function normalizeSpeechKey(text: string): string {
   return stripVoiceMarkers(text)
     .toLowerCase()
@@ -97,9 +90,9 @@ function bridgeForPrompt(text: string): string {
 }
 
 function appendText(current: string, next: string): string {
-  const clean = stripVoiceMarkers(next);
-  if (!clean) return current;
-  return `${current}${current && !current.endsWith(" ") ? " " : ""}${clean}`.replace(/\s+/g, " ").trim();
+  if (!next.trim()) return current;
+  const merged = `${current}${current && !current.endsWith(" ") ? " " : ""}${next}`.replace(/\s+/g, " ").trim();
+  return stripVoiceMarkers(merged);
 }
 
 function stripLeadingBridge(text: string, bridge: string): string {
@@ -415,7 +408,7 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
               <div className="flex justify-start">
                 <div className="max-w-[86%] rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-gray-800">
                   <p className="text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-1">agent</p>
-                  <p className="text-sm leading-relaxed">{answer}</p>
+                  <p className="text-sm leading-relaxed">{stripVoiceMarkers(answer)}</p>
                 </div>
               </div>
             )}
