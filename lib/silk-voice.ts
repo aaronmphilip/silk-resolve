@@ -108,6 +108,7 @@ export const MULBERRY_WARM_FAQ_IDS = [
   "reimbursement",
   "waiting",
   "about",
+  "opd",
 ] as const;
 
 /** Minimal warm set for call join — must finish in <100ms client-side (fire-and-forget). */
@@ -123,6 +124,7 @@ export function silkCriticalWarmPaths(origin = "", voiceMode: WebVoiceMode = "si
     `${base}/api/voice/silk-tts?model=${model}&warmFaq=1&faqId=greeting`,
     `${base}/api/voice/silk-tts?model=${model}&warmFaq=1&faqId=plans`,
     `${base}/api/voice/silk-tts?model=${model}&warmFaq=1&faqId=claims`,
+    `${base}/api/voice/silk-tts?model=${model}&warmFaq=1&faqId=opd`,
   ];
 }
 

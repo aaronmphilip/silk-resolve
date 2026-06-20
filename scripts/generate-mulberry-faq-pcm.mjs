@@ -40,6 +40,12 @@ const FAQ_ITEMS = [
   { id: "account-specific", text: "For account-specific claim status, share your policy ID or claim ID. A specialist can verify the exact account data and follow up with you." },
   { id: "out-of-scope", text: "I don't have that information in this support script. I can help with NovaCare plans, claims, coverage, support, or network hospitals." },
   { id: "about", text: "NovaCare is a health insurance provider in India offering Basic, Standard, and Premium family plans with cashless hospitalization, reimbursement, and twenty four seven support." },
+  { id: "opd", text: "This support script does not define O P D. It only says NovaCare Standard includes O P D up to ten thousand rupees per year, and Premium includes O P D up to twenty five thousand rupees per year." },
+  { id: "critical-illness", text: "This support script does not define the critical illness rider or list the illnesses. It only says NovaCare Premium includes a critical illness rider." },
+  { id: "private-room", text: "This support script does not define private-room eligibility or room rent rules. It only says NovaCare Premium includes private-room eligibility." },
+  { id: "mobile-app", text: "Yes. The support script says the NovaCare app is available on i O S and Android. It also says the app supports reimbursement uploads, renewal settings, and adding dependents." },
+  { id: "admission-delays", text: "To reduce admission delays, use a NovaCare network hospital, show your e-card early, and keep your policy ID, government ID, diagnosis note, and admission request ready. The normal cashless pre-auth target is thirty minutes after the hospital sends the request." },
+  { id: "hospital-prep", text: "Before a hospital visit, keep your NovaCare policy ID, e-card, government ID, diagnosis note, and admission request ready. For cashless treatment, confirm the hospital is in the NovaCare network in the app." },
 ];
 
 const SILK_ENDPOINT = process.env.SILK_TTS_URL?.trim() || "https://silk-api.rumik.ai/v1/tts";
@@ -71,17 +77,25 @@ function parseWav(buffer) {
   return data;
 }
 
-async function synthesize(apiKey, text) {
-  const payload = {
-    model: "mulberry",
-    text,
-    description: "Priya, a warm and professional Indian female customer support agent.",
-    speaker: "priya",
-    f0_up_key: 0,
-    temperature: 0.6,
-    top_p: 0.95,
-    repetition_penalty: 1.2,
-  };
+async function synthesize(apiKey, model, text) {
+  const payload = model === "mulberry"
+    ? {
+        model,
+        text,
+        description: "warm, calm, professional female narrator for health insurance support",
+        speaker: "speaker_2",
+        f0_up_key: 0,
+        temperature: 0.6,
+        top_p: 0.95,
+        repetition_penalty: 1.2,
+      }
+    : {
+        model,
+        text: `[neutral] ${text}`,
+        temperature: 0.55,
+        top_p: 0.92,
+        repetition_penalty: 1.15,
+      };
   const res = await fetch(SILK_ENDPOINT, {
     method: "POST",
     headers: {
@@ -103,20 +117,35 @@ async function main() {
   }
   fs.mkdirSync(audioDir, { recursive: true });
 
+  const NEW_ONLY = new Set([
+    "opd",
+    "critical-illness",
+    "private-room",
+    "mobile-app",
+    "admission-delays",
+    "hospital-prep",
+  ]);
+
   let generated = 0;
   let skipped = 0;
   for (const item of FAQ_ITEMS) {
-    const outPath = path.join(audioDir, `mulberry-${item.id}-24k.pcm`);
-    if (fs.existsSync(outPath)) {
-      skipped++;
-      console.log(`skip ${item.id}`);
-      continue;
+    if (!NEW_ONLY.has(item.id)) continue;
+    for (const variant of [
+      { model: "mulberry", file: `mulberry-${item.id}-24k.pcm` },
+      { model: "muga", file: `novacare-${item.id}-24k.pcm` },
+    ]) {
+      const outPath = path.join(audioDir, variant.file);
+      if (fs.existsSync(outPath)) {
+        skipped++;
+        console.log(`skip ${variant.file}`);
+        continue;
+      }
+      console.log(`synth ${variant.file}...`);
+      const wav = await synthesize(apiKey, variant.model, item.text);
+      const pcm = parseWav(wav);
+      fs.writeFileSync(outPath, pcm);
+      generated++;
     }
-    console.log(`synth ${item.id}...`);
-    const wav = await synthesize(apiKey, item.text);
-    const pcm = parseWav(wav);
-    fs.writeFileSync(outPath, pcm);
-    generated++;
   }
   console.log(`done generated=${generated} skipped=${skipped}`);
 }

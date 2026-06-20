@@ -265,7 +265,11 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
 
     const job = playSpeechChunk(speakable, runId).catch((err) => {
       if (runId !== runIdRef.current) return;
-      setError(err instanceof Error ? err.message : `${silkModel.toUpperCase()} speech failed.`);
+      const raw = err instanceof Error ? err.message : `${silkModel.toUpperCase()} speech failed.`;
+      const clean = raw.includes("<!DOCTYPE") || raw.includes("<html")
+        ? `${silkModel.toUpperCase()} speech failed. Retry in a moment.`
+        : raw.slice(0, 240);
+      setError(clean);
       setState("error");
     });
 
@@ -304,7 +308,10 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
 
       if (!res.ok || !res.body) {
         const detail = await res.text().catch(() => "");
-        throw new Error(detail || "AI response failed.");
+        const clean = detail.includes("<!DOCTYPE") || detail.includes("<html")
+          ? `AI response failed (${res.status}).`
+          : detail || `AI response failed (${res.status}).`;
+        throw new Error(clean.slice(0, 240));
       }
 
       setState("speaking");

@@ -210,6 +210,42 @@ export const MUGA_CACHED_AUDIO = [
       "NovaCare is an I R D A I registered health insurer founded in twenty eighteen in Mumbai. It serves two point four million active policyholders across India and has a ninety eight point two percent claim settlement rate.",
     audioFile: "novacare-about-24k.pcm",
   },
+  {
+    id: "opd",
+    text:
+      "This support script does not define O P D. It only says NovaCare Standard includes O P D up to ten thousand rupees per year, and Premium includes O P D up to twenty five thousand rupees per year.",
+    audioFile: "novacare-opd-24k.pcm",
+  },
+  {
+    id: "critical-illness",
+    text:
+      "This support script does not define the critical illness rider or list the illnesses. It only says NovaCare Premium includes a critical illness rider.",
+    audioFile: "novacare-critical-illness-24k.pcm",
+  },
+  {
+    id: "private-room",
+    text:
+      "This support script does not define private-room eligibility or room rent rules. It only says NovaCare Premium includes private-room eligibility.",
+    audioFile: "novacare-private-room-24k.pcm",
+  },
+  {
+    id: "mobile-app",
+    text:
+      "Yes. The support script says the NovaCare app is available on i O S and Android. It also says the app supports reimbursement uploads, renewal settings, and adding dependents.",
+    audioFile: "novacare-mobile-app-24k.pcm",
+  },
+  {
+    id: "admission-delays",
+    text:
+      "To reduce admission delays, use a NovaCare network hospital, show your e-card early, and keep your policy ID, government ID, diagnosis note, and admission request ready. The normal cashless pre-auth target is thirty minutes after the hospital sends the request.",
+    audioFile: "novacare-admission-delays-24k.pcm",
+  },
+  {
+    id: "hospital-prep",
+    text:
+      "Before a hospital visit, keep your NovaCare policy ID, e-card, government ID, diagnosis note, and admission request ready. For cashless treatment, confirm the hospital is in the NovaCare network in the app.",
+    audioFile: "novacare-hospital-prep-24k.pcm",
+  },
 ] as const;
 
 export const NOVACARE_SAMPLE_CUSTOMERS = [
@@ -599,6 +635,21 @@ function cachedIntentIdForQuestion(text: string): MugaCachedAudioId | null {
     if (selectedPlan.name.endsWith("Premium")) return "plan-premium";
   }
 
+  if (/\b(opd|outpatient)\b/.test(text)) return "opd";
+  if (/\bcritical illness|critical rider|illness rider|rider\b/.test(text)) return "critical-illness";
+  if (/\b(room eligibility|private room|room eligible|room rent|private-room)\b/.test(text)) return "private-room";
+  if (/\b(android|ios|iphone|app)\b/.test(text) && /\b(use|available|download|phone|mobile|install|login|access)\b/.test(text)) {
+    return "mobile-app";
+  }
+  if (
+    /\b(delay|delays|faster|fast|speed|reduce|avoid)\b/.test(text) &&
+    /\b(admission|preauth|pre-auth|cashless|hospital)\b/.test(text)
+  ) {
+    return "admission-delays";
+  }
+  if (/\b(prepare|ready|carry|keep)\b/.test(text) && /\b(doctor|admission|hospital|visit)\b/.test(text)) {
+    return "hospital-prep";
+  }
   if (isRelocationIntent(text)) return "relocation";
   if (hasAny(text, ["again", "repeat", "say that", "one more time"])) return "plans";
   if (isAccountSpecificIntent(text)) return "account-specific";

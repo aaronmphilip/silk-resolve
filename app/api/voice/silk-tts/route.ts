@@ -842,6 +842,7 @@ async function streamRumikReusable(
 }
 
 export async function POST(req: NextRequest) {
+  try {
   const { silk } = await getPlatformVoiceConfig();
 
   if (!silk.apiKey) {
@@ -949,6 +950,10 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[silk-tts] audio conversion error:", err);
     return NextResponse.json({ error: "SILK audio conversion failed" }, { status: 502 });
+  }
+  } catch (err) {
+    console.error("[silk-tts] unhandled POST error:", err);
+    return NextResponse.json({ error: "SILK speech failed" }, { status: 502 });
   }
 }
 

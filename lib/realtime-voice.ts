@@ -48,6 +48,9 @@ export function speculativeNovaCareAnswer(partialText: string): string {
   if (/\b(who are you|about|novacare|company)\b/.test(lower) && text.length >= 10) {
     return cachedAudioText("about");
   }
+  if (/\b(opd|outpatient)\b/.test(lower) && text.length >= 8) {
+    return cachedAudioText("opd");
+  }
 
   return "";
 }
