@@ -9,10 +9,10 @@ import {
   isSilkVoiceMode,
   silkCriticalWarmPaths,
   silkModelForVoiceMode,
-  SILK_WARM_INTERVAL_MS,
+  fireSilkWarmPaths,
+  startSilkWarmKeepalive,
   silkSpeechText,
   silkTtsQueryForMode,
-  silkWarmPaths,
   usesBrowserSilkPlayback,
   usesTalkWidgetLocalAssist,
   vapiLlmVoiceQuery,
@@ -62,13 +62,6 @@ const ASSISTANT_MERGE_WINDOW_MS = 12_000;
 const VISITOR_ID_KEY = "silk_resolve_voice_visitor_id";
 const LOCAL_MUGA_SAMPLE_RATE = 24_000;
 const VAPI_PLACEHOLDER_TRANSCRIPT_RE = /^(?:got it|i understand)[.!?\s]*$/i;
-const PREFETCHED_LOCAL_MUGA_PHRASES = [
-  "Let me check that.",
-  "I understand.",
-  "Got it.",
-  "I don't have the answer to this question from my support script, so I cannot help you with that.",
-];
-
 interface LocalMugaClip {
   audio: ArrayBuffer;
   sampleRate: number;
@@ -385,16 +378,7 @@ function resolveAssistantConfig(
 function warmSilkVoiceInfra(voiceMode: WebVoiceMode): void {
   if (!isSilkVoiceMode(voiceMode)) return;
 
-  void Promise.allSettled(
-    silkCriticalWarmPaths(window.location.origin, voiceMode).map((path) =>
-      fetch(path, { method: "GET", cache: "no-store", keepalive: true })
-    )
-  );
-  void Promise.allSettled(
-    silkWarmPaths(window.location.origin).map((path) =>
-      fetch(path, { method: "GET", cache: "no-store", keepalive: true })
-    )
-  );
+  fireSilkWarmPaths(silkCriticalWarmPaths(window.location.origin, voiceMode));
 }
 
 // Prefer a value already in flight from prewarm(); if it's missing or the
@@ -902,12 +886,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     prewarmRef.current.token.catch(() => {});
     prewarmRef.current.assistant.catch(() => {});
 
-    if (usesTalkWidgetLocalAssist(voiceMode)) {
-      for (const phrase of PREFETCHED_LOCAL_MUGA_PHRASES) {
-        void getOrFetchLocalMugaClip(silkSpeechText(voiceMode, phrase)).catch(() => {});
-      }
-    }
-  }, [agentId, getOrFetchLocalMugaClip, speechLanguage, voiceMode]);
+  }, [agentId, speechLanguage, voiceMode]);
 
   const startCall = useCallback(async () => {
     if (!agentId) {
@@ -1150,17 +1129,11 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
 
   useEffect(() => {
     if (!isSilkVoiceMode(voiceMode)) return;
-
     const ping = () => {
       if (document.hidden) return;
-      for (const path of silkWarmPaths()) {
-        fetch(path, { method: "GET", cache: "no-store", keepalive: true }).catch(() => {});
-      }
+      fireSilkWarmPaths(silkCriticalWarmPaths(window.location.origin, voiceMode));
     };
-
-    ping();
-    const timer = window.setInterval(ping, SILK_WARM_INTERVAL_MS);
-    return () => window.clearInterval(timer);
+    return startSilkWarmKeepalive(ping);
   }, [voiceMode]);
 
   useEffect(() => {

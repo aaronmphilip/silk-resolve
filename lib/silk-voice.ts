@@ -94,9 +94,34 @@ export function silkSpeechText(mode: WebVoiceMode, text: string): string {
   return clean;
 }
 
-/** Client + server paths to keep Rumik WebSocket sessions hot. */
+/**
+ * Background keep-alive interval — OFF by default.
+ * When enabled (NEXT_PUBLIC_SILK_BACKGROUND_WARM=1), only use on long-lived servers;
+ * on Vercel each ping can open fresh Rumik sessions and burn credits.
+ */
 export const SILK_WARM_INTERVAL_MS = 20_000;
 export const SILK_WARM_MODELS: SilkModel[] = ["muga", "mulberry"];
+
+export function isSilkBackgroundWarmEnabled(): boolean {
+  return process.env.NEXT_PUBLIC_SILK_BACKGROUND_WARM === "1";
+}
+
+/** Fire-and-forget GET warm pings (no await). */
+export function fireSilkWarmPaths(paths: string[]): void {
+  if (typeof window === "undefined") return;
+  for (const path of paths) {
+    fetch(path, { method: "GET", cache: "no-store", keepalive: true }).catch(() => {});
+  }
+}
+
+/** Optional 20s keep-alive — disabled unless NEXT_PUBLIC_SILK_BACKGROUND_WARM=1. */
+export function startSilkWarmKeepalive(ping: () => void): () => void {
+  if (typeof window === "undefined" || !isSilkBackgroundWarmEnabled()) return () => {};
+  const timer = window.setInterval(() => {
+    if (!document.hidden) ping();
+  }, SILK_WARM_INTERVAL_MS);
+  return () => window.clearInterval(timer);
+}
 
 /** High-traffic NovaCare FAQs warmed one-at-a-time to stay under Vercel timeouts. */
 export const MULBERRY_WARM_FAQ_IDS = [
@@ -120,11 +145,7 @@ export function silkCriticalWarmPaths(origin = "", voiceMode: WebVoiceMode = "si
   const model = voiceMode === "silk-mulberry" ? "mulberry" : "muga";
   return [
     `${base}/api/voice/vapi-llm?voice=${llmVoice}&fast=1`,
-    `${base}/api/voice/silk-tts?model=${model}`,
-    `${base}/api/voice/silk-tts?model=${model}&warmFaq=1&faqId=greeting`,
-    `${base}/api/voice/silk-tts?model=${model}&warmFaq=1&faqId=plans`,
-    `${base}/api/voice/silk-tts?model=${model}&warmFaq=1&faqId=claims`,
-    `${base}/api/voice/silk-tts?model=${model}&warmFaq=1&faqId=opd`,
+    `${base}/api/voice/silk-tts?model=${model}&live=1`,
   ];
 }
 

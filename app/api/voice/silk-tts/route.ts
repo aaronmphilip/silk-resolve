@@ -1119,6 +1119,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "SILK not configured" }, { status: 404 });
   }
 
+  // Default noop: demo pages used to ping this every 20s per tab, which on serverless
+  // opened new Rumik websocket sessions and burned credits in the background.
+  if (req.nextUrl.searchParams.get("live") !== "1") {
+    return NextResponse.json(
+      { ok: true, mode: "noop", mulberryFaqCached: mulberryFaqPcmVariants.size },
+      { headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
   const startedAt = Date.now();
   const warmModel = req.nextUrl.searchParams.get("model") === "mulberry" ? "mulberry" : "muga";
   const warmModels: SilkModel[] =

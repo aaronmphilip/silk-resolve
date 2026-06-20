@@ -23,9 +23,10 @@ import { VoiceListener } from "@/lib/voice-listener";
 import {
   buildSilkTtsBody,
   isSilkVoiceMode,
-  SILK_WARM_INTERVAL_MS,
+  fireSilkWarmPaths,
+  startSilkWarmKeepalive,
   silkCriticalWarmPaths,
-  silkWarmPaths,
+
   silkTtsQueryForMode,
   vapiLlmVoiceQuery,
   type WebVoiceMode,
@@ -498,23 +499,10 @@ export function useDirectVoiceCall(
   useEffect(() => {
     if (!isSilkVoiceMode(voiceMode)) return;
 
-    const warm = () => {
-      for (const path of silkCriticalWarmPaths(window.location.origin, voiceMode)) {
-        fetch(path, { method: "GET", cache: "no-store", keepalive: true }).catch(() => {});
-      }
-      void Promise.allSettled(
-        silkWarmPaths(window.location.origin).map((path) =>
-          fetch(path, { method: "GET", cache: "no-store", keepalive: true })
-        )
-      );
-    };
-
-    warm();
-    const timer = window.setInterval(() => {
-      if (!document.hidden) warm();
-    }, SILK_WARM_INTERVAL_MS);
-
-    return () => window.clearInterval(timer);
+    return startSilkWarmKeepalive(() => {
+      if (document.hidden) return;
+      fireSilkWarmPaths(silkCriticalWarmPaths(window.location.origin, voiceMode));
+    });
   }, [voiceMode]);
 
   useEffect(() => {

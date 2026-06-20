@@ -20,10 +20,12 @@ import { playBufferedPcm, playStreamingPcmResponse } from "@/lib/silk-stream-pla
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
 import {
   buildSilkTtsBody,
-  SILK_WARM_INTERVAL_MS,
+  fireSilkWarmPaths,
+  silkCriticalWarmPaths,
+  startSilkWarmKeepalive,
   silkModelForVoiceMode,
   silkTtsQueryForMode,
-  silkWarmPaths,
+
   vapiLlmVoiceQuery,
   voiceModeLabel,
   type WebVoiceMode,
@@ -204,9 +206,6 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
     let cancelled = false;
     async function warmVoice() {
       const query = silkTtsQueryForMode(voiceMode);
-      for (const path of silkWarmPaths()) {
-        fetch(path, { method: "GET", cache: "no-store" }).catch(() => {});
-      }
 
       if (silkModel !== "muga") return;
 
@@ -227,16 +226,13 @@ export default function NovaInstantVoice({ voiceMode = "silk-stream", accentColo
     }
 
     void warmVoice();
-    const keepalive = window.setInterval(() => {
-      if (document.hidden) return;
-      for (const path of silkWarmPaths()) {
-        fetch(path, { method: "GET", cache: "no-store", keepalive: true }).catch(() => {});
-      }
-    }, SILK_WARM_INTERVAL_MS);
+    const stopKeepalive = startSilkWarmKeepalive(() => {
+      fireSilkWarmPaths(silkCriticalWarmPaths(window.location.origin, voiceMode));
+    });
 
     return () => {
       cancelled = true;
-      window.clearInterval(keepalive);
+      stopKeepalive();
       recognitionRef.current?.abort();
       stopCurrentSource();
     };

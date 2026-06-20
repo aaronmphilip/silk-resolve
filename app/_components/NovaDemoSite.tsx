@@ -2,7 +2,7 @@ import TalkButton from "@/app/fakewebsite/TalkButton";
 import NovaInstantVoice from "@/app/_components/NovaInstantVoice";
 import NovaTextSpeaker from "@/app/_components/NovaTextSpeaker";
 import { NOVACARE_AGENT_ID, NOVACARE_FACTS, NOVACARE_PLANS, NOVACARE_PROMPT } from "@/lib/novacare-knowledge";
-import { SILK_WARM_INTERVAL_MS, silkModelForVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
+import { silkModelForVoiceMode, type WebVoiceMode } from "@/lib/silk-voice";
 
 interface NovaDemoSiteProps {
   voiceMode: WebVoiceMode;
@@ -80,7 +80,7 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
 
   return (
     <>
-      {voiceMode !== "vapi" && <WarmSilkSocketScript voiceMode={voiceMode} />}
+
       <WidgetScript agentId={NOVACARE_AGENT_ID} voiceMode={voiceMode} label={site.cta} color={site.color} />
 
       <div className="min-h-screen bg-white text-[#111] font-sans">
@@ -258,48 +258,11 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
   );
 }
 
-function WarmSilkSocketScript({ voiceMode }: { voiceMode: WebVoiceMode }) {
-  const snippet = `
-(function() {
-  var voice = '${voiceMode}';
-  var llmVoice = voice === 'silk-mulberry' ? 'silk-mulberry' : voice === 'silk-stream' ? 'silk-stream' : 'silk';
-  var model = voice === 'silk-mulberry' ? 'mulberry' : 'muga';
-  var paths = [
-    '/api/voice/vapi-token',
-    '/api/voice/vapi-llm?voice=' + llmVoice,
-    '/api/voice/silk-tts?model=' + model,
-    '/api/voice/silk-tts?model=' + model + '&warmFaq=1&faqId=greeting',
-    '/api/voice/silk-tts?all=1'
-  ];
-  var ping = function(path) {
-    try {
-      fetch(path, { method: 'GET', cache: 'no-store', keepalive: true }).catch(function() {});
-    } catch (error) {}
-  };
-  var warm = function() {
-    for (var i = 0; i < paths.length; i++) ping(paths[i]);
-  };
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', warm, { once: true });
-  } else {
-    warm();
-  }
-
-  window.setInterval(function() {
-    if (!document.hidden) warm();
-  }, ${SILK_WARM_INTERVAL_MS});
-})();
-`.trim();
-
-  return <script id="silk-resolve-warm" dangerouslySetInnerHTML={{ __html: snippet }} />;
-}
-
 function WidgetScript({ agentId, voiceMode, label, color }: { agentId: string; voiceMode: WebVoiceMode; label: string; color: string }) {
   const snippet = `
 (function() {
   var s = document.createElement('script');
-  s.src = window.location.origin + '/widget.js?v=13';
+  s.src = window.location.origin + '/widget.js?v=14';
   s.setAttribute('data-agent-id', '${agentId}');
   s.setAttribute('data-position', 'bottom-right');
   s.setAttribute('data-greeting', '${label}');

@@ -256,45 +256,10 @@
       .replace(/"/g, '&quot;');
   }
 
-  function warmVoiceInfra() {
-    var voice = cfg.voice;
-    var llmVoice = voice === 'silk-mulberry' ? 'silk-mulberry' : voice === 'silk-stream' ? 'silk-stream' : 'silk';
-    var model = voice === 'silk-mulberry' ? 'mulberry' : 'muga';
-    var faqIds = ['greeting', 'plans', 'claims', 'coverage', 'network-hospitals', 'support', 'reimbursement', 'waiting', 'about'];
-    var paths = [
-      origin + '/api/voice/vapi-token',
-      origin + '/api/voice/vapi-llm?voice=' + encodeURIComponent(llmVoice),
-      origin + '/api/voice/silk-tts?model=' + encodeURIComponent(model),
-      origin + '/api/voice/silk-tts?all=1'
-    ];
-    for (var j = 0; j < faqIds.length; j++) {
-      paths.push(
-        origin + '/api/voice/silk-tts?model=' + encodeURIComponent(model) +
-        '&warmFaq=1&faqId=' + encodeURIComponent(faqIds[j])
-      );
-    }
-    for (var i = 0; i < paths.length; i++) {
-      try {
-        fetch(paths[i], { method: 'GET', cache: 'no-store', keepalive: true }).catch(function() {});
-      } catch (e) {}
-    }
-  }
-
-  function startWarmLoop() {
-    warmVoiceInfra();
-    window.setInterval(function() {
-      if (!document.hidden) warmVoiceInfra();
-    }, 20000);
-  }
-
-  // Mount when DOM is available
+  // Mount when DOM is available — no background Rumik warm loop (burned credits on open tabs).
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function() {
-      mount();
-      if (cfg.voice !== 'vapi') startWarmLoop();
-    });
+    document.addEventListener('DOMContentLoaded', mount, { once: true });
   } else {
     mount();
-    if (cfg.voice !== 'vapi') startWarmLoop();
   }
 })();
