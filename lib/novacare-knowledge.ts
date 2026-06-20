@@ -587,6 +587,10 @@ export const NOVACARE_FAQ_AUDIO = MUGA_CACHED_AUDIO.filter(
   (item) => !item.id.startsWith("lead-")
 );
 
+export function mulberryFaqAudioFile(id: string): string {
+  return `mulberry-${id}-24k.pcm`;
+}
+
 function cachedIntentIdForQuestion(text: string): MugaCachedAudioId | null {
   const selectedPlan = planByText(text);
   if (selectedPlan && hasAny(text, ["price", "cost", "premium", "coverage", "cover", "insured", "benefit", "include", "plan"])) {

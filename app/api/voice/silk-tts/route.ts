@@ -15,7 +15,7 @@
 import { after } from "next/server";
 import { NextRequest, NextResponse } from "next/server";
 import WebSocket from "ws";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import path from "path";
 import { MUGA_CACHED_AUDIO, NOVACARE_FAQ_AUDIO, cachedMugaAudioForText } from "@/lib/novacare-knowledge";
 import { MULBERRY_DEFAULTS, type SilkModel } from "@/lib/silk-voice";
@@ -76,7 +76,35 @@ const reusableRumikConnecting = new Map<SilkModel, Promise<ReusableRumikSocket>>
 const cachedAudioFiles = new Map<string, Buffer>();
 const cachedAudioVariants = new Map<string, Buffer>();
 const mulberryFaqPcmVariants = new Map<string, Buffer>();
+const mulberryDiskAudioFiles = new Map<string, Buffer>();
 let mulberryFaqWarmPromise: Promise<{ warmed: number; failed: number }> | null = null;
+
+function mulberryFaqDiskFile(id: string): string {
+  return `mulberry-${id}-24k.pcm`;
+}
+
+function loadMulberryFaqFromDisk(id: string, targetRate: number): Buffer | null {
+  const variantKey = mulberryFaqVariantKey(id, targetRate);
+  const existing = mulberryFaqPcmVariants.get(variantKey);
+  if (existing) return existing;
+
+  try {
+    const fileName = mulberryFaqDiskFile(id);
+    let audio = mulberryDiskAudioFiles.get(id);
+    if (!audio) {
+      const filePath = path.join(process.cwd(), "public", "audio", fileName);
+      if (!existsSync(filePath)) return null;
+      audio = readFileSync(filePath);
+      mulberryDiskAudioFiles.set(id, audio);
+    }
+    const pcm = resamplePcm16Mono(audio, RUMIK_SAMPLE_RATE, targetRate);
+    mulberryFaqPcmVariants.set(variantKey, pcm);
+    return pcm;
+  } catch (err) {
+    console.error(`[silk-tts] mulberry disk audio unavailable for ${id}:`, err);
+    return null;
+  }
+}
 
 function extractTextAndSampleRate(body: VoiceRequestBody) {
   const message = body.message;
@@ -110,7 +138,7 @@ function getCachedMulberryFaqAudio(text: string, targetRate: number): { id: stri
   if (!cached || cached.id.startsWith("lead-")) return null;
 
   const variantKey = mulberryFaqVariantKey(cached.id, targetRate);
-  const pcm = mulberryFaqPcmVariants.get(variantKey);
+  const pcm = mulberryFaqPcmVariants.get(variantKey) ?? loadMulberryFaqFromDisk(cached.id, targetRate);
   if (!pcm) return null;
   return { id: cached.id, pcm };
 }
