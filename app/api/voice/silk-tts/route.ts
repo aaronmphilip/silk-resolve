@@ -582,7 +582,8 @@ async function callRumik(apiKey: string, body: VoiceRequestBody, text: string) {
     if (!silkRes.ok) {
       const err = await silkRes.text();
       console.error("[silk-tts] rumik error:", silkRes.status, err);
-      return { error: `SILK error ${silkRes.status}`, status: 502 as const };
+      const detail = err.trim().slice(0, 240) || `SILK error ${silkRes.status}`;
+      return { error: detail, status: silkRes.status === 402 ? 402 : 502 };
     }
 
     return { wav: Buffer.from(await silkRes.arrayBuffer()) };

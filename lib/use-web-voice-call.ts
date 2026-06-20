@@ -46,6 +46,11 @@ import {
   transcriptsAlign,
 } from "@/lib/realtime-voice";
 import { StreamSpeechChunker } from "@/lib/stream-speech-chunker";
+import {
+  isRumikCreditError,
+  playBrowserSpeechFallback,
+  rumikCreditErrorMessage,
+} from "@/lib/browser-speech-fallback";
 import { extractVoiceMeta, stripVoiceMarkers } from "@/lib/voice-emotion";
 
 export type { WebVoiceMode };
@@ -197,6 +202,9 @@ export function normalizeVoiceCallError(err: unknown): string {
   }
   if (name === "NotReadableError" || name === "TrackStartError") {
     return "The microphone is already in use or blocked by the operating system. Close other apps using it and retry.";
+  }
+  if (isRumikCreditError(lower)) {
+    return rumikCreditErrorMessage();
   }
   if (lower.includes("invalid key")) {
     return "Vapi rejected the browser key. Check that VAPI_PUBLIC_KEY is the public key, not the private key.";
@@ -783,7 +791,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         const chunker = new StreamSpeechChunker((chunk) => {
           if (specRunId !== speculativeRunIdRef.current) return;
           speculativeChunksReadyRef.current += 1;
-          if (speculativeChunksReadyRef.current === 1) prefetchFirstSpeechChunk(chunk);
+          // Skip live TTS prefetch — burns Rumik credits while the user is still talking.
         }, FAST_CHUNKER);
 
         for (;;) {
@@ -964,10 +972,24 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       setSpeechTransport(
         forceLive ? "mulberry-live" : playback.transport || transport || "websocket"
       );
-    })().catch((err) => {
+    })().catch(async (err) => {
       if (!isLocalSpeechActive(callRunId, localRunId)) return;
+      const message = err instanceof Error ? err.message.slice(0, 240) : "Speech playback failed.";
       console.warn("[voice] browser SILK speech failed", err);
-      setError(err instanceof Error ? err.message.slice(0, 240) : "Speech playback failed.");
+      if (isRumikCreditError(message)) {
+        try {
+          setSpeechTransport("browser-tts (credits low)");
+          await playBrowserSpeechFallback(
+            speakable,
+            () => isLocalSpeechActive(callRunId, localRunId),
+            onFirstFrame
+          );
+          return;
+        } catch (fallbackErr) {
+          console.warn("[voice] browser speech fallback failed", fallbackErr);
+        }
+      }
+      setError(isRumikCreditError(message) ? rumikCreditErrorMessage() : message);
     });
 
     localAudioQueueRef.current = localAudioQueueRef.current.then(() => job);
@@ -1074,7 +1096,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         const safety = resolveNovaCareAssistFallback(userText, transcriptRef.current);
         commitTranscript("assistant", safety);
         setSpeechTransport("gemini-live (fallback)");
-        enqueueLocalSpeech(safety, callRunId, localRunId, { forceLive: true });
+        enqueueLocalSpeech(safety, callRunId, localRunId);
       }
     }
     return answerText;
@@ -1212,7 +1234,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         if (route.kind === "conversational" || route.kind === "contextual") {
           commitTranscript("assistant", route.answer);
           setSpeechTransport(speechRouteLabel(route));
-          enqueueLocalSpeech(route.answer, callRunId, localRunId, { forceLive: true });
+          enqueueLocalSpeech(route.answer, callRunId, localRunId);
           await localAudioQueueRef.current;
           if (!isLocalSpeechActive(callRunId, localRunId) || playbackGen !== playbackGenerationRef.current) return;
           if (mountedRef.current && callRunId === runIdRef.current && localRunId === localAssistRunRef.current) {
@@ -1227,7 +1249,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
           if (playbackGen !== playbackGenerationRef.current) return;
           commitTranscript("assistant", specAnswer);
           setSpeechTransport("gemini-live (brain)");
-          enqueueLocalSpeech(specAnswer, callRunId, localRunId, { forceLive: true });
+          enqueueLocalSpeech(specAnswer, callRunId, localRunId);
         } else {
           try {
             await streamLocalAnswer(userText, "", callRunId, localRunId);
@@ -1237,7 +1259,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
             const safety = resolveNovaCareAssistFallback(userText, transcriptRef.current);
             commitTranscript("assistant", safety);
             setSpeechTransport("gemini-live (fallback)");
-            enqueueLocalSpeech(safety, callRunId, localRunId, { forceLive: true });
+            enqueueLocalSpeech(safety, callRunId, localRunId);
           }
         }
         await localAudioQueueRef.current;
@@ -1409,7 +1431,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
             localAssistRunRef.current = localRunId;
             localSpeechKeysRef.current.clear();
             commitTranscript("assistant", cleanTranscriptText(greeting));
-            enqueueLocalSpeech(greeting, runId, localRunId, { forceLive: true });
+            enqueueLocalSpeech(greeting, runId, localRunId);
           }
         }
         setState("active");

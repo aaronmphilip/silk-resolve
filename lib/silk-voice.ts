@@ -144,9 +144,10 @@ export function silkCriticalWarmPaths(origin = "", voiceMode: WebVoiceMode = "si
     voiceMode === "silk-mulberry" ? "silk-mulberry" :
     voiceMode === "silk-stream" ? "silk-stream" : "silk";
   const model = voiceMode === "silk-mulberry" ? "mulberry" : "muga";
+  // No-op silk-tts warm only — live=1 opens Rumik websockets and burns credits per tab.
   return [
     `${base}/api/voice/vapi-llm?voice=${llmVoice}&fast=1`,
-    `${base}/api/voice/silk-tts?model=${model}&live=1`,
+    `${base}/api/voice/silk-tts?model=${model}`,
   ];
 }
 
