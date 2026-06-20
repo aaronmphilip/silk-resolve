@@ -243,8 +243,8 @@ export default function NovaDemoSite({ voiceMode }: NovaDemoSiteProps) {
             Test this version now.
           </h2>
           <p className="text-gray-500 text-sm max-w-xl mx-auto mb-7">
-            {voiceMode === "silk-stream"
-              ? 'Speech-to-speech demo: start a call, then say "What plans do you offer?" — header shows latency from your last word to first MUGA audio (target under 1s on cached FAQs).'
+            {voiceMode === "silk-stream" || voiceMode === "silk-mulberry"
+              ? "Open Priya, start a call, then tap demo chips — Cached (instant FAQ) or Gemini uncached (live brain). Works on MUGA and Mulberry."
               : 'Try: "Help me with the plans", "How do claims work?", or "Do you cover network hospitals?"'}
           </p>
           <div className="flex flex-col items-center gap-8">
@@ -272,7 +272,7 @@ function WidgetScript({ agentId, voiceMode, label, color }: { agentId: string; v
   const snippet = `
 (function() {
   var s = document.createElement('script');
-  s.src = window.location.origin + '/widget.js?v=29';
+  s.src = window.location.origin + '/widget.js?v=30';
   s.setAttribute('data-agent-id', '${agentId}');
   s.setAttribute('data-position', 'bottom-right');
   s.setAttribute('data-greeting', '${label}');

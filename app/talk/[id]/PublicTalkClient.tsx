@@ -2,7 +2,9 @@
 
 import { useEffect, useRef } from "react";
 import { Loader2, Mic, MicOff, Phone, PhoneOff, Volume2 } from "lucide-react";
+import NovaCareDemoQuestionChips from "@/app/_components/NovaCareDemoQuestionChips";
 import SilkLatencyBadge from "@/app/_components/SilkLatencyBadge";
+import { demoQuestionForceBrain, type NovaCareDemoQuestion } from "@/lib/novacare-demo-questions";
 import { isSilkVoiceMode, usesDirectVoicePipeline, voiceModeLabel } from "@/lib/silk-voice";
 import { useDirectVoiceCall, type DirectVoiceCallState } from "@/lib/use-direct-voice-call";
 import { useWebVoiceCall, type WebVoiceCallState, type WebVoiceMode } from "@/lib/use-web-voice-call";
@@ -34,6 +36,7 @@ interface TalkUiProps {
   onEnd: () => void;
   onToggleMute: () => void;
   onResetAndStart: () => void;
+  onDemoQuestion?: (question: NovaCareDemoQuestion) => void;
 }
 
 const vapiStateLabel: Record<WebVoiceCallState, string> = {
@@ -78,6 +81,7 @@ function TalkUi({
   onEnd,
   onToggleMute,
   onResetAndStart,
+  onDemoQuestion,
 }: TalkUiProps) {
   const transcriptRef = useRef<HTMLDivElement>(null);
   const tensionColor = tension > 7 ? "bg-red-400" : tension > 5 ? "bg-amber-400" : "bg-emerald-400";
@@ -132,9 +136,9 @@ function TalkUi({
               <p className="text-xs font-mono text-[#f0ebe0]/30">
                 {busy ? "connecting..." : active ? "listening..." : autostart ? "starting..." : "start a web call"}
               </p>
-              {active && isSilkVoiceMode(voiceMode) && (
-                <p className="text-[10px] font-mono text-[#f0ebe0]/25 mt-3 max-w-xs mx-auto leading-relaxed">
-                  Cached: &quot;What plans do you offer?&quot; · Uncached: &quot;Can I downgrade from Premium to Basic before renewal?&quot;
+              {active && isSilkVoiceMode(voiceMode) && onDemoQuestion && (
+                <p className="text-[10px] font-mono text-[#f0ebe0]/25 mt-3 max-w-sm mx-auto leading-relaxed">
+                  Tap a demo question below — header shows cached-mulberry-faq or gemini-live (uncached).
                 </p>
               )}
             </div>
@@ -180,6 +184,17 @@ function TalkUi({
           </div>
         )}
       </section>
+
+      {isSilkVoiceMode(voiceMode) && onDemoQuestion && (
+        <section className="border-t border-[#f0ebe0]/10 px-4 py-3">
+          <NovaCareDemoQuestionChips
+            variant="dark"
+            active={active}
+            disabled={busy}
+            onSelect={onDemoQuestion}
+          />
+        </section>
+      )}
 
       <footer className="border-t border-[#f0ebe0]/10 px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] flex items-center justify-end gap-2">
         {busy && (
@@ -243,6 +258,7 @@ function PublicTalkVapiClient({ agentId, agentName, voiceMode, autostart = false
     endCall,
     toggleMute,
     reset,
+    tryDemoQuestion,
   } = useWebVoiceCall(agentId, voiceMode);
 
   startCallRef.current = startCall;
@@ -303,6 +319,9 @@ function PublicTalkVapiClient({ agentId, agentName, voiceMode, autostart = false
       onEnd={endCall}
       onToggleMute={toggleMute}
       onResetAndStart={resetAndStart}
+      onDemoQuestion={(question) =>
+        tryDemoQuestion(question.text, { forceBrain: demoQuestionForceBrain(question) })
+      }
     />
   );
 }

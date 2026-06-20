@@ -45,8 +45,10 @@ export default function SilkLatencyBadge({
   );
 }
 
-export const MUGA_DEMO_QUESTIONS = [
-  { label: "Plans (cached)", text: "What plans do you offer?" },
-  { label: "OPD (cached)", text: "Does NovaCare cover OPD?" },
-  { label: "Live stream", text: "Can I downgrade from Premium to Basic before renewal?" },
-] as const;
+export {
+  MUGA_DEMO_QUESTIONS,
+  NOVACARE_DEMO_CATEGORIES,
+  NOVACARE_DEMO_QUESTIONS,
+  demoQuestionForceBrain,
+  type NovaCareDemoQuestion,
+} from "@/lib/novacare-demo-questions";

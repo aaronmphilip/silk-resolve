@@ -3,7 +3,9 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { Loader2, Send, Square, Volume2 } from "lucide-react";
 import { playBufferedPcm, playStreamingPcmResponse, resetAudioPlayhead } from "@/lib/silk-stream-player";
-import SilkLatencyBadge, { MUGA_DEMO_QUESTIONS } from "@/app/_components/SilkLatencyBadge";
+import NovaCareDemoQuestionChips from "@/app/_components/NovaCareDemoQuestionChips";
+import SilkLatencyBadge from "@/app/_components/SilkLatencyBadge";
+import { demoQuestionForceBrain, type NovaCareDemoQuestion } from "@/lib/novacare-demo-questions";
 import {
   buildSilkTtsBody,
   fireSilkWarmPaths,
@@ -26,8 +28,6 @@ interface NovaTextSpeakerProps {
 }
 
 type SpeakerState = "idle" | "thinking" | "speaking" | "error";
-
-const SAMPLE_QUESTIONS = MUGA_DEMO_QUESTIONS;
 
 const PREFETCHED_BRIDGE_PHRASES = [
   "Let me check that.",
@@ -270,7 +270,7 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
     audioQueueRef.current = audioQueueRef.current.then(() => job);
   }
 
-  async function submit(text: string) {
+  async function submit(text: string, opts?: { forceBrain?: boolean }) {
     const prompt = text.trim();
     if (!prompt || state === "thinking" || state === "speaking") return;
 
@@ -295,6 +295,7 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
       agentId: NOVACARE_AGENT_ID,
       systemPrompt,
       history: routeHistory,
+      forceBrain: Boolean(opts?.forceBrain),
     });
 
     if (
@@ -397,7 +398,7 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
           { role: "assistant", content: spoken },
         ]);
       } else if (spoken && isGenericBrainFallback(spoken)) {
-        const followUp = novaCareFollowUpAnswer(prompt, routeHistory);
+        const followUp = opts?.forceBrain ? "" : novaCareFollowUpAnswer(prompt, routeHistory);
         if (followUp) {
           setAnswer(followUp);
           setTransport("gemini-live (context)");
@@ -515,18 +516,13 @@ export default function NovaTextSpeaker({ systemPrompt, voiceMode = "silk-stream
             </button>
           )}
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {SAMPLE_QUESTIONS.map((sample) => (
-            <button
-              key={sample.text}
-              type="button"
-              disabled={busy}
-              onClick={() => void submit(sample.text)}
-              className="rounded-full border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-500 hover:border-gray-300 disabled:opacity-40"
-            >
-              {sample.label}
-            </button>
-          ))}
+        <div className="mt-3">
+          <NovaCareDemoQuestionChips
+            disabled={busy}
+            onSelect={(question: NovaCareDemoQuestion) =>
+              void submit(question.text, { forceBrain: demoQuestionForceBrain(question) })
+            }
+          />
         </div>
       </form>
     </div>

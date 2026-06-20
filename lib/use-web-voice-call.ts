@@ -439,6 +439,7 @@ interface PrewarmCache {
 
 export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk") {
   const [state, setState] = useState<WebVoiceCallState>("idle");
+  const stateRef = useRef<WebVoiceCallState>("idle");
   const [error, setError] = useState("");
   const [muted, setMuted] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -635,6 +636,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const playbackGenerationRef = useRef(0);
   const playLocalAssistFnRef = useRef<(userText: string, callRunId: number) => void>(() => {});
   const lastDispatchedUtteranceRef = useRef("");
+  const forceBrainNextRef = useRef(false);
 
   const commitTranscript = useCallback((
     role: "user" | "assistant",
@@ -652,6 +654,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       agentId,
       systemPrompt: assistantSystemPromptRef.current,
       history: transcriptRef.current,
+      forceBrain: forceBrainNextRef.current,
     }),
     [agentId]
   );
@@ -1033,7 +1036,9 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
       if (spoken && !isScriptMissingResponse(spoken) && !isGenericBrainFallback(spoken)) {
         enqueueLocalSpeech(spoken, callRunId, localRunId, { forceLive: true });
       } else {
-        const followUp = novaCareFollowUpAnswer(userText, transcriptRef.current);
+        const followUp = forceBrainNextRef.current
+          ? ""
+          : novaCareFollowUpAnswer(userText, transcriptRef.current);
         if (followUp) {
           commitTranscript("assistant", followUp);
           setSpeechTransport("gemini-live (context)");
@@ -1078,6 +1083,30 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     respondAttemptRef.current += 1;
     playLocalAssistFnRef.current(userText, callRunId);
   }, [voiceMode]);
+
+  const tryDemoQuestion = useCallback(
+    (userText: string, opts?: { forceBrain?: boolean }) => {
+      if (!usesTalkWidgetLocalAssist(voiceMode) || voiceMode === "vapi") return;
+      if (stateRef.current !== "active") return;
+
+      const text = userText.trim();
+      if (!text) return;
+
+      forceBrainNextRef.current = Boolean(opts?.forceBrain);
+      lastUserFinalAtRef.current = Date.now();
+      lastUserSpeechEndAtRef.current = Date.now();
+      latencyCapturedRef.current = false;
+      setLatencyMs(null);
+      if (usesBrowserSilkPlayback(voiceMode)) {
+        interruptPlayback();
+        suppressAssistantAudio();
+      }
+      commitTranscript("user", text);
+      setInterim(null);
+      dispatchUserUtterance(text, runIdRef.current);
+    },
+    [commitTranscript, dispatchUserUtterance, interruptPlayback, suppressAssistantAudio, voiceMode]
+  );
 
   const tryPlayAfterSilence = useCallback(async () => {
     const pending = pendingUserUtteranceRef.current;
@@ -1178,6 +1207,8 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
         console.warn("[voice] local MUGA assist failed", err);
         releaseAssistantAudio();
         restoreMicAfterLocalOutput();
+      } finally {
+        forceBrainNextRef.current = false;
       }
     })();
   }, [
@@ -1521,6 +1552,10 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     setMuted(nextMuted);
   }, [muted]);
 
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
+
   // Kick off the heavy startup work as soon as the talk screen mounts (and again
   // if the agent/voice changes) so Start call is an instant join, not a 1–2s wait.
   useEffect(() => {
@@ -1558,5 +1593,6 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
     endCall,
     reset,
     toggleMute,
+    tryDemoQuestion,
   };
 }

@@ -17,6 +17,8 @@ export type SpeechRouteContext = {
   agentId: string;
   systemPrompt: string;
   history?: NovaCareConversationTurn[];
+  /** Demo / explicit test — skip FAQ cache and contextual shortcuts, use Gemini brain. */
+  forceBrain?: boolean;
 };
 
 export type SpeechRoute = {
@@ -104,10 +106,12 @@ export function resolveSpeechRoute(userText: string, ctx: SpeechRouteContext): S
       };
     }
 
-    const followUp = resolveNovaCareFollowUp(text, ctx.history ?? []);
-    if (followUp) return followUp;
+    if (!ctx.forceBrain) {
+      const followUp = resolveNovaCareFollowUp(text, ctx.history ?? []);
+      if (followUp) return followUp;
+    }
 
-    if (needsNovaCareBrain(text.toLowerCase())) {
+    if (ctx.forceBrain || needsNovaCareBrain(text.toLowerCase())) {
       return { kind: "brain", answer: "", transport: "gemini-live" };
     }
 
@@ -139,7 +143,7 @@ export function speechRouteLabel(route: SpeechRoute): string {
     case "contextual":
       return "gemini-live (context)";
     case "brain":
-      return "gemini-live";
+      return "gemini-live (uncached)";
     default:
       return route.transport;
   }
