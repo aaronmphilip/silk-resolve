@@ -2,14 +2,17 @@
  * GET /api/agents/[id]/vapi-config
  *
  * Returns a Vapi-compatible inline assistant config for browser / inbound calls.
- * Uses custom-llm so all LLM calls route through /api/voice/vapi-llm.
- * No API keys ever reach the browser.
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
 import { getPlatformAIConfig, getPlatformVoiceConfig } from "@/lib/platform";
 import { isNovaCareAgentId } from "@/lib/novacare-knowledge";
-import { DEFAULT_SPEECH_LANGUAGE } from "@/lib/speech-languages";
+import {
+  agentLanguageLabelToBcp47,
+  deepgramTranscriberForSpeech,
+  DEFAULT_SPEECH_LANGUAGE,
+} from "@/lib/speech-languages";
+import { buildAgentVoiceSystemPrompt, type AgentPromptInput } from "@/lib/agent-runtime-prompt";
 import { buildNovaCareVapiAssistant } from "@/lib/novacare-vapi-config";
 import {
   MULBERRY_DEFAULTS,
@@ -19,9 +22,16 @@ import {
   type WebVoiceMode,
 } from "@/lib/silk-voice";
 import { withSilkTone, stripAll } from "@/lib/voice-emotion";
-import { isPublishKeyFormat, resolvePublishKey } from "@/lib/publish-key";
+import {
+  isPublishKeyFormat,
+  publishKeyAllowsAgentStatus,
+  resolvePublishKey,
+} from "@/lib/publish-key";
 
 type Ctx = { params: Promise<{ id: string }> };
+
+const AGENT_SELECT =
+  "id, name, client, description, status, system_prompt, first_message, llm_model, llm_provider, voice_mode, language, hinglish_mode, linguistic_notes, preferred_address, companion_vibe, escalation_rules, no_go_topics, tools, call_direction";
 
 function deriveOrigin(req: NextRequest): string {
   const host = (req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "localhost:3000")
@@ -44,75 +54,86 @@ function cleanSpokenText(text: string): string {
     .trim();
 }
 
-function voiceMode(req: NextRequest): WebVoiceMode {
+function voiceModeFromReq(req: NextRequest): WebVoiceMode {
   return normalizeWebVoiceMode(req.nextUrl.searchParams.get("voice"));
-}
-
-async function authorizePublishKey(agentId: string, key: string | null): Promise<boolean> {
-  if (!key) return true;
-  if (!isPublishKeyFormat(key)) return false;
-  const resolved = await resolvePublishKey(key);
-  return Boolean(resolved && resolved.agentId === agentId);
 }
 
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
   const publishKey = req.nextUrl.searchParams.get("key")?.trim() ?? "";
-  if (publishKey && !(await authorizePublishKey(id, publishKey))) {
-    return NextResponse.json({ error: "invalid publish key" }, { status: 403 });
+  let keyKind: "live" | "test" | null = null;
+
+  if (publishKey) {
+    if (!isPublishKeyFormat(publishKey)) {
+      return NextResponse.json({ error: "invalid publish key" }, { status: 400 });
+    }
+    const resolved = await resolvePublishKey(publishKey);
+    if (!resolved || resolved.agentId !== id) {
+      return NextResponse.json({ error: "invalid publish key" }, { status: 403 });
+    }
+    keyKind = resolved.kind;
   }
 
   const voiceParam = req.nextUrl.searchParams.get("voice");
+  const langParam = req.nextUrl.searchParams.get("lang")?.trim();
   const origin = deriveOrigin(req);
-  const requestedVoiceEarly = voiceParam ? voiceMode(req) : normalizeWebVoiceMode("silk-mulberry");
 
   if (isNovaCareAgentId(id)) {
     const [{ silk }, aiConfig] = await Promise.all([
       getPlatformVoiceConfig(),
       getPlatformAIConfig(),
     ]);
-    const useSilkVoice = requestedVoiceEarly !== "vapi" && Boolean(silk.apiKey && silk.vapiEnabled);
+    const requestedVoice = voiceParam ? voiceModeFromReq(req) : normalizeWebVoiceMode("silk-mulberry");
+    const useSilkVoice = requestedVoice !== "vapi" && Boolean(silk.apiKey && silk.vapiEnabled);
     return NextResponse.json(
       buildNovaCareVapiAssistant({
         origin,
-        voiceMode: requestedVoiceEarly,
+        voiceMode: requestedVoice,
         useSilkVoice,
-        browserSilkPlayback: usesBrowserSilkPlayback(requestedVoiceEarly),
+        browserSilkPlayback: usesBrowserSilkPlayback(requestedVoice),
         aiProvider: aiConfig.provider,
         geminiModel: process.env.GEMINI_MODEL,
-        speechLanguage: req.nextUrl.searchParams.get("lang")?.trim() || DEFAULT_SPEECH_LANGUAGE,
+        speechLanguage: langParam || DEFAULT_SPEECH_LANGUAGE,
       }),
       { headers: { "Cache-Control": "private, max-age=300" } }
     );
   }
 
-  let agent = null;
-
+  let agent: Record<string, unknown> | null = null;
   const svcResult = await createServiceClient()
     .from("agents")
-    .select("id, name, client, description, status, system_prompt, first_message, llm_model, voice_mode")
+    .select(AGENT_SELECT)
     .eq("id", id)
     .single();
   if (svcResult.data) {
-    agent = svcResult.data;
+    agent = svcResult.data as Record<string, unknown>;
   } else {
     const anonResult = await createClient()
       .from("agents")
-      .select("id, name, client, description, status, system_prompt, first_message, llm_model, voice_mode")
+      .select(AGENT_SELECT)
       .eq("id", id)
       .single();
-    agent = anonResult.data ?? null;
+    agent = (anonResult.data as Record<string, unknown>) ?? null;
   }
 
   if (!agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
 
-  if (publishKey && agent.status !== "live") {
-    return NextResponse.json({ error: "agent not published" }, { status: 403 });
+  if (publishKey && keyKind) {
+    const status = String(agent.status ?? "draft");
+    if (!publishKeyAllowsAgentStatus(keyKind, status)) {
+      return NextResponse.json(
+        { error: keyKind === "live" ? "agent not published" : "agent unavailable" },
+        { status: 403 }
+      );
+    }
   }
 
   const requestedVoice = voiceParam
-    ? voiceMode(req)
-    : normalizeWebVoiceMode((agent as { voice_mode?: string }).voice_mode);
+    ? voiceModeFromReq(req)
+    : normalizeWebVoiceMode(String(agent.voice_mode ?? "silk-mulberry"));
+
+  const speechLanguage =
+    langParam || agentLanguageLabelToBcp47(String(agent.language ?? ""));
 
   const [{ silk }, aiConfig] = await Promise.all([
     getPlatformVoiceConfig(),
@@ -122,7 +143,6 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   const useSilkVoice = requestedVoice !== "vapi" && Boolean(silk.apiKey && silk.vapiEnabled);
   const browserSilkPlayback = usesBrowserSilkPlayback(requestedVoice);
   const silkModel = requestedVoice === "silk-mulberry" ? "mulberry" : "muga";
-  const isMulberry = silkModel === "mulberry";
   const silkQuery = useSilkVoice ? `?transport=ws&model=${silkModel}` : "";
   const voice = useSilkVoice
     ? browserSilkPlayback
@@ -136,23 +156,24 @@ export async function GET(req: NextRequest, { params }: Ctx) {
         }
     : { provider: "vapi", voiceId: "Neha" };
 
-  const basePrompt = agent.system_prompt ||
-    `You are ${agent.name}, a helpful voice assistant for ${agent.client || "this company"}. ${agent.description ? `The agent handles: ${agent.description}.` : ""} Be concise, accurate, and friendly.`;
-
-  const voicePrompt = `${basePrompt}
-
-VOICE CALL RULES:
-- Reply in plain spoken sentences. NO markdown, bullets, headers, or lists — ever.
-- Short questions: 1–2 sentences. Detailed questions (pricing, process, coverage): 2–3 sentences.
-- Use natural contractions and spoken numbers. Say "four hundred ninety nine rupees per month", not "499/month".
-- Do not output SSML, markdown, emojis, bracket labels, or XML-style emotion tags.
-- Sound like a calm human support agent: acknowledge frustration first, then answer directly.
-- NEVER say goodbye or farewell unless the caller explicitly says goodbye first.
-- If the caller asks outside the company/support script, say "I don't have that information in this support script" and redirect to what you can help with.
-- If you cannot answer something account-specific, say "I'll connect you with a specialist who can look that up — they'll reach out within 2 hours" and keep the conversation going.`;
+  const voicePrompt = buildAgentVoiceSystemPrompt(
+    {
+      system_prompt: agent.system_prompt as string,
+      description: agent.description as string,
+      name: agent.name as string,
+      client: agent.client as string,
+      linguistic_notes: agent.linguistic_notes as string,
+      preferred_address: agent.preferred_address as string,
+      companion_vibe: agent.companion_vibe as string,
+      escalation_rules: agent.escalation_rules as AgentPromptInput["escalation_rules"],
+      no_go_topics: agent.no_go_topics as string[],
+      hinglish_mode: agent.hinglish_mode as boolean,
+    },
+    speechLanguage
+  );
 
   const rawFirst = cleanSpokenText(
-    agent.first_message || `Hi, I'm ${agent.name}. How can I help you today?`
+    (agent.first_message as string) || `Hi, I'm ${agent.name}. How can I help you today?`
   );
   const spokenFirstMessage = useSilkVoice
     ? silkModel === "mulberry"
@@ -160,16 +181,29 @@ VOICE CALL RULES:
       : withSilkTone("happy", stripAll(rawFirst))
     : stripAll(rawFirst);
 
+  const dg = deepgramTranscriberForSpeech(speechLanguage);
+  const enabledTools = ((agent.tools as Array<{ name: string; description: string; enabled?: boolean }>) ?? [])
+    .filter((t) => t.enabled !== false)
+    .map((t) => ({
+      type: "function" as const,
+      function: {
+        name: t.name,
+        description: t.description || `Tool: ${t.name}`,
+        parameters: { type: "object", properties: {} },
+      },
+    }));
+
   return NextResponse.json({
     name: agent.name,
     model: {
       provider: "custom-llm",
-      url: `${origin}/api/voice/vapi-llm?voice=${requestedVoice}${useSilkVoice ? "&fast=1" : ""}${browserSilkPlayback ? "&clientLead=1" : ""}&lang=${encodeURIComponent(req.nextUrl.searchParams.get("lang")?.trim() || DEFAULT_SPEECH_LANGUAGE)}`,
+      url: `${origin}/api/voice/vapi-llm?voice=${requestedVoice}${useSilkVoice ? "&fast=1" : ""}${browserSilkPlayback ? "&clientLead=1" : ""}&lang=${encodeURIComponent(speechLanguage)}`,
       timeoutSeconds: 5,
       model: process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash-lite",
       messages: [{ role: "system", content: voicePrompt }],
       temperature: 0.25,
       maxTokens: 80,
+      ...(enabledTools.length ? { tools: enabledTools } : {}),
     },
     voice,
     firstMessage: spokenFirstMessage,
@@ -180,8 +214,8 @@ VOICE CALL RULES:
     endCallMessage: "",
     transcriber: {
       provider: "deepgram",
-      model: "flux-general-en",
-      language: "en",
+      model: dg.model,
+      language: dg.language,
       smartFormat: false,
       numerals: true,
       eotThreshold: useSilkVoice ? SILK_DEFAULT_EOT.eotThreshold : 0.55,
@@ -217,6 +251,8 @@ VOICE CALL RULES:
     metadata: {
       agentId: agent.id,
       aiProvider: aiConfig.provider,
+      llmProvider: agent.llm_provider ?? aiConfig.provider,
+      speechLanguage,
       voiceMode: useSilkVoice
         ? requestedVoice === "silk-mulberry"
           ? "silk-mulberry-1.5"
@@ -230,7 +266,7 @@ VOICE CALL RULES:
             silkSpeaker: MULBERRY_DEFAULTS.speaker,
           }
         : {}),
-      callDirection: (agent as { call_direction?: string }).call_direction ?? "inbound",
+      callDirection: (agent.call_direction as string) ?? "inbound",
     },
   });
 }

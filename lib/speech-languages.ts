@@ -21,6 +21,32 @@ export const SPEECH_LANGUAGES: SpeechLanguageOption[] = [
 
 export const DEFAULT_SPEECH_LANGUAGE = "en-IN";
 
+/** Map studio language labels (e.g. "English (en-IN)") to BCP-47 codes. */
+export function agentLanguageLabelToBcp47(label: string | null | undefined): string {
+  if (!label?.trim()) return DEFAULT_SPEECH_LANGUAGE;
+  const t = label.trim();
+  const paren = t.match(/\(([a-z]{2}-[A-Z]{2})\)/i);
+  if (paren?.[1]) return paren[1];
+  if (/hinglish/i.test(t)) return "hi-IN";
+  const lower = t.toLowerCase();
+  const map: Record<string, string> = {
+    english: "en-IN",
+    hindi: "hi-IN",
+    tamil: "ta-IN",
+    telugu: "te-IN",
+    kannada: "kn-IN",
+    malayalam: "ml-IN",
+    marathi: "mr-IN",
+    bengali: "bn-IN",
+    gujarati: "gu-IN",
+    punjabi: "pa-IN",
+  };
+  for (const [name, code] of Object.entries(map)) {
+    if (lower.includes(name)) return code;
+  }
+  return DEFAULT_SPEECH_LANGUAGE;
+}
+
 const STORAGE_KEY = "silk-resolve-speech-lang";
 
 export function loadSpeechLanguage(): string {

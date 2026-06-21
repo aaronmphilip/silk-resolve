@@ -457,7 +457,11 @@ interface PrewarmCache {
   assistant: Promise<AssistantConfig>;
 }
 
-export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk") {
+export function useWebVoiceCall(
+  agentId: string,
+  voiceMode: WebVoiceMode = "silk",
+  speechLanguage: string = DEFAULT_SPEECH_LANGUAGE
+) {
   const [state, setState] = useState<WebVoiceCallState>("idle");
   const stateRef = useRef<WebVoiceCallState>("idle");
   const [error, setError] = useState("");
@@ -466,7 +470,7 @@ export function useWebVoiceCall(agentId: string, voiceMode: WebVoiceMode = "silk
   const [tension, setTension] = useState(0);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [speechTransport, setSpeechTransport] = useState("");
-  const speechLanguage = DEFAULT_SPEECH_LANGUAGE;
+  // speechLanguage from agent config (BCP-47), passed by talk page / studio test panel
   const [transcript, setTranscript] = useState<WebVoiceTranscript[]>([]);
   const transcriptRef = useRef<WebVoiceTranscript[]>([]);
   // Live caption for the turn currently being spoken — updated on every partial

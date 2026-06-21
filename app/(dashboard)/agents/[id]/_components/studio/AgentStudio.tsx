@@ -4,12 +4,16 @@ import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ArrowLeft, Check, Loader2, Plus, Trash2, Copy, Key, PhoneCall,
-  ChevronDown, ChevronUp, Sparkles, ExternalLink,
+  ArrowLeft, Check, Loader2, Plus, Trash2, PhoneCall,
+  ChevronDown, ChevronUp, ExternalLink,
 } from "lucide-react";
 import PromptEditor, { SYSTEM_VARIABLES, type PromptVariable } from "../PromptEditor";
 import TalkModal from "../TalkModal";
 import StudioNav from "./StudioNav";
+import StudioTestPanel from "./StudioTestPanel";
+import VoicePreview from "./VoicePreview";
+import WidgetPanel from "./WidgetPanel";
+import { agentLanguageLabelToBcp47 } from "@/lib/speech-languages";
 import { AI_PROVIDERS } from "@/lib/ai-providers";
 import type { Call } from "@/lib/types";
 import { outcomeBorder } from "@/lib/utils";
@@ -68,6 +72,7 @@ const monoInputClass = `${inputClass} font-mono text-[13px]`;
 
 export default function AgentStudio({ initial, calls, silkConfigured }: AgentStudioProps) {
   const [agent, setAgent] = useState<AgentStudioRow>(initial);
+  const [baseline, setBaseline] = useState<AgentStudioRow>(initial);
   const [section, setSection] = useState<StudioSection>("agent");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -87,8 +92,14 @@ export default function AgentStudio({ initial, calls, silkConfigured }: AgentStu
   const [editingDoc, setEditingDoc] = useState<{ id: string; title: string; content: string } | null>(null);
   const [newDocTitle, setNewDocTitle] = useState("");
   const [newDocContent, setNewDocContent] = useState("");
+  const [knowledgeTestQuery, setKnowledgeTestQuery] = useState("");
+  const [knowledgeTestResult, setKnowledgeTestResult] = useState("");
+  const [widgetLabel, setWidgetLabel] = useState("Talk to us");
+  const [widgetPosition, setWidgetPosition] = useState("bottom-right");
+  const [widgetColor, setWidgetColor] = useState("#2D4A3E");
+  const [showPublishModal, setShowPublishModal] = useState(false);
 
-  const changed = JSON.stringify(agent) !== JSON.stringify(initial);
+  const changed = JSON.stringify(agent) !== JSON.stringify(baseline);
   const set = useCallback(<K extends keyof AgentStudioRow>(k: K) => (v: AgentStudioRow[K]) => {
     setAgent((a) => ({ ...a, [k]: v }));
     setSaved(false);
@@ -131,8 +142,11 @@ export default function AgentStudio({ initial, calls, silkConfigured }: AgentStu
     });
     setSaving(false);
     if (res.ok) {
+      const updated = await res.json();
+      const next = { ...agent, ...updated, status: payload.status ?? agent.status };
+      setAgent(next);
+      setBaseline(next);
       setSaved(true);
-      setAgent((a) => ({ ...a, status: payload.status }));
       setTimeout(() => setSaved(false), 3000);
     } else {
       const d = await res.json();
@@ -170,6 +184,44 @@ export default function AgentStudio({ initial, calls, silkConfigured }: AgentStu
       setNewDocTitle("");
       setNewDocContent("");
       await loadDocs();
+    } else {
+      const d = await res.json().catch(() => ({}));
+      setError((d as { error?: string }).error ?? "failed to add document");
+    }
+  }
+
+  function publishChecks(): string[] {
+    const issues: string[] = [];
+    if (!agent.system_prompt.trim()) issues.push("System prompt is empty");
+    if (!agent.first_message.trim()) issues.push("First message is empty");
+    if (!silkConfigured && agent.voice_mode !== "vapi") {
+      issues.push("SILK not configured — will use Vapi fallback voice");
+    }
+    return issues;
+  }
+
+  async function publish() {
+    const issues = publishChecks();
+    if (issues.length && !confirm(`Publish anyway?\n\n• ${issues.join("\n• ")}`)) return;
+    await save("live");
+    setShowPublishModal(true);
+  }
+
+  async function setAgentStatus(next: "live" | "paused" | "draft") {
+    setSaving(true);
+    setError("");
+    const payload = { ...agent, status: next };
+    const res = await fetch(`/api/agents/${agent.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    setSaving(false);
+    if (res.ok) {
+      const updated = await res.json();
+      const merged = { ...agent, ...updated, status: next };
+      setAgent(merged);
+      setBaseline(merged);
     }
   }
 
@@ -195,25 +247,8 @@ export default function AgentStudio({ initial, calls, silkConfigured }: AgentStu
     source: "custom" as const,
   }));
 
-  const embedSnippet = (useKey: boolean, keyPrefix?: string) => {
-    const keyAttr = useKey && keyPrefix
-      ? `    s.setAttribute('data-agent-key', 'sr_live_YOUR_KEY');\n`
-      : `    s.setAttribute('data-agent-id', '${agent.id}');\n`;
-    return `<!-- Silk Resolve · Voice Widget -->
-<script>
-  (function() {
-    var s = document.createElement('script');
-    s.src = '${origin}/widget.js?v=37';
-${keyAttr}    s.setAttribute('data-position', 'bottom-right');
-    s.setAttribute('data-label', 'Talk to us');
-    s.defer = true;
-    document.head.appendChild(s);
-  })();
-</script>`;
-  };
-
   const voiceRail = (
-    <aside className="hidden xl:flex w-72 shrink-0 flex-col border-l border-[#E8E4DE] bg-[#FAF9F7] p-5 gap-6">
+    <div className="flex flex-col gap-5">
       <div>
         <Label>Voice</Label>
         <div className="space-y-2">
@@ -283,7 +318,7 @@ ${keyAttr}    s.setAttribute('data-position', 'bottom-right');
           </div>
         ))}
       </div>
-    </aside>
+    </div>
   );
 
   function renderSection() {
@@ -334,6 +369,14 @@ ${keyAttr}    s.setAttribute('data-position', 'bottom-right');
                 placeholder="What this agent handles — shown in analytics and deploy docs"
               />
             </div>
+            <Field label="Preferred address">
+              <input
+                value={agent.preferred_address}
+                onChange={(e) => set("preferred_address")(e.target.value)}
+                placeholder="Sir/Ma'am"
+                className={monoInputClass}
+              />
+            </Field>
           </motion.div>
         );
 
@@ -393,6 +436,11 @@ ${keyAttr}    s.setAttribute('data-position', 'bottom-right');
                 placeholder="e.g. Keep sentences short. Never say 'no problem'."
               />
             </Field>
+            <VoicePreview
+              text={agent.first_message}
+              voiceMode={agent.voice_mode}
+              disabled={!silkConfigured && agent.voice_mode !== "vapi"}
+            />
           </motion.div>
         );
 
@@ -536,52 +584,32 @@ ${keyAttr}    s.setAttribute('data-position', 'bottom-right');
 
       case "widget":
         return (
-          <motion.div key="widget" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-8 max-w-2xl">
-            <div>
-              <Label>Publish keys</Label>
-              <p className="text-[11px] text-[#6B6560] mb-4">Embed without exposing your agent ID. Keys are shown once when created.</p>
-              {newKeyReveal && (
-                <div className="mb-4 border border-[#C4A882] bg-[#C4A882]/10 rounded-xl p-4">
-                  <p className="text-[10px] font-mono text-[#6B6560] mb-2">Copy now — won&apos;t be shown again</p>
-                  <code className="text-xs font-mono break-all block mb-2">{newKeyReveal}</code>
-                  <button type="button" onClick={() => { navigator.clipboard.writeText(newKeyReveal); setKeyCopied(true); setTimeout(() => setKeyCopied(false), 2000); }} className="text-xs font-mono flex items-center gap-1 text-[#2D4A3E]">
-                    {keyCopied ? <Check size={12} /> : <Copy size={12} />} copy key
-                  </button>
-                </div>
-              )}
-              <div className="flex gap-2 mb-4">
-                <button type="button" onClick={() => generateKey("live")} className="text-xs font-mono bg-[#2D4A3E] text-white px-3 py-2 rounded-lg flex items-center gap-1.5">
-                  <Key size={12} /> new live key
-                </button>
-                <button type="button" onClick={() => generateKey("test")} className="text-xs font-mono border border-[#E8E4DE] px-3 py-2 rounded-lg">test key</button>
-              </div>
-              {keysLoading ? <Loader2 size={14} className="animate-spin text-[#6B6560]" /> : (
-                <div className="border border-[#E8E4DE] rounded-xl divide-y bg-white">
-                  {publishKeys.length === 0 && <p className="px-4 py-6 text-xs text-[#6B6560] text-center">No keys yet</p>}
-                  {publishKeys.map((k) => (
-                    <div key={k.id} className="px-4 py-3 flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium">{k.name}</p>
-                        <p className="text-[10px] font-mono text-[#6B6560]">{k.prefix}… · {k.kind} · {k.status}</p>
-                      </div>
-                      {k.status === "active" && (
-                        <button type="button" onClick={() => revokeKey(k.id)} className="text-[10px] font-mono text-red-600">revoke</button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div>
-              <Label>Embed snippet (publish key — recommended)</Label>
-              <pre className="text-[11px] font-mono bg-[#1A1814] text-[#F7F5F2] rounded-xl p-4 overflow-x-auto">{embedSnippet(true)}</pre>
-            </div>
-            <div>
-              <Label>Legacy embed (agent ID)</Label>
-              <pre className="text-[11px] font-mono bg-[#FAF9F7] border border-[#E8E4DE] rounded-xl p-4 overflow-x-auto">{embedSnippet(false)}</pre>
-            </div>
-            <Link href="/deploy" className="inline-flex items-center gap-1.5 text-xs font-mono text-[#2D4A3E] hover:underline">
+          <motion.div key="widget" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+            <WidgetPanel
+              agentId={agent.id}
+              origin={origin || "https://silk-resolve.vercel.app"}
+              voiceMode={agent.voice_mode}
+              publishKeys={publishKeys}
+              keysLoading={keysLoading}
+              newKeyReveal={newKeyReveal}
+              keyCopied={keyCopied}
+              onGenerateKey={generateKey}
+              onRevokeKey={revokeKey}
+              onCopyKey={() => {
+                if (newKeyReveal) {
+                  navigator.clipboard.writeText(newKeyReveal);
+                  setKeyCopied(true);
+                  setTimeout(() => setKeyCopied(false), 2000);
+                }
+              }}
+              widgetLabel={widgetLabel}
+              widgetPosition={widgetPosition}
+              widgetColor={widgetColor}
+              onWidgetLabel={setWidgetLabel}
+              onWidgetPosition={setWidgetPosition}
+              onWidgetColor={setWidgetColor}
+            />
+            <Link href="/deploy" className="inline-flex items-center gap-1.5 text-xs font-mono text-[#2D4A3E] hover:underline mt-6">
               Full deploy guide <ExternalLink size={12} />
             </Link>
           </motion.div>
@@ -735,21 +763,24 @@ ${keyAttr}    s.setAttribute('data-position', 'bottom-right');
 
       case "tests":
         return (
-          <motion.div key="tests" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="max-w-lg space-y-6">
+          <motion.div key="tests" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="max-w-xl space-y-6">
             <div className="border border-[#E8E4DE] rounded-2xl p-6 bg-white">
-              <div className="flex items-center gap-2 mb-3">
-                <Sparkles size={16} className="text-[#C4A882]" />
-                <p className="font-semibold text-sm">Live voice test</p>
-              </div>
-              <p className="text-xs text-[#6B6560] mb-4">Start a browser call with your current saved config. Unsaved changes won&apos;t apply until you save.</p>
-              <button type="button" onClick={() => setShowTalk(true)} className="w-full flex items-center justify-center gap-2 bg-[#2D4A3E] text-white text-sm font-medium py-3 rounded-xl hover:bg-[#243d32] transition-colors">
-                <PhoneCall size={16} /> Talk to {agent.name || "agent"}
-              </button>
+              <StudioTestPanel
+                agentId={agent.id}
+                agentName={agent.name}
+                voiceMode={agent.voice_mode}
+                languageLabel={agent.language}
+              />
             </div>
+            {changed && (
+              <p className="text-[10px] font-mono text-amber-700 px-1">
+                Unsaved changes — save before testing if you edited prompt or voice settings.
+              </p>
+            )}
             <div>
               <Label>Public talk URL</Label>
               <code className="block text-[11px] font-mono bg-[#FAF9F7] border border-[#E8E4DE] rounded-lg px-3 py-2 break-all">
-                {origin}/talk/{agent.id}?voice={agent.voice_mode}
+                {origin}/talk/{agent.id}?voice={agent.voice_mode}&lang={agentLanguageLabelToBcp47(agent.language)}
               </code>
             </div>
           </motion.div>
@@ -766,9 +797,25 @@ ${keyAttr}    s.setAttribute('data-position', 'bottom-right');
         <TalkModal
           agentId={agent.id}
           agentName={agent.name}
-          voiceMode={agent.voice_mode === "vapi" ? "vapi" : agent.voice_mode}
+          voiceMode={agent.voice_mode}
+          languageLabel={agent.language}
           onClose={() => setShowTalk(false)}
         />
+      )}
+
+      {showPublishModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setShowPublishModal(false)}>
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <p className="font-semibold text-lg mb-1">Agent published</p>
+            <p className="text-sm text-[#6B6560] mb-4">{agent.name} is live. Generate a publish key in Widget to embed on your site.</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => { setSection("widget"); setShowPublishModal(false); }} className="flex-1 bg-[#2D4A3E] text-white text-sm py-2.5 rounded-xl">
+                Get embed code
+              </button>
+              <button type="button" onClick={() => setShowPublishModal(false)} className="px-4 text-sm text-[#6B6560]">Close</button>
+            </div>
+          </div>
+        </div>
       )}
 
       <header className="sticky top-14 lg:top-0 z-30 border-b border-[#E8E4DE] bg-[#F7F5F2]/95 backdrop-blur-sm px-4 sm:px-6 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -800,20 +847,40 @@ ${keyAttr}    s.setAttribute('data-position', 'bottom-right');
             className="text-xs font-mono border border-[#E8E4DE] px-3 py-2 rounded-lg disabled:opacity-40">
             {saving ? <Loader2 size={12} className="animate-spin" /> : "save"}
           </button>
-          <button type="button" onClick={() => save("live")} disabled={saving}
-            className="text-xs font-mono bg-[#1A1814] text-[#F7F5F2] px-4 py-2 rounded-lg flex items-center gap-1">
-            {saved ? <Check size={12} /> : null}
-            {agent.status === "live" ? "published" : "publish"}
-          </button>
+          {agent.status === "live" ? (
+            <button type="button" onClick={() => void setAgentStatus("paused")} disabled={saving}
+              className="text-xs font-mono border border-amber-600/40 text-amber-700 px-3 py-2 rounded-lg">
+              pause
+            </button>
+          ) : (
+            <button type="button" onClick={() => void publish()} disabled={saving}
+              className="text-xs font-mono bg-[#1A1814] text-[#F7F5F2] px-4 py-2 rounded-lg flex items-center gap-1">
+              {saved ? <Check size={12} /> : null}
+              publish
+            </button>
+          )}
         </div>
       </header>
 
       <div className="flex flex-col lg:flex-row min-h-[calc(100vh-8rem)]">
-        <StudioNav section={section} onSection={setSection} callCount={calls.length} />
-        <main className="flex-1 px-4 sm:px-8 py-6 lg:py-8 overflow-auto">
+        <StudioNav section={section} onSection={setSection} callCount={calls.length} dirty={changed} />
+        <main className="flex-1 px-4 sm:px-8 py-6 lg:py-8 overflow-auto min-w-0">
           <AnimatePresence mode="wait">{renderSection()}</AnimatePresence>
         </main>
-        {(section === "agent" || section === "voice") && voiceRail}
+        {section !== "tests" && section !== "widget" && (
+          <aside className="hidden xl:flex w-80 shrink-0 flex-col border-l border-[#E8E4DE] bg-[#FAF9F7] p-5 gap-5">
+            <StudioTestPanel
+              agentId={agent.id}
+              agentName={agent.name}
+              voiceMode={agent.voice_mode}
+              languageLabel={agent.language}
+              compact
+            />
+            {(section === "agent" || section === "voice") && (
+              <div className="border-t border-[#E8E4DE] pt-4">{voiceRail}</div>
+            )}
+          </aside>
+        )}
       </div>
     </div>
   );

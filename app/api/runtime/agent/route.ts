@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { isNovaCareAgentId, getNovaCareFallbackAgent } from "@/lib/novacare-knowledge";
-import { isPublishKeyFormat, resolvePublishKey } from "@/lib/publish-key";
+import {
+  isPublishKeyFormat,
+  publishKeyAllowsAgentStatus,
+  resolvePublishKey,
+} from "@/lib/publish-key";
 
 export const runtime = "nodejs";
 
@@ -10,6 +14,7 @@ export async function GET(req: NextRequest) {
   const agentIdParam = req.nextUrl.searchParams.get("id")?.trim() ?? "";
 
   let agentId = agentIdParam;
+  let keyKind: "live" | "test" | null = null;
 
   if (key) {
     if (!isPublishKeyFormat(key)) {
@@ -18,6 +23,7 @@ export async function GET(req: NextRequest) {
     const resolved = await resolvePublishKey(key);
     if (!resolved) return NextResponse.json({ error: "key not found" }, { status: 404 });
     agentId = resolved.agentId;
+    keyKind = resolved.kind;
   }
 
   if (!agentId) return NextResponse.json({ error: "id or key required" }, { status: 400 });
@@ -41,8 +47,11 @@ export async function GET(req: NextRequest) {
 
   if (!agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
 
-  if (key && agent.status !== "live") {
-    return NextResponse.json({ error: "agent not published" }, { status: 403 });
+  if (key && keyKind && !publishKeyAllowsAgentStatus(keyKind, agent.status)) {
+    return NextResponse.json(
+      { error: keyKind === "live" ? "agent not published" : "agent unavailable" },
+      { status: 403 }
+    );
   }
 
   return NextResponse.json(agent);

@@ -25,10 +25,12 @@ export default function StudioNav({
   section,
   onSection,
   callCount,
+  dirty,
 }: {
   section: StudioSection;
   onSection: (s: StudioSection) => void;
   callCount: number;
+  dirty?: boolean;
 }) {
   return (
     <nav className="w-full lg:w-56 shrink-0 border-b lg:border-b-0 lg:border-r border-[#E8E4DE] bg-[#F7F5F2] lg:min-h-[calc(100vh-3.5rem)] py-4">
@@ -48,13 +50,16 @@ export default function StudioNav({
               >
                 {active && (
                   <motion.span
-                    layoutId="studio-nav-active"
+                    layoutId="studio-nav-configure-active"
                     className="absolute inset-0 rounded-lg bg-white shadow-sm border border-[#E8E4DE]"
                     transition={{ type: "spring", stiffness: 380, damping: 32 }}
                   />
                 )}
                 <Icon size={15} className="relative z-10 shrink-0" />
                 <span className="relative z-10">{item.label}</span>
+                {dirty && active && (
+                  <span className="relative z-10 w-1.5 h-1.5 rounded-full bg-[#C4A882]" title="Unsaved changes" />
+                )}
               </button>
             </li>
           );
@@ -78,7 +83,7 @@ export default function StudioNav({
               >
                 {active && (
                   <motion.span
-                    layoutId="studio-nav-active"
+                    layoutId="studio-nav-monitor-active"
                     className="absolute inset-0 rounded-lg bg-white shadow-sm border border-[#E8E4DE]"
                     transition={{ type: "spring", stiffness: 380, damping: 32 }}
                   />

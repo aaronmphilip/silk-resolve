@@ -13,6 +13,7 @@ interface PublicTalkClientProps {
   agentId: string;
   agentName: string;
   voiceMode: WebVoiceMode;
+  speechLanguage?: string;
   autostart?: boolean;
 }
 
@@ -241,7 +242,13 @@ function TalkUi({
   );
 }
 
-function PublicTalkVapiClient({ agentId, agentName, voiceMode, autostart = false }: PublicTalkClientProps) {
+function PublicTalkVapiClient({
+  agentId,
+  agentName,
+  voiceMode,
+  speechLanguage,
+  autostart = false,
+}: PublicTalkClientProps) {
   const autoStartAttemptedRef = useRef(false);
   const startCallRef = useRef<() => Promise<void>>(async () => {});
   const {
@@ -259,7 +266,7 @@ function PublicTalkVapiClient({ agentId, agentName, voiceMode, autostart = false
     toggleMute,
     reset,
     tryDemoQuestion,
-  } = useWebVoiceCall(agentId, voiceMode);
+  } = useWebVoiceCall(agentId, voiceMode, speechLanguage);
 
   startCallRef.current = startCall;
 

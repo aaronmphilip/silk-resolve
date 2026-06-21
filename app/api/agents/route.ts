@@ -49,6 +49,9 @@ export async function POST(req: NextRequest) {
       node_count:      0,
       pillars:         body.pillars ?? ["PEEK", "MESH", "SILK"],
       description:     body.description ?? "",
+      language:        body.language ?? "English (en-IN)",
+      voice_mode:      body.voice_mode ?? "silk-mulberry",
+      knowledge_enabled: true,
       twilio_phone:    body.twilioPhone ?? null,   // assign phone number at creation
       total_calls:     0,
       calls_today:     0,

@@ -66,14 +66,28 @@ export async function resolvePublishKey(fullKey: string): Promise<ResolvedPublis
   };
 }
 
+/** Test keys work on draft/paused agents; live keys require published (live) status. */
+export function publishKeyAllowsAgentStatus(
+  kind: PublishKeyKind,
+  agentStatus: string
+): boolean {
+  if (kind === "test") return agentStatus !== "error";
+  return agentStatus === "live";
+}
+
 export async function resolveAgentForRuntime(args: {
   agentId?: string | null;
   publishKey?: string | null;
-}): Promise<{ agentId: string; tenantId?: string; via: "id" | "key" } | null> {
+}): Promise<{ agentId: string; tenantId?: string; via: "id" | "key"; kind?: PublishKeyKind } | null> {
   if (args.publishKey) {
     const resolved = await resolvePublishKey(args.publishKey);
     if (!resolved) return null;
-    return { agentId: resolved.agentId, tenantId: resolved.tenantId, via: "key" };
+    return {
+      agentId: resolved.agentId,
+      tenantId: resolved.tenantId,
+      via: "key",
+      kind: resolved.kind,
+    };
   }
 
   const id = args.agentId?.trim();

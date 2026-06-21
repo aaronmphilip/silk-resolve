@@ -6,15 +6,26 @@ import {
 } from "lucide-react";
 import { useWebVoiceCall, type WebVoiceCallState, type WebVoiceTranscript } from "@/lib/use-web-voice-call";
 import type { WebVoiceMode } from "@/lib/silk-voice";
+import { agentLanguageLabelToBcp47, DEFAULT_SPEECH_LANGUAGE } from "@/lib/speech-languages";
 
 interface Props {
   agentId: string;
   agentName: string;
   voiceMode?: WebVoiceMode;
+  languageLabel?: string;
   onClose: () => void;
 }
 
-export default function TalkModal({ agentId, agentName, voiceMode = "silk-mulberry", onClose }: Props) {
+export default function TalkModal({
+  agentId,
+  agentName,
+  voiceMode = "silk-mulberry",
+  languageLabel,
+  onClose,
+}: Props) {
+  const speechLanguage = languageLabel
+    ? agentLanguageLabelToBcp47(languageLabel)
+    : DEFAULT_SPEECH_LANGUAGE;
   const scrollRef = useRef<HTMLDivElement>(null);
   const {
     state,
@@ -27,7 +38,7 @@ export default function TalkModal({ agentId, agentName, voiceMode = "silk-mulber
     endCall,
     reset,
     toggleMute,
-  } = useWebVoiceCall(agentId, voiceMode);
+  } = useWebVoiceCall(agentId, voiceMode, speechLanguage);
 
   // Auto-scroll transcript
   useEffect(() => {
