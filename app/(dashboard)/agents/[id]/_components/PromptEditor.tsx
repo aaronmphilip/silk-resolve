@@ -34,11 +34,12 @@ interface Props {
   placeholder?: string;
   rows?: number;
   monospace?: boolean;
+  light?: boolean;
 }
 
 export default function PromptEditor({
   label, value, onChange, customVariables = [],
-  placeholder, rows = 12, monospace = true,
+  placeholder, rows = 12, monospace = true, light = false,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -96,15 +97,25 @@ export default function PromptEditor({
   // Count {{variables}} in the prompt to show count badge
   const varCount = (value.match(/\{\{[\w_]+\}\}/g) ?? []).length;
 
+  const labelClass = light ? "text-[#6B6560]" : "opacity-30";
+  const hintClass = light ? "text-[#6B6560]/60" : "opacity-20";
+  const textareaClass = light
+    ? `w-full bg-white border border-[#E8E4DE] focus:border-[#2D4A3E]/40 text-[#1A1814] text-sm leading-relaxed p-4 focus:outline-none resize-y placeholder:text-[#6B6560]/40 rounded-xl transition-colors ${monospace ? "font-mono" : ""}`
+    : `w-full bg-[#f0ebe0]/[0.03] border border-[#f0ebe0]/10 focus:border-[#f0ebe0]/30 text-[#f0ebe0] text-sm leading-relaxed p-4 focus:outline-none resize-y placeholder:text-[#f0ebe0]/15 transition-colors ${monospace ? "font-mono" : ""}`;
+  const pickerShell = light ? "bg-white border-[#E8E4DE] shadow-lg rounded-lg" : "bg-[#0f0f0f] border-[#f0ebe0]/20 shadow-xl";
+  const pickerItemClass = (i: number) => light
+    ? (i === selIdx ? "bg-[#F7F5F2]" : "hover:bg-[#FAF9F7]")
+    : (i === selIdx ? "bg-[#f0ebe0]/8" : "hover:bg-[#f0ebe0]/5");
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className="text-[10px] font-mono opacity-30 uppercase tracking-widest">{label}</label>
+        <label className={`text-[10px] font-mono uppercase tracking-widest ${labelClass}`}>{label}</label>
         <div className="flex items-center gap-3">
           {varCount > 0 && (
-            <span className="text-[9px] font-mono opacity-30">{varCount} variable{varCount !== 1 ? "s" : ""}</span>
+            <span className={`text-[9px] font-mono ${labelClass}`}>{varCount} variable{varCount !== 1 ? "s" : ""}</span>
           )}
-          <span className="text-[9px] font-mono opacity-20">type &#123;&#123; to insert variable</span>
+          <span className={`text-[9px] font-mono ${hintClass}`}>type &#123;&#123; to insert variable</span>
         </div>
       </div>
 
@@ -117,14 +128,13 @@ export default function PromptEditor({
           onBlur={() => setTimeout(() => setShowPicker(false), 150)}
           rows={rows}
           placeholder={placeholder}
-          className={`w-full bg-[#f0ebe0]/[0.03] border border-[#f0ebe0]/10 focus:border-[#f0ebe0]/30 text-[#f0ebe0] text-sm leading-relaxed p-4 focus:outline-none resize-y placeholder:text-[#f0ebe0]/15 transition-colors ${monospace ? "font-mono" : ""}`}
+          className={textareaClass}
         />
 
-        {/* Variable picker */}
         {showPicker && filtered.length > 0 && (
-          <div className="absolute bottom-full left-0 mb-1 w-80 bg-[#0f0f0f] border border-[#f0ebe0]/20 z-50 max-h-52 overflow-y-auto shadow-xl">
-            <div className="px-3 py-2 border-b border-[#f0ebe0]/10">
-              <p className="text-[9px] font-mono opacity-30 uppercase tracking-widest">
+          <div className={`absolute bottom-full left-0 mb-1 w-80 border z-50 max-h-52 overflow-y-auto ${pickerShell}`}>
+            <div className={`px-3 py-2 border-b ${light ? "border-[#E8E4DE]" : "border-[#f0ebe0]/10"}`}>
+              <p className={`text-[9px] font-mono uppercase tracking-widest ${labelClass}`}>
                 variables · ↑↓ navigate · tab to insert
               </p>
             </div>
@@ -133,15 +143,15 @@ export default function PromptEditor({
                 key={v.name}
                 type="button"
                 onMouseDown={(e) => { e.preventDefault(); insertVar(v.name); }}
-                className={`w-full text-left px-3 py-2.5 border-b border-[#f0ebe0]/5 last:border-b-0 transition-colors ${i === selIdx ? "bg-[#f0ebe0]/8" : "hover:bg-[#f0ebe0]/5"}`}
+                className={`w-full text-left px-3 py-2.5 border-b last:border-b-0 transition-colors ${light ? "border-[#E8E4DE]" : "border-[#f0ebe0]/5"} ${pickerItemClass(i)}`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-mono text-[#f0ebe0]">
+                  <span className={`text-xs font-mono ${light ? "text-[#1A1814]" : "text-[#f0ebe0]"}`}>
                     {`{{${v.name}}}`}
                   </span>
                   <span className={`text-[9px] font-mono ${SOURCE_COLORS[v.source]}`}>{v.source}</span>
                 </div>
-                <p className="text-[10px] opacity-30 mt-0.5 leading-tight">{v.description}</p>
+                <p className={`text-[10px] mt-0.5 leading-tight ${light ? "text-[#6B6560]" : "opacity-30"}`}>{v.description}</p>
               </button>
             ))}
           </div>

@@ -19,6 +19,7 @@ import {
   type WebVoiceMode,
 } from "@/lib/silk-voice";
 import { withSilkTone, stripAll } from "@/lib/voice-emotion";
+import { isPublishKeyFormat, resolvePublishKey } from "@/lib/publish-key";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -47,23 +48,36 @@ function voiceMode(req: NextRequest): WebVoiceMode {
   return normalizeWebVoiceMode(req.nextUrl.searchParams.get("voice"));
 }
 
+async function authorizePublishKey(agentId: string, key: string | null): Promise<boolean> {
+  if (!key) return true;
+  if (!isPublishKeyFormat(key)) return false;
+  const resolved = await resolvePublishKey(key);
+  return Boolean(resolved && resolved.agentId === agentId);
+}
+
 export async function GET(req: NextRequest, { params }: Ctx) {
   const { id } = await params;
-  const requestedVoice = voiceMode(req);
+  const publishKey = req.nextUrl.searchParams.get("key")?.trim() ?? "";
+  if (publishKey && !(await authorizePublishKey(id, publishKey))) {
+    return NextResponse.json({ error: "invalid publish key" }, { status: 403 });
+  }
+
+  const voiceParam = req.nextUrl.searchParams.get("voice");
   const origin = deriveOrigin(req);
+  const requestedVoiceEarly = voiceParam ? voiceMode(req) : normalizeWebVoiceMode("silk-mulberry");
 
   if (isNovaCareAgentId(id)) {
     const [{ silk }, aiConfig] = await Promise.all([
       getPlatformVoiceConfig(),
       getPlatformAIConfig(),
     ]);
-    const useSilkVoice = requestedVoice !== "vapi" && Boolean(silk.apiKey && silk.vapiEnabled);
+    const useSilkVoice = requestedVoiceEarly !== "vapi" && Boolean(silk.apiKey && silk.vapiEnabled);
     return NextResponse.json(
       buildNovaCareVapiAssistant({
         origin,
-        voiceMode: requestedVoice,
+        voiceMode: requestedVoiceEarly,
         useSilkVoice,
-        browserSilkPlayback: usesBrowserSilkPlayback(requestedVoice),
+        browserSilkPlayback: usesBrowserSilkPlayback(requestedVoiceEarly),
         aiProvider: aiConfig.provider,
         geminiModel: process.env.GEMINI_MODEL,
         speechLanguage: req.nextUrl.searchParams.get("lang")?.trim() || DEFAULT_SPEECH_LANGUAGE,
@@ -76,7 +90,7 @@ export async function GET(req: NextRequest, { params }: Ctx) {
 
   const svcResult = await createServiceClient()
     .from("agents")
-    .select("id, name, client, description, status, system_prompt, first_message, llm_model")
+    .select("id, name, client, description, status, system_prompt, first_message, llm_model, voice_mode")
     .eq("id", id)
     .single();
   if (svcResult.data) {
@@ -84,13 +98,21 @@ export async function GET(req: NextRequest, { params }: Ctx) {
   } else {
     const anonResult = await createClient()
       .from("agents")
-      .select("id, name, client, description, status, system_prompt, first_message, llm_model")
+      .select("id, name, client, description, status, system_prompt, first_message, llm_model, voice_mode")
       .eq("id", id)
       .single();
     agent = anonResult.data ?? null;
   }
 
   if (!agent) return NextResponse.json({ error: "agent not found" }, { status: 404 });
+
+  if (publishKey && agent.status !== "live") {
+    return NextResponse.json({ error: "agent not published" }, { status: 403 });
+  }
+
+  const requestedVoice = voiceParam
+    ? voiceMode(req)
+    : normalizeWebVoiceMode((agent as { voice_mode?: string }).voice_mode);
 
   const [{ silk }, aiConfig] = await Promise.all([
     getPlatformVoiceConfig(),

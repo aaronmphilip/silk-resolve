@@ -21,6 +21,8 @@ import {
 import { isUnusableBrainResponse } from "@/lib/speech-route";
 import { splitSpeakableSentences } from "@/lib/speakable-sentences";
 import { isSilkVoiceMode, normalizeWebVoiceMode } from "@/lib/silk-voice";
+import { retrieveAgentKnowledgeContext } from "@/lib/agent-knowledge";
+import { isNovaCareAgentId } from "@/lib/novacare-knowledge";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -39,6 +41,10 @@ interface VapiReq {
   model?: string;
   messages?: OAIMessage[];
   stream?: boolean;
+  call?: {
+    metadata?: Record<string, unknown>;
+  };
+  metadata?: Record<string, unknown>;
 }
 
 const GEMINI_TIMEOUT_MS = 8_000;
@@ -121,6 +127,25 @@ function normalizeMessages(input: unknown): OAIMessage[] {
 
 function lastUserText(messages: OAIMessage[]): string {
   return [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+}
+
+function agentIdFromVapiBody(body: VapiReq): string {
+  const fromCall = body.call?.metadata?.agentId;
+  if (typeof fromCall === "string" && fromCall.trim()) return fromCall.trim();
+  const fromMeta = body.metadata?.agentId;
+  if (typeof fromMeta === "string" && fromMeta.trim()) return fromMeta.trim();
+  return "";
+}
+
+async function augmentSystemWithKnowledge(
+  systemContent: string,
+  agentId: string,
+  userQuery: string
+): Promise<string> {
+  if (!agentId || isNovaCareAgentId(agentId) || !userQuery.trim()) return systemContent;
+  const ctx = await retrieveAgentKnowledgeContext(agentId, userQuery);
+  if (!ctx) return systemContent;
+  return `${systemContent}\n\nKNOWLEDGE BASE (use for factual answers — do not invent beyond this):\n${ctx}`;
 }
 
 function buildContents(messages: OAIMessage[]): GeminiTurn[] {
@@ -873,8 +898,10 @@ export async function POST(req: NextRequest) {
   const wantsStream = body.stream !== false;
   const { apiKey, silkEnabled, clientLeadEnabled, localClientEnabled, mulberryVoice, fastMode, speechLanguage } = getConfig(req);
 
-  const systemContent = messages.find((message) => message.role === "system")?.content ?? "";
+  const baseSystemContent = messages.find((message) => message.role === "system")?.content ?? "";
   const lastUser = lastUserText(messages);
+  const agentId = agentIdFromVapiBody(body);
+  const systemContent = await augmentSystemWithKnowledge(baseSystemContent, agentId, lastUser);
   const conversational =
     /\bnovacare\b/i.test(systemContent) ? novaCareConversationalReply(lastUser) : "";
   const promptAnswer = answerFromSystemPrompt(systemContent, lastUser);

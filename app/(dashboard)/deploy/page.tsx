@@ -78,28 +78,41 @@ function InfoSection({ icon: Icon, title, badge, children, defaultOpen = false }
 }
 
 const EMBED_SNIPPET = (agentId: string, origin: string) =>
-`<!-- Silk Resolve · Voice Widget -->
-<!-- Place before </body> on any page -->
+`<!-- Silk Resolve · Voice Widget (legacy agent ID) -->
 <script>
   (function() {
     var s = document.createElement('script');
-    s.src = '${origin}/widget.js';
+    s.src = '${origin}/widget.js?v=37';
     s.setAttribute('data-agent-id', '${agentId}');
     s.setAttribute('data-position', 'bottom-right');
-    s.setAttribute('data-greeting', 'Need help? Talk to us.');
+    s.setAttribute('data-label', 'Need help? Talk to us.');
     s.defer = true;
     document.head.appendChild(s);
   })();
 </script>`;
 
-const REACT_SNIPPET = (agentId: string, origin: string) =>
+const KEY_EMBED_SNIPPET = (origin: string) =>
+`<!-- Silk Resolve · Voice Widget (publish key — recommended) -->
+<script>
+  (function() {
+    var s = document.createElement('script');
+    s.src = '${origin}/widget.js?v=37';
+    s.setAttribute('data-agent-key', 'sr_live_YOUR_KEY_FROM_AGENT_STUDIO');
+    s.setAttribute('data-position', 'bottom-right');
+    s.setAttribute('data-label', 'Need help? Talk to us.');
+    s.defer = true;
+    document.head.appendChild(s);
+  })();
+</script>`;
+
+const REACT_SNIPPET = (origin: string) =>
 `import { useEffect } from 'react';
 
 export function SilkWidget() {
   useEffect(() => {
     const s = document.createElement('script');
-    s.src = '${origin}/widget.js';
-    s.setAttribute('data-agent-id', '${agentId}');
+    s.src = '${origin}/widget.js?v=37';
+    s.setAttribute('data-agent-key', process.env.NEXT_PUBLIC_SILK_PUBLISH_KEY!);
     s.setAttribute('data-position', 'bottom-right');
     s.defer = true;
     document.head.appendChild(s);
@@ -108,14 +121,14 @@ export function SilkWidget() {
   return null;
 }`;
 
-const DIRECT_SNIPPET = (agentId: string, origin: string) =>
-`<!-- Direct Talk button — style it however you want -->
-<button onclick="SilkResolve.start('${agentId}')">
+const DIRECT_SNIPPET = (origin: string) =>
+`<!-- Direct Talk button — pass publish key or agent ID -->
+<button onclick="SilkResolve.start('sr_live_YOUR_KEY')">
   Talk to support
 </button>
 
-<script src="${origin}/widget.js"
-  data-agent-id="${agentId}"
+<script src="${origin}/widget.js?v=37"
+  data-agent-key="sr_live_YOUR_KEY"
   data-auto-open="false">
 </script>`;
 
@@ -123,13 +136,14 @@ export default function DeployPage() {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [origin, setOrigin] = useState("https://your-domain.com");
-  const [embedTab, setEmbedTab] = useState<"html" | "react" | "button">("html");
+  const [embedTab, setEmbedTab] = useState<"key" | "html" | "react" | "button">("key");
 
   useEffect(() => {
     fetch("/api/agents").then(r => r.ok ? r.json() : null).then(d => {
-      if (d?.agents) {
-        setAgents(d.agents);
-        const live = d.agents.find((a: Agent) => a.status === "live") ?? d.agents[0];
+      const list = Array.isArray(d) ? d : d?.agents ?? [];
+      if (list.length) {
+        setAgents(list);
+        const live = list.find((a: Agent) => a.status === "live") ?? list[0];
         if (live) setSelectedId(live.id);
       }
     });
@@ -140,9 +154,10 @@ export default function DeployPage() {
   const liveAgents = agents.filter(a => a.status === "live");
 
   const snippetMap = {
+    key:    KEY_EMBED_SNIPPET(origin),
     html:   EMBED_SNIPPET(selectedId || "YOUR_AGENT_ID", origin),
-    react:  REACT_SNIPPET(selectedId || "YOUR_AGENT_ID", origin),
-    button: DIRECT_SNIPPET(selectedId || "YOUR_AGENT_ID", origin),
+    react:  REACT_SNIPPET(origin),
+    button: DIRECT_SNIPPET(origin),
   };
 
   return (
@@ -235,14 +250,14 @@ export default function DeployPage() {
 
           {/* Embed type tabs */}
           <div className="flex border-b border-black dark:border-[#e8dece]/20 mb-0">
-            {(["html", "react", "button"] as const).map(t => (
+            {(["key", "html", "react", "button"] as const).map(t => (
               <button key={t} onClick={() => setEmbedTab(t)}
                 className={`px-4 py-2.5 text-[10px] font-mono uppercase tracking-widest border-b-2 transition-all -mb-px ${
                   embedTab === t
                     ? "border-black dark:border-[#e8dece] text-black dark:text-[#e8dece] font-bold"
                     : "border-transparent text-black/40 dark:text-[#e8dece]/40 hover:text-black dark:hover:text-[#e8dece]"
                 }`}>
-                {t === "html" ? "HTML" : t === "react" ? "React" : "Custom button"}
+                {t === "key" ? "Publish key" : t === "html" ? "Agent ID" : t === "react" ? "React" : "Custom button"}
               </button>
             ))}
           </div>

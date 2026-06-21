@@ -2,12 +2,15 @@
  * Silk Resolve · Embeddable Voice Widget
  *
  * Usage:
- *   <script src="https://your-domain.com/widget.js"
- *     data-agent-id="YOUR_AGENT_ID"
+ *   <script src="https://your-domain.com/widget.js?v=37"
+ *     data-agent-key="sr_live_YOUR_PUBLISH_KEY"
  *     data-position="bottom-right"
  *     data-greeting="Talk to support"
  *     data-color="#0a0a0a">
  *   </script>
+ *
+ * Legacy (agent ID):
+ *   data-agent-id="YOUR_AGENT_ID"
  *
  * Or programmatic (data-auto-open="false"):
  *   SilkResolve.start('agent-id')  // open widget
@@ -18,14 +21,15 @@
 
   // Locate the script tag — currentScript is null for deferred loads
   var script = document.currentScript || (function () {
-    var tags = document.querySelectorAll('script[data-agent-id]');
+    var tags = document.querySelectorAll('script[data-agent-key],script[data-agent-id]');
     return tags[tags.length - 1] || null;
   })();
 
   if (!script) return;
 
-  var agentId = script.getAttribute('data-agent-id');
-  if (!agentId) return;
+  var publishKey = script.getAttribute('data-agent-key') || '';
+  var agentId = script.getAttribute('data-agent-id') || '';
+  if (!publishKey && !agentId) return;
 
   // Derive the Silk Resolve origin from the script src so the widget always
   // points at the right deployment even when embedded cross-domain.
@@ -46,9 +50,15 @@
     return value === 'vapi' ? 'vapi' : 'silk';
   }
 
-  function talkUrl(id, options) {
+  function talkPath(id, key) {
+    if (key) return '/talk/embed';
+    return '/talk/' + encodeURIComponent(id || 'embed');
+  }
+
+  function talkUrl(id, key, options) {
     var opts = options || {};
-    var url = origin + '/talk/' + encodeURIComponent(id) + '?voice=' + encodeURIComponent(cfg.voice);
+    var url = origin + talkPath(id, key) + '?voice=' + encodeURIComponent(cfg.voice);
+    if (key) url += '&key=' + encodeURIComponent(key);
     if (opts.autostart) url += '&autostart=1';
     if (opts.cacheBust) url += '&_sr=' + encodeURIComponent(String(opts.cacheBust));
     return url;
@@ -148,9 +158,9 @@
 
     // ── Iframe (the full PublicTalkClient lives here) ─────────────────────────
     var iframe = document.createElement('iframe');
-    iframe.dataset.agentId = agentId;
+    iframe.dataset.agentId = agentId || publishKey;
     iframe.dataset.ready = '0';
-    iframe.src = talkUrl(agentId, { cacheBust: Date.now() });
+    iframe.src = talkUrl(agentId, publishKey, { cacheBust: Date.now() });
     iframe.style.cssText = 'flex:1;width:100%;border:none;display:block;';
     iframe.addEventListener('load', function () {
       iframe.dataset.ready = '1';
@@ -199,11 +209,12 @@
       }
 
       var afterMic = function () {
-        if (iframe.dataset.agentId !== agentId || !iframe.src) {
-          iframe.dataset.agentId = agentId;
+        var currentRef = publishKey || agentId;
+        if (iframe.dataset.agentId !== currentRef || !iframe.src) {
+          iframe.dataset.agentId = currentRef;
           iframe.dataset.ready = '0';
           scheduleAutoStartWhenReady();
-          iframe.src = talkUrl(agentId, { cacheBust: Date.now() });
+          iframe.src = talkUrl(agentId, publishKey, { cacheBust: Date.now() });
           return;
         }
 
@@ -246,17 +257,24 @@
     document.body.appendChild(btn);
 
     // ── Public API ────────────────────────────────────────────────────────────
-    window.SilkResolve.start = function (id) {
-      if (id && id !== agentId) {
-        agentId = id;
-        iframe.dataset.agentId = id;
+    window.SilkResolve.start = function (idOrKey) {
+      if (idOrKey && idOrKey.indexOf('sr_') === 0) {
+        publishKey = idOrKey;
+        agentId = '';
+      } else if (idOrKey) {
+        agentId = idOrKey;
+        publishKey = '';
+      }
+      var ref = publishKey || agentId;
+      if (ref && iframe.dataset.agentId !== ref) {
+        iframe.dataset.agentId = ref;
         iframe.dataset.ready = '0';
         iframe.addEventListener('load', function onAgentSwap() {
           iframe.removeEventListener('load', onAgentSwap);
           iframe.dataset.ready = '1';
           postAutoStart(iframe.contentWindow);
         });
-        iframe.src = talkUrl(id, { cacheBust: Date.now() });
+        iframe.src = talkUrl(agentId, publishKey, { cacheBust: Date.now() });
       }
       open();
     };

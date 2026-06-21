@@ -5,14 +5,16 @@ import {
   X, Mic, MicOff, PhoneOff, Loader2, Volume2, Download, CheckCircle2,
 } from "lucide-react";
 import { useWebVoiceCall, type WebVoiceCallState, type WebVoiceTranscript } from "@/lib/use-web-voice-call";
+import type { WebVoiceMode } from "@/lib/silk-voice";
 
 interface Props {
   agentId: string;
   agentName: string;
+  voiceMode?: WebVoiceMode;
   onClose: () => void;
 }
 
-export default function TalkModal({ agentId, agentName, onClose }: Props) {
+export default function TalkModal({ agentId, agentName, voiceMode = "silk-mulberry", onClose }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const {
     state,
@@ -25,7 +27,7 @@ export default function TalkModal({ agentId, agentName, onClose }: Props) {
     endCall,
     reset,
     toggleMute,
-  } = useWebVoiceCall(agentId);
+  } = useWebVoiceCall(agentId, voiceMode);
 
   // Auto-scroll transcript
   useEffect(() => {

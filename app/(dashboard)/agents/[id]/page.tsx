@@ -1,13 +1,21 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCalls } from "@/lib/dal";
-import AgentEditor from "./_components/AgentEditor";
+import AgentStudio from "./_components/studio/AgentStudio";
 import { getVoiceProviderStatus } from "@/lib/platform";
+import type { WebVoiceMode } from "@/lib/silk-voice";
 
 export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ id: string }>;
+}
+
+function normalizeVoiceMode(value: unknown): WebVoiceMode {
+  if (value === "silk" || value === "silk-stream" || value === "silk-mulberry" || value === "vapi") {
+    return value;
+  }
+  return "silk-mulberry";
 }
 
 export default async function AgentDetailPage({ params }: PageProps) {
@@ -16,7 +24,6 @@ export default async function AgentDetailPage({ params }: PageProps) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) notFound();
 
-  // Parallel fetch: agent + calls (provider status is sync, no await needed)
   const [{ data: agentRaw }, callsFromDb] = await Promise.all([
     supabase.from("agents").select("*").eq("id", id).single(),
     getCalls({ agentId: id, limit: 50 }),
@@ -24,10 +31,8 @@ export default async function AgentDetailPage({ params }: PageProps) {
 
   if (!agentRaw) notFound();
 
-  // Detect which voice providers are configured (reads env vars — sync)
   const { silkConfigured } = getVoiceProviderStatus();
 
-  // Normalise DB row → AgentEditor shape
   const initial = {
     id:               agentRaw.id,
     name:             agentRaw.name ?? "",
@@ -45,6 +50,8 @@ export default async function AgentDetailPage({ params }: PageProps) {
     peek_threshold:   agentRaw.peek_threshold ?? 6.5,
     mesh_depth_days:  agentRaw.mesh_depth_days ?? 180,
     silk_voice_id:    agentRaw.silk_voice_id ?? "",
+    voice_mode:       normalizeVoiceMode(agentRaw.voice_mode),
+    knowledge_enabled: agentRaw.knowledge_enabled ?? true,
     agent_variables:  agentRaw.agent_variables ?? [],
     tools:            agentRaw.tools ?? [],
     escalation_rules: agentRaw.escalation_rules ?? [],
@@ -54,7 +61,6 @@ export default async function AgentDetailPage({ params }: PageProps) {
     empathy_score:    agentRaw.empathy_score ?? 0,
     resolved_rate:    agentRaw.resolved_rate ?? 0,
     avg_handle_time:  agentRaw.avg_handle_time ?? "—",
-    // Call routing
     call_direction:     agentRaw.call_direction ?? "inbound",
     vapi_phone_number:  agentRaw.vapi_phone_number ?? "",
     outbound_caller_id: agentRaw.outbound_caller_id ?? "",
@@ -62,7 +68,7 @@ export default async function AgentDetailPage({ params }: PageProps) {
   };
 
   return (
-    <AgentEditor
+    <AgentStudio
       initial={initial}
       calls={callsFromDb}
       silkConfigured={silkConfigured}
